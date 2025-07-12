@@ -56,8 +56,8 @@ class OptimizedBacktester(ModelBacktester):
     
     def __init__(self, config: BacktestConfig):
         super().__init__(config)
-        self.model_cache = {}  # Cache for loaded models
-        self.debug_frequency = 1000  # Reduce debug output frequency
+        self.model_cache = {}  # Cache for loaded models (unlimited size)
+        self.debug_frequency = 2000  # Reduce debug output frequency
     
     def load_models_cached(self, symbol: str, window_num: int):
         """Load models with caching to avoid repeated TensorFlow loading"""
@@ -69,9 +69,8 @@ class OptimizedBacktester(ModelBacktester):
         # Load models using parent method directly
         models = super().load_models(symbol, window_num)
         
-        # Cache the models (but be careful with memory)
-        if len(self.model_cache) < 10:  # Limit cache size
-            self.model_cache[cache_key] = models
+        # Cache the models (unlimited cache for better performance)
+        self.model_cache[cache_key] = models
         
         return models
     

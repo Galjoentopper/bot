@@ -475,7 +475,7 @@ class ModelBacktester:
                 signal = self.generate_signal(xgb_prob, lstm_delta)
                 
                 # Debug signal generation (only print occasionally to avoid spam)
-                if i % 500 == 0:  # Print every 500 iterations
+                if i % 2000 == 0:  # Print every 2000 iterations
                     print(f"      Debug at {current_time}: XGB_prob={xgb_prob:.3f}, LSTM_delta={lstm_delta:.6f}, Signal={signal}")
                     print(f"        Thresholds: buy={self.config.buy_threshold}, sell={self.config.sell_threshold}, lstm_delta={self.config.lstm_delta_threshold}")
                 
