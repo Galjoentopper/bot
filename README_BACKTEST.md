@@ -1,368 +1,118 @@
 # Cryptocurrency Trading Model Backtesting System
 
-A comprehensive backtesting framework for evaluating hybrid LSTM-XGBoost cryptocurrency trading models with walk-forward validation, realistic execution simulation, and robustness testing.
+## What This Script Does
 
-## 🚀 Features
+The `run_backtest.py` script tests the performance of hybrid LSTM-XGBoost cryptocurrency trading models using historical data. It simulates real trading conditions with:
 
-### Core Backtesting
-- **Walk-Forward Validation**: 4-month training, 1-month testing windows
-- **Realistic Trading Simulation**: Slippage, fees, position sizing, stop-loss
-- **Portfolio Management**: Risk management, position limits, trade frequency controls
-- **Multi-Symbol Support**: Test across multiple cryptocurrency pairs
+- **Walk-Forward Validation**: Uses 4-month training periods to predict 1-month ahead
+- **Realistic Trading**: Includes fees, slippage, position sizing, and stop-loss
+- **Risk Management**: Controls position limits and trade frequency
+- **Performance Analysis**: Generates detailed metrics and visualizations
 
-### Advanced Analysis
-- **Bootstrap Robustness Testing**: Validate model stability with noise injection
-- **Sensitivity Analysis**: Test parameter sensitivity across ranges
-- **Multi-Configuration Testing**: Compare conservative, balanced, and aggressive strategies
-- **Symbol-Specific Optimization**: Tailored parameters for each cryptocurrency
+The script loads pre-trained models for each time window and simulates trading decisions to evaluate strategy profitability.
 
-### Comprehensive Reporting
-- **Performance Metrics**: Sharpe ratio, Sortino ratio, maximum drawdown, win rate
-- **Visual Analytics**: Equity curves, trade distributions, risk-return plots
-- **HTML Reports**: Detailed analysis with executive summaries
-- **Excel Export**: Structured data for further analysis
+## Installation
 
-## 📁 File Structure
-
-```
-bot/
-├── run_backtest.py            # Main optimized backtesting script
-├── train_hybrid_models.py     # Model training with walk-forward validation
-├── README_BACKTEST.md         # This documentation
-├── requirements_backtest.txt   # Python dependencies
-├── data/                      # Market data databases
-│   ├── btceur_15m.db
-│   ├── etheur_15m.db
-│   └── ...
-├── models/                    # Trained models by window
-│   ├── lstm/
-│   ├── xgboost/
-│   └── scalers/
-└── backtests/                 # Results directory
-    ├── BTCEUR/               # Symbol-specific results
-    ├── ETHEUR/
-    ├── configs/              # Configuration presets
-    └── ...
-```
-
-## 🛠️ Installation
-
-1. **Install Dependencies**:
-   ```bash
-   pip install -r requirements_backtest.txt
-   ```
-
-2. **Verify Data Structure**:
-   Ensure your data is organized as:
-   ```
-   data/
-   ├── adaeur_15m.db
-   ├── btceur_15m.db
-   ├── etheur_15m.db
-   └── soleur_15m.db
-   ```
-
-3. **Verify Model Structure**:
-   Ensure trained models are available:
-   ```
-   models/
-   ├── lstm/
-   ├── xgboost/
-   └── scalers/
-   ```
-
-## 🎯 Quick Start
-
-### Basic Backtest
 ```bash
-# Run optimized backtest with balanced configuration
+pip install -r requirements_backtest.txt
+```
+
+Ensure you have:
+- Market data in `data/` folder (e.g., `btceur_15m.db`)
+- Trained models in `models/` folder (LSTM, XGBoost, scalers)
+
+## Available Flags
+
+| Flag | Description | Options/Values |
+|------|-------------|----------------|
+| `--symbol` | Cryptocurrency pair to test | `BTCEUR`, `ETHEUR`, `ADAEUR`, `SOLEUR`, `XRPEUR` |
+| `--config` | Trading strategy configuration | `aggressive`, `very_aggressive`, `fast_test` |
+| `--max-windows` | Limit number of testing windows | Any positive integer (e.g., `5`, `10`, `20`) |
+| `--random` | Start from random date | No value needed (flag only) |
+| `--save-plots` | Generate performance charts | No value needed (flag only) |
+| `--debug` | Generate detailed CSV with trading data | No value needed (flag only) |
+
+### Configuration Details
+- **aggressive**: 2% risk per trade, 70%/30% buy/sell thresholds
+- **very_aggressive**: 3% risk per trade, 60%/40% buy/sell thresholds  
+- **fast_test**: Quick testing with relaxed parameters
+
+### Special Features
+- `--random` automatically limits to 10 windows and prevents data leakage
+- `--debug` creates `debug_detailed.csv` with comprehensive trading information
+- `--save-plots` generates equity curves and performance visualizations
+
+## Usage Examples
+
+### Basic Usage
+```bash
+# Simple backtest with aggressive strategy
 python run_backtest.py --symbol BTCEUR --config aggressive
 
-# Run with different symbols
+# Test different cryptocurrency
 python run_backtest.py --symbol ETHEUR --config very_aggressive
+```
 
-# Run with random start date (auto-limited to 10 windows)
-python run_backtest.py --symbol BTCEUR --config very_aggressive --random
-
-# Run with custom window limit
+### Limited Testing
+```bash
+# Test only 5 windows for quick results
 python run_backtest.py --symbol BTCEUR --config aggressive --max-windows 5
-```
 
-### Advanced Testing
-```bash
-# Test different market conditions with random start
+# Random start with automatic 10-window limit
 python run_backtest.py --symbol BTCEUR --config very_aggressive --random
-
-# Quick testing with limited windows
-python run_backtest.py --symbol ETHEUR --config aggressive --max-windows 10
-
-# Generate performance plots
-python run_backtest.py --symbol BTCEUR --config very_aggressive --save-plots
-
-# Test multiple symbols sequentially
-python run_backtest.py --symbol ADAEUR --config aggressive --random
-python run_backtest.py --symbol SOLEUR --config very_aggressive --max-windows 15
 ```
 
-## ⚙️ Configuration Options
-
-### Available Configurations
-- **aggressive**: Balanced risk settings (2% per trade, 70%/30% thresholds)
-- **very_aggressive**: Higher risk settings (3% per trade, 60%/40% thresholds)
-- **fast_test**: Quick testing configuration with relaxed parameters
-
-### Command Line Options
+### Advanced Analysis
 ```bash
---symbol SYMBOL          # Choose: BTCEUR, ETHEUR, ADAEUR, SOLEUR, XRPEUR
---config CONFIG          # Choose: aggressive, very_aggressive, fast_test
---max-windows N          # Limit number of testing windows (auto-set for --random)
---random                 # Randomly select starting date (prevents data leakage)
---save-plots             # Generate and save performance visualization plots
+# Generate performance charts
+python run_backtest.py --symbol BTCEUR --config aggressive --save-plots
+
+# Debug mode with detailed CSV output
+python run_backtest.py --symbol BTCEUR --config aggressive --debug --max-windows 3
+
+# Comprehensive analysis
+python run_backtest.py --symbol ETHEUR --config very_aggressive --random --save-plots --debug
 ```
 
-### Random Start Feature
-The `--random` flag provides several benefits:
-- **Prevents temporal data leakage** by using chronologically appropriate models
-- **Tests different market conditions** by starting from random time periods
-- **Auto-limits execution time** to 10 windows from the random start point
-- **Maintains walk-forward validation integrity** with proper window calculation
-
-## 📊 Understanding Results
-
-### Key Metrics
-- **Total Return**: Overall portfolio performance
-- **Sharpe Ratio**: Risk-adjusted returns (>1.0 is good)
-- **Sortino Ratio**: Downside risk-adjusted returns
-- **Maximum Drawdown**: Largest peak-to-trough decline
-- **Win Rate**: Percentage of profitable trades
-- **Profit Factor**: Ratio of gross profit to gross loss
-
-### Output Files
-```
-backtests/SYMBOL/
-├── trades.csv                 # Individual trade records
-├── equity_curve.csv           # Portfolio value over time
-├── performance_metrics.json   # Summary statistics
-└── performance_plots.png      # Visualization charts
-```
-
-### Analysis Reports
-- **HTML Report**: `backtests/detailed_analysis_report.html`
-- **Excel Export**: `backtests/backtest_results.xlsx`
-- **Comparison Plots**: `backtests/performance_comparison.png`
-
-## 🔬 Advanced Features
-
-### Bootstrap Robustness Testing
-Tests model stability by adding small amounts of noise to price data:
-```python
-# Run 10 bootstrap iterations with 0.1% noise
-python run_backtest.py --mode bootstrap --bootstrap-runs 10
-```
-
-### Sensitivity Analysis
-Tests how sensitive results are to parameter changes:
-- Buy/sell thresholds (0.6 to 0.8)
-- Risk per trade (1% to 3%)
-- Stop loss levels (2% to 4%)
-- Maximum positions (5 to 15)
-
-### Walk-Forward Validation
-Prevents data leakage by using realistic time-based splits:
-- Training: 4 months of historical data
-- Testing: 1 month forward prediction
-- Sliding: Move forward 1 month and repeat
-
-## 🎛️ Customization
-
-### Custom Configuration
-```python
-from scripts.backtest_config import BacktestConfig
-
-# Create custom configuration
-custom_config = BacktestConfig(
-    initial_capital=50000.0,
-    risk_per_trade=0.015,
-    buy_threshold=0.75,
-    max_positions=8
-)
-
-# Use in backtester
-from scripts.backtest_models import ModelBacktester
-backtester = ModelBacktester(custom_config)
-results = backtester.run_backtest(['BTCEUR'])
-```
-
-### Symbol-Specific Settings
-```python
-from scripts.backtest_config import get_symbol_config
-
-# Get optimized config for specific symbol
-btc_config = get_symbol_config('BTCEUR')
-eth_config = get_symbol_config('ETHEUR')
-```
-
-## 📈 Interpretation Guide
-
-### Good Performance Indicators
-- **Sharpe Ratio > 1.0**: Good risk-adjusted returns
-- **Win Rate > 50%**: More winning than losing trades
-- **Profit Factor > 1.5**: Wins significantly outweigh losses
-- **Max Drawdown < 20%**: Reasonable risk exposure
-- **Positive Total Return**: Profitable strategy
-
-### Warning Signs
-- **High Win Rate + Low Profit Factor**: Small wins, large losses
-- **High Sharpe + High Drawdown**: Inconsistent performance
-- **Very Few Trades**: Overly conservative, missing opportunities
-- **Too Many Trades**: Over-trading, high transaction costs
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-#### 1. No Trades Generated (0 trades, 0% return)
+### Quick Testing
 ```bash
-# Check if models exist for the calculated window
-ls models/lstm/btceur_window_*.keras
-ls models/xgboost/btceur_window_*.pkl
-
-# Try a less aggressive configuration
+# Fast configuration for rapid testing
 python run_backtest.py --symbol BTCEUR --config fast_test --max-windows 5
 
-# Use random start to test different market conditions
-python run_backtest.py --symbol BTCEUR --config aggressive --random
+# Multiple symbols comparison
+python run_backtest.py --symbol ADAEUR --config aggressive --random
+python run_backtest.py --symbol SOLEUR --config aggressive --random
 ```
 
-#### 2. Model Loading Failures
-```bash
-# Verify models exist for the symbol and window
-ls models/lstm/btceur_window_1.keras
-ls models/xgboost/btceur_window_1.pkl
-ls models/scalers/btceur_window_1_scaler.pkl
+## Output Files
 
-# Check if training was completed
-python train_hybrid_models.py --symbol BTCEUR --config aggressive
-```
+Results are saved in `backtests/SYMBOL/`:
+- `trades.csv` - Individual trade records
+- `equity_curve.csv` - Portfolio value over time  
+- `performance_metrics.json` - Summary statistics
+- `performance_plots.png` - Charts (with `--save-plots`)
+- `debug_detailed.csv` - Detailed trading data (with `--debug`)
 
-#### 3. Random Backtest Takes Too Long
-```bash
-# The system automatically limits random backtests to 10 windows
-# To manually control duration:
-python run_backtest.py --symbol BTCEUR --config aggressive --random --max-windows 5
-```
+### Key Metrics
+- **Total Return**: Overall profit/loss percentage
+- **Sharpe Ratio**: Risk-adjusted returns (>1.0 is good)
+- **Win Rate**: Percentage of profitable trades
+- **Maximum Drawdown**: Largest loss from peak
 
-#### 4. Data Issues
-```bash
-# Check if data files exist
-ls data/btceur_15m.db
-ls data/etheur_15m.db
+## Troubleshooting
 
-# Verify data has sufficient history (need at least 40+ months)
-sqlite3 data/btceur_15m.db "SELECT MIN(timestamp), MAX(timestamp) FROM market_data;"
-```
+### Common Issues
+- **No trades generated**: Try `--config fast_test` or `--random` for different market conditions
+- **Model loading errors**: Ensure models exist in `models/` folder for the symbol
+- **Data issues**: Check that `.db` files exist in `data/` folder
 
 ### Debug Mode
-
-The `--debug` flag generates a detailed CSV file with comprehensive trading information for analysis:
-
-```bash
-# Generate debug CSV with detailed trading signals
-python run_backtest.py --symbol BTCEUR --config aggressive --debug --max-windows 3
-
-# Debug with random start for different market conditions
-python run_backtest.py --symbol BTCEUR --config very_aggressive --debug --random --max-windows 5
-```
-
-**Debug CSV Contents** (`backtests/SYMBOL/debug_detailed.csv`):
-- **Timestamp & Price Data**: Every 15-minute interval with OHLCV data
-- **Model Predictions**: LSTM delta predictions and XGBoost probabilities
-- **Trading Signals**: BUY/SELL/HOLD decisions with threshold comparisons
-- **Technical Indicators**: RSI, MACD, Bollinger Bands, ATR values
-- **Trading Constraints**: Position limits, hourly trade limits, capital status
-- **Trade Execution**: When trades are executed with prices, fees, slippage
-- **Portfolio State**: Current capital, open positions, exit trade counts
-
-**Basic Debugging Commands**:
-```bash
-# Check available models and data
-ls models/lstm/btceur_window_*.keras
-ls data/btceur_15m.db
-
-# Test with minimal windows for debugging
-python run_backtest.py --symbol BTCEUR --config fast_test --max-windows 2
-```
-
-## 🔄 Workflow Recommendations
-
-### 1. Initial Testing
-```bash
-# Start with basic backtest
-python run_backtest.py --symbol BTCEUR --config aggressive --max-windows 5
-
-# Test with random market conditions
-python run_backtest.py --symbol BTCEUR --config aggressive --random
-
-# Debug mode for detailed analysis
-python run_backtest.py --symbol BTCEUR --config aggressive --debug --max-windows 3
-```
-
-### 2. Configuration Optimization
-```bash
-# Test different risk levels
-python run_backtest.py --symbol BTCEUR --config very_aggressive --random
-python run_backtest.py --symbol BTCEUR --config fast_test --max-windows 10
-
-# Compare across symbols
-python run_backtest.py --symbol ETHEUR --config aggressive --random
-python run_backtest.py --symbol ADAEUR --config very_aggressive --random
-```
-
-### 3. Performance Analysis
-```bash
-# Generate detailed plots
-python run_backtest.py --symbol BTCEUR --config very_aggressive --save-plots
-
-# Test longer periods
-python run_backtest.py --symbol BTCEUR --config aggressive --max-windows 20
-```
-
-### 4. Production Validation
-```bash
-# Test multiple random periods for robustness
-python run_backtest.py --symbol BTCEUR --config very_aggressive --random
-python run_backtest.py --symbol BTCEUR --config very_aggressive --random
-python run_backtest.py --symbol BTCEUR --config very_aggressive --random
-```
-
-## 📋 Performance Benchmarks
-
-Based on historical cryptocurrency data:
-
-| Metric | Conservative | Balanced | Aggressive |
-|--------|-------------|----------|------------|
-| Expected Sharpe | 0.8-1.2 | 1.0-1.5 | 0.6-1.8 |
-| Win Rate | 45-55% | 40-60% | 35-65% |
-| Max Drawdown | 5-15% | 10-25% | 15-35% |
-| Trades/Month | 5-15 | 10-30 | 20-50 |
-
-## 🤝 Contributing
-
-To extend the backtesting system:
-
-1. **Add New Metrics**: Extend `calculate_performance_metrics()` in `backtest_models.py`
-2. **Custom Indicators**: Add to `TechnicalIndicators` class
-3. **New Configurations**: Add presets to `backtest_config.py`
-4. **Enhanced Analysis**: Extend `BacktestAnalyzer` class
-
-## 📞 Support
-
-For issues or questions:
-1. Check the troubleshooting section
-2. Review log files in `backtests/` directory
-3. Run with `--verbose` flag for detailed output
-4. Ensure all dependencies are correctly installed
+Use `--debug` to generate detailed CSV with:
+- Model predictions (LSTM delta, XGBoost probabilities)
+- Trading signals (BUY/SELL/HOLD decisions)
+- Technical indicators (RSI, MACD, Bollinger Bands)
+- Trade execution details and portfolio state
 
 ---
 
-**Note**: This backtesting system is for research and educational purposes. Past performance does not guarantee future results. Always validate strategies with paper trading before live deployment.
+**Note**: This backtesting system is for research and educational purposes. Past performance does not guarantee future results.
