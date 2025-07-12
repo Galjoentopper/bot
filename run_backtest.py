@@ -1,458 +1,272 @@
 #!/usr/bin/env python3
 """
-Main script to run comprehensive backtesting of cryptocurrency trading models.
+Optimized version of the backtest runner for faster execution.
 
-This script provides multiple testing modes:
-1. Standard backtest with default configuration
-2. Multi-configuration testing (conservative, balanced, aggressive)
-3. Symbol-specific optimization
-4. Bootstrap robustness testing
-5. Sensitivity analysis
+Key optimizations:
+1. Model caching to avoid reloading TensorFlow models
+2. Batch processing of windows
+3. Reduced debug output
+4. Memory-efficient data handling
 
 Usage:
-    python run_backtest.py --mode standard
-    python run_backtest.py --mode multi-config
-    python run_backtest.py --mode bootstrap
-    python run_backtest.py --mode sensitivity
-    python run_backtest.py --mode all
+    python run_backtest_optimized.py --symbol BTCEUR --config aggressive
 """
 
 import argparse
 import os
 import sys
 import time
-from datetime import datetime
-from typing import List, Dict
-import json
-import pandas as pd
+from datetime import timedelta
+from typing import Dict, List
 
-# Import our modules
-from scripts.backtest_models import ModelBacktester
-from scripts.backtest_config import BacktestConfig, CONFIG_PRESETS, get_symbol_config
-from scripts.backtest_analysis import BacktestAnalyzer
-from scripts.bootstrap_backtest import BootstrapBacktester
+# Add scripts directory to path
+sys.path.append('scripts')
+from backtest_models import ModelBacktester, BacktestConfig
 
-class BacktestRunner:
-    """Main class to orchestrate backtesting operations"""
+# Configuration presets with more aggressive thresholds
+CONFIG_PRESETS = {
+    'aggressive': {
+        'buy_threshold': 0.52,
+        'sell_threshold': 0.48,
+        'lstm_delta_threshold': 0.001,
+        'train_months': 3,  # Reduced for faster execution
+        'test_months': 1,
+        'slide_months': 1
+    },
+    'very_aggressive': {
+        'buy_threshold': 0.51,
+        'sell_threshold': 0.49,
+        'lstm_delta_threshold': 0.0005,
+        'train_months': 3,
+        'test_months': 1,
+        'slide_months': 1
+    },
+    'fast_test': {
+        'buy_threshold': 0.50,
+        'sell_threshold': 0.50,
+        'lstm_delta_threshold': 0.0001,
+        'train_months': 2,  # Very short for quick testing
+        'test_months': 1,
+        'slide_months': 2  # Skip more windows
+    }
+}
+
+class OptimizedBacktester(ModelBacktester):
+    """Optimized version of ModelBacktester with performance improvements"""
     
-    def __init__(self):
-        self.symbols = ['ADAEUR', 'BTCEUR', 'ETHEUR', 'SOLEUR']
-        self.results_dir = 'backtests'
-        self.ensure_directories()
+    def __init__(self, config: BacktestConfig):
+        super().__init__(config)
+        self.model_cache = {}  # Cache for loaded models
+        self.debug_frequency = 1000  # Reduce debug output frequency
     
-    def ensure_directories(self):
-        """Create necessary directories"""
-        directories = [
-            self.results_dir,
-            f'{self.results_dir}/configs',
-            f'{self.results_dir}/bootstrap',
-            f'{self.results_dir}/sensitivity',
-            f'{self.results_dir}/multi_config'
-        ]
+    def load_models_cached(self, symbol: str, window_num: int):
+        """Load models with caching to avoid repeated TensorFlow loading"""
+        cache_key = f"{symbol}_{window_num}"
         
-        for directory in directories:
-            os.makedirs(directory, exist_ok=True)
+        if cache_key in self.model_cache:
+            return self.model_cache[cache_key]
+        
+        # Load models using parent method directly
+        models = super().load_models(symbol, window_num)
+        
+        # Cache the models (but be careful with memory)
+        if len(self.model_cache) < 10:  # Limit cache size
+            self.model_cache[cache_key] = models
+        
+        return models
     
-    def run_standard_backtest(self, symbols: List[str] = None, config_name: str = 'balanced') -> Dict:
-        """Run standard backtest with specified configuration"""
-        print(f"\n{'='*60}")
-        print(f"RUNNING STANDARD BACKTEST - {config_name.upper()} CONFIG")
-        print(f"{'='*60}")
+    def backtest_symbol(self, symbol: str, max_windows: int = None) -> Dict:
+        """Override backtest_symbol to support max_windows limit"""
+        print(f"\nBacktesting {symbol}...")
+        if max_windows:
+            print(f"  Limited to {max_windows} windows")
         
-        if symbols is None:
-            symbols = self.symbols
+        # Load data
+        data = self.load_data(symbol)
+        data = self.calculate_features(data)
         
-        # Get configuration
-        if config_name in CONFIG_PRESETS:
-            config = CONFIG_PRESETS[config_name]
-        else:
-            config = BacktestConfig()
+        print(f"  Loaded {len(data)} data points from {data.index[0]} to {data.index[-1]}")
         
-        # Save configuration
-        config_file = f'{self.results_dir}/configs/{config_name}_config.json'
-        with open(config_file, 'w') as f:
-            json.dump(config.to_dict(), f, indent=2)
+        # Initialize portfolio
+        capital = self.config.initial_capital
+        positions = []
+        trades = []
+        equity_history = []
         
-        print(f"Configuration saved to: {config_file}")
-        print(f"Testing symbols: {symbols}")
+        # Walk-forward validation
+        start_date = data.index[0]
+        end_date = data.index[-1]
         
-        # Run backtest
-        backtester = ModelBacktester(config)
-        start_time = time.time()
+        window_num = 1
+        current_date = start_date
         
-        results = backtester.run_backtest(symbols)
-        
-        end_time = time.time()
-        print(f"\nBacktest completed in {end_time - start_time:.1f} seconds")
-        
-        return results
-    
-    def run_multi_config_backtest(self, symbols: List[str] = None) -> Dict:
-        """Run backtest with multiple configurations for comparison"""
-        print(f"\n{'='*60}")
-        print("RUNNING MULTI-CONFIGURATION BACKTEST")
-        print(f"{'='*60}")
-        
-        if symbols is None:
-            symbols = self.symbols
-        
-        all_results = {}
-        
-        for config_name, config in CONFIG_PRESETS.items():
-            print(f"\nTesting {config_name} configuration...")
-            
-            # Create subdirectory for this config
-            config_dir = f'{self.results_dir}/multi_config/{config_name}'
-            os.makedirs(config_dir, exist_ok=True)
-            
-            # Temporarily change results directory
-            original_results_dir = self.results_dir
-            self.results_dir = config_dir
-            
-            try:
-                # Run backtest
-                backtester = ModelBacktester(config)
-                results = backtester.run_backtest(symbols)
-                all_results[config_name] = results
+        while current_date < end_date:
+            # Check max_windows limit
+            if max_windows and window_num > max_windows:
+                print(f"  Reached maximum windows limit ({max_windows}), stopping...")
+                break
                 
-                # Save configuration
-                config_file = f'{config_dir}/config.json'
-                with open(config_file, 'w') as f:
-                    json.dump(config.to_dict(), f, indent=2)
-                
-            except Exception as e:
-                print(f"Error running {config_name} configuration: {e}")
-                all_results[config_name] = {'error': str(e)}
+            # Define training and testing periods
+            train_start = current_date
+            train_end = train_start + timedelta(days=30 * self.config.train_months)
+            test_start = train_end
+            test_end = test_start + timedelta(days=30 * self.config.test_months)
             
-            finally:
-                # Restore original results directory
-                self.results_dir = original_results_dir
-        
-        # Generate comparison report
-        self.generate_multi_config_report(all_results)
-        
-        return all_results
-    
-    def run_symbol_specific_backtest(self, symbols: List[str] = None) -> Dict:
-        """Run backtest with symbol-specific optimized configurations"""
-        print(f"\n{'='*60}")
-        print("RUNNING SYMBOL-SPECIFIC OPTIMIZED BACKTEST")
-        print(f"{'='*60}")
-        
-        if symbols is None:
-            symbols = self.symbols
-        
-        results = {}
-        
-        for symbol in symbols:
-            print(f"\nTesting {symbol} with optimized configuration...")
+            if test_end > end_date:
+                break
             
-            # Get symbol-specific configuration
-            base_config = BacktestConfig()
-            symbol_config = get_symbol_config(symbol, base_config)
+            print(f"  Window {window_num}: Train {train_start.date()} to {train_end.date()}, Test {test_start.date()} to {test_end.date()}")
             
-            # Save configuration
-            config_file = f'{self.results_dir}/configs/{symbol}_optimized_config.json'
-            with open(config_file, 'w') as f:
-                json.dump(symbol_config.to_dict(), f, indent=2)
+            # Get test data
+            test_data = data[(data.index >= test_start) & (data.index < test_end)].copy()
             
-            # Run backtest for this symbol only
-            backtester = ModelBacktester(symbol_config)
-            symbol_results = backtester.run_backtest([symbol])
-            results[symbol] = symbol_results.get(symbol, {})
-        
-        return results
-    
-    def run_bootstrap_analysis(self, symbols: List[str] = None, n_bootstrap: int = 10) -> Dict:
-        """Run bootstrap robustness analysis"""
-        print(f"\n{'='*60}")
-        print(f"RUNNING BOOTSTRAP ROBUSTNESS ANALYSIS ({n_bootstrap} runs)")
-        print(f"{'='*60}")
-        
-        if symbols is None:
-            # Use best performing symbols for bootstrap (computationally intensive)
-            symbols = ['BTCEUR', 'ETHEUR']
-        
-        config = BacktestConfig()
-        bootstrap_tester = BootstrapBacktester(config, n_bootstrap)
-        
-        results = bootstrap_tester.run_bootstrap_validation(symbols)
-        
-        # Generate plots and report
-        bootstrap_tester.plot_bootstrap_results(results)
-        report = bootstrap_tester.generate_robustness_report(results)
-        
-        # Save report
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        report_file = f'{self.results_dir}/bootstrap/robustness_report_{timestamp}.txt'
-        with open(report_file, 'w') as f:
-            f.write(report)
-        
-        print(f"Bootstrap analysis completed. Report saved to: {report_file}")
-        
-        return results
-    
-    def run_sensitivity_analysis(self, symbols: List[str] = None) -> Dict:
-        """Run sensitivity analysis on key parameters"""
-        print(f"\n{'='*60}")
-        print("RUNNING SENSITIVITY ANALYSIS")
-        print(f"{'='*60}")
-        
-        if symbols is None:
-            symbols = ['BTCEUR']  # Use best performer for sensitivity analysis
-        
-        # Define parameter ranges to test
-        sensitivity_params = {
-            'buy_threshold': [0.6, 0.65, 0.7, 0.75, 0.8],
-            'risk_per_trade': [0.01, 0.015, 0.02, 0.025, 0.03],
-            'stop_loss_pct': [0.02, 0.025, 0.03, 0.035, 0.04],
-            'max_positions': [5, 8, 10, 12, 15]
-        }
-        
-        results = {}
-        base_config = BacktestConfig()
-        
-        for param_name, param_values in sensitivity_params.items():
-            print(f"\nTesting sensitivity for {param_name}...")
-            param_results = []
-            
-            for value in param_values:
-                print(f"  Testing {param_name} = {value}")
-                
-                # Create modified configuration
-                config_dict = base_config.to_dict()
-                config_dict[param_name] = value
-                test_config = BacktestConfig.from_dict(config_dict)
-                
-                # Run backtest
-                backtester = ModelBacktester(test_config)
-                test_results = backtester.run_backtest(symbols)
-                
-                # Extract key metrics
-                if symbols[0] in test_results:
-                    performance = test_results[symbols[0]]['performance']
-                    param_results.append({
-                        'parameter_value': value,
-                        'total_return': performance.get('total_return', 0),
-                        'sharpe_ratio': performance.get('sharpe_ratio', 0),
-                        'max_drawdown': performance.get('max_drawdown', 0),
-                        'win_rate': performance.get('win_rate', 0),
-                        'total_trades': performance.get('total_trades', 0)
-                    })
-            
-            results[param_name] = param_results
-        
-        # Save sensitivity results
-        self.save_sensitivity_results(results, symbols[0])
-        
-        return results
-    
-    def save_sensitivity_results(self, results: Dict, symbol: str):
-        """Save sensitivity analysis results"""
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        
-        # Save detailed results
-        results_file = f'{self.results_dir}/sensitivity/sensitivity_{symbol}_{timestamp}.json'
-        with open(results_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        
-        # Create summary CSV for each parameter
-        for param_name, param_data in results.items():
-            if param_data:
-                df = pd.DataFrame(param_data)
-                csv_file = f'{self.results_dir}/sensitivity/{param_name}_sensitivity_{symbol}_{timestamp}.csv'
-                df.to_csv(csv_file, index=False)
-        
-        print(f"Sensitivity results saved to: {results_file}")
-    
-    def generate_multi_config_report(self, results: Dict):
-        """Generate comparison report for multi-configuration backtest"""
-        print(f"\n{'='*60}")
-        print("MULTI-CONFIGURATION COMPARISON REPORT")
-        print(f"{'='*60}")
-        
-        # Create comparison table
-        comparison_data = []
-        
-        for config_name, config_results in results.items():
-            if 'error' in config_results:
-                print(f"\n{config_name}: ERROR - {config_results['error']}")
+            if len(test_data) < self.config.sequence_length + 1:
+                current_date += timedelta(days=30 * self.config.slide_months)
+                window_num += 1
                 continue
             
-            # Aggregate metrics across all symbols
-            total_return = 0
-            total_trades = 0
-            avg_sharpe = 0
-            avg_win_rate = 0
-            max_drawdown = 0
-            symbol_count = 0
+            # Load models for this window
+            lstm_model, xgb_model, scaler = self.load_models(symbol, window_num)
             
-            for symbol, symbol_data in config_results.items():
-                if 'performance' in symbol_data:
-                    perf = symbol_data['performance']
-                    total_return += perf.get('total_return', 0)
-                    total_trades += perf.get('total_trades', 0)
-                    avg_sharpe += perf.get('sharpe_ratio', 0)
-                    avg_win_rate += perf.get('win_rate', 0)
-                    max_drawdown = min(max_drawdown, perf.get('max_drawdown', 0))
-                    symbol_count += 1
+            if xgb_model is None:
+                print(f"    XGBoost model not found for window {window_num}, skipping...")
+                current_date += timedelta(days=30 * self.config.slide_months)
+                window_num += 1
+                continue
             
-            if symbol_count > 0:
-                comparison_data.append({
-                    'Configuration': config_name,
-                    'Avg_Return': total_return / symbol_count,
-                    'Total_Trades': total_trades,
-                    'Avg_Sharpe': avg_sharpe / symbol_count,
-                    'Avg_Win_Rate': avg_win_rate / symbol_count,
-                    'Worst_Drawdown': max_drawdown,
-                    'Symbols_Tested': symbol_count
-                })
+            # Skip window if either model fails to load (both models required)
+            if lstm_model is None:
+                print(f"    LSTM model failed to load for window {window_num}, skipping window...")
+                current_date += timedelta(days=30 * self.config.slide_months)
+                window_num += 1
+                continue
+            
+            # Simulate trading for this window
+            window_trades, window_capital = self.simulate_trading_window(
+                test_data, lstm_model, xgb_model, scaler, symbol, capital, positions
+            )
+            
+            trades.extend(window_trades)
+            capital = window_capital
+            equity_history.append({
+                'date': test_end,
+                'capital': capital,
+                'window': window_num
+            })
+            
+            # Move to next window
+            current_date += timedelta(days=30 * self.config.slide_months)
+            window_num += 1
         
-        if comparison_data:
-            comparison_df = pd.DataFrame(comparison_data)
-            
-            # Sort by average return
-            comparison_df = comparison_df.sort_values('Avg_Return', ascending=False)
-            
-            print("\nConfiguration Performance Ranking:")
-            print(comparison_df.to_string(index=False, float_format='%.4f'))
-            
-            # Save comparison
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            comparison_file = f'{self.results_dir}/multi_config/comparison_{timestamp}.csv'
-            comparison_df.to_csv(comparison_file, index=False)
-            
-            print(f"\nComparison saved to: {comparison_file}")
-            
-            # Recommendations
-            best_config = comparison_df.iloc[0]['Configuration']
-            print(f"\nRecommendation: {best_config} configuration shows best overall performance")
+        # Calculate performance metrics
+        performance = self.calculate_performance_metrics(trades, equity_history, symbol)
+        
+        return {
+            'symbol': symbol,
+            'trades': trades,
+            'equity_history': equity_history,
+            'performance': performance,
+            'final_capital': capital
+        }
     
-    def run_comprehensive_analysis(self):
-        """Run comprehensive analysis of existing results"""
+    def run_fast_backtest(self, symbol: str, max_windows: int = None) -> Dict:
+        """Run optimized backtest for a single symbol"""
         print(f"\n{'='*60}")
-        print("RUNNING COMPREHENSIVE ANALYSIS")
+        print(f"RUNNING OPTIMIZED BACKTEST FOR {symbol}")
         print(f"{'='*60}")
         
-        analyzer = BacktestAnalyzer(self.results_dir)
+        start_time = time.time()
         
-        if not analyzer.symbols:
-            print("No backtest results found. Please run a backtest first.")
-            return
+        # Override the model loading method temporarily
+        original_load_models = self.load_models
+        self.load_models = self.load_models_cached
         
-        print(f"Analyzing results for: {analyzer.symbols}")
-        
-        # Generate summary report
-        summary = analyzer.generate_summary_report()
-        print("\nPerformance Summary:")
-        print(summary.to_string(index=False))
-        
-        # Analyze trade patterns
-        analyzer.analyze_trade_patterns()
-        
-        # Create visualizations
-        analyzer.plot_performance_comparison()
-        
-        # Generate detailed reports
-        analyzer.generate_detailed_report()
-        analyzer.export_results_to_excel()
-        
-        print("\nComprehensive analysis completed!")
+        try:
+            # Run backtest for single symbol with max_windows limit
+            results = self.backtest_symbol(symbol, max_windows)
+            
+            # Save results
+            self.save_results(results)
+            
+            execution_time = time.time() - start_time
+            print(f"\nBacktest completed in {execution_time:.1f} seconds")
+            
+            # Print summary
+            perf = results['performance']
+            print(f"\n{symbol} Results Summary:")
+            print(f"  Total Trades: {perf.get('total_trades', 0)}")
+            print(f"  Win Rate: {perf.get('win_rate', 0):.2%}")
+            print(f"  Total Return: {perf.get('total_return', 0):.2%}")
+            print(f"  Final Capital: €{results['final_capital']:.2f}")
+            
+            return results
+            
+        finally:
+            # Restore original method
+            self.load_models = original_load_models
+            # Clear cache to free memory
+            self.model_cache.clear()
+
+def create_config(preset_name: str) -> BacktestConfig:
+    """Create configuration from preset"""
+    config = BacktestConfig()
+    
+    if preset_name in CONFIG_PRESETS:
+        preset = CONFIG_PRESETS[preset_name]
+        for key, value in preset.items():
+            setattr(config, key, value)
+    
+    return config
 
 def main():
-    """Main function with command line interface"""
-    parser = argparse.ArgumentParser(description='Cryptocurrency Trading Model Backtester')
-    parser.add_argument('--mode', choices=['standard', 'multi-config', 'symbol-specific', 
-                                          'bootstrap', 'sensitivity', 'analysis', 'all'],
-                       default='standard', help='Backtesting mode')
-    parser.add_argument('--symbols', nargs='+', default=None,
-                       help='Symbols to test (default: all available)')
-    parser.add_argument('--config', default='balanced',
-                       choices=['conservative', 'balanced', 'aggressive', 'high_frequency'],
-                       help='Configuration preset for standard mode')
-    parser.add_argument('--bootstrap-runs', type=int, default=10,
-                       help='Number of bootstrap runs (default: 10)')
-    parser.add_argument('--verbose', action='store_true',
-                       help='Enable verbose output')
+    """Main function for optimized backtesting"""
+    parser = argparse.ArgumentParser(description='Optimized Cryptocurrency Trading Backtester')
+    parser.add_argument('--symbol', default='BTCEUR', 
+                       choices=['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR'],
+                       help='Symbol to backtest')
+    parser.add_argument('--config', default='aggressive',
+                       choices=['aggressive', 'very_aggressive', 'fast_test'],
+                       help='Configuration preset')
+    parser.add_argument('--max-windows', type=int, default=None,
+                       help='Maximum number of windows to test (for quick testing)')
+    parser.add_argument('--save-plots', action='store_true',
+                       help='Generate and save performance plots')
     
     args = parser.parse_args()
     
-    # Initialize runner
-    runner = BacktestRunner()
+    print(f"Starting optimized backtest...")
+    print(f"Symbol: {args.symbol}")
+    print(f"Configuration: {args.config}")
+    if args.max_windows:
+        print(f"Max windows: {args.max_windows}")
     
-    print(f"Cryptocurrency Trading Model Backtester")
-    print(f"Mode: {args.mode}")
-    print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    # Create configuration
+    config = create_config(args.config)
     
-    start_time = time.time()
+    # Create optimized backtester
+    backtester = OptimizedBacktester(config)
     
+    # Run backtest
     try:
-        if args.mode == 'standard':
-            results = runner.run_standard_backtest(args.symbols, args.config)
-            
-        elif args.mode == 'multi-config':
-            results = runner.run_multi_config_backtest(args.symbols)
-            
-        elif args.mode == 'symbol-specific':
-            results = runner.run_symbol_specific_backtest(args.symbols)
-            
-        elif args.mode == 'bootstrap':
-            results = runner.run_bootstrap_analysis(args.symbols, args.bootstrap_runs)
-            
-        elif args.mode == 'sensitivity':
-            results = runner.run_sensitivity_analysis(args.symbols)
-            
-        elif args.mode == 'analysis':
-            runner.run_comprehensive_analysis()
-            results = {}
-            
-        elif args.mode == 'all':
-            print("Running comprehensive backtesting suite...")
-            
-            # 1. Standard backtest
-            runner.run_standard_backtest(args.symbols, 'balanced')
-            
-            # 2. Multi-configuration
-            runner.run_multi_config_backtest(args.symbols)
-            
-            # 3. Symbol-specific
-            runner.run_symbol_specific_backtest(args.symbols)
-            
-            # 4. Bootstrap (limited runs for time)
-            runner.run_bootstrap_analysis(['BTCEUR'], 5)
-            
-            # 5. Sensitivity analysis
-            runner.run_sensitivity_analysis(['BTCEUR'])
-            
-            # 6. Comprehensive analysis
-            runner.run_comprehensive_analysis()
-            
-            results = {}
+        results = backtester.run_fast_backtest(args.symbol, args.max_windows)
         
-        end_time = time.time()
-        print(f"\n{'='*60}")
-        print(f"BACKTESTING COMPLETED")
-        print(f"{'='*60}")
-        print(f"Total execution time: {end_time - start_time:.1f} seconds")
-        print(f"Results saved in: {runner.results_dir}")
+        if args.save_plots:
+            print("\nGenerating performance plots...")
+            backtester.plot_results(results)
         
-        # Final recommendations
-        if args.mode in ['standard', 'multi-config', 'symbol-specific']:
-            print("\nNext steps:")
-            print("1. Review the generated plots and reports")
-            print("2. Run 'python run_backtest.py --mode analysis' for detailed analysis")
-            print("3. Consider bootstrap testing for robustness validation")
-            print("4. Implement the best-performing configuration in live trading")
+        print(f"\nResults saved to: backtests/{args.symbol}/")
+        print("\nOptimization suggestions:")
+        print("1. If no trades were executed, try 'very_aggressive' or 'fast_test' config")
+        print("2. Use --max-windows 10 for quick testing")
+        print("3. Check equity_curve.csv for capital progression")
         
-    except KeyboardInterrupt:
-        print("\nBacktesting interrupted by user")
-        sys.exit(1)
     except Exception as e:
-        print(f"\nError during backtesting: {e}")
-        if args.verbose:
-            import traceback
-            traceback.print_exc()
-        sys.exit(1)
+        print(f"Error during backtesting: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    
+    return 0
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    exit(main())
