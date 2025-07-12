@@ -905,7 +905,6 @@ class HybridModelTrainer:
         model.fit(
             X_train, y_train,
             eval_set=[(X_train, y_train), (X_val, y_val)],
-            eval_names=['train', 'val'],
             verbose=False
         )
         
