@@ -17,7 +17,8 @@ Supported pairs: BTCEUR, ETHEUR, ADAEUR, SOLEUR, XRPEUR
 
 import os
 # Disable CUDA graphs to prevent CUDA_ERROR_GRAPH_EXEC_UPDATE_FAILURE
-os.environ["XLA_FLAGS"] = "--xla_gpu_enable_cuda_graphs=false"
+# Commenting out XLA flag that causes 'Unknown flags' error
+# os.environ["XLA_FLAGS"] = "--xla_gpu_enable_cuda_graphs=false"
 
 import sqlite3
 import pandas as pd
