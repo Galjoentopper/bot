@@ -148,16 +148,18 @@ class OptimizedBacktester(ModelBacktester):
             window_num = 1
             
         # For random start, automatically set a reasonable max_windows if not specified
+        starting_window = window_num
         if random_start and max_windows is None:
             # Limit to 10 windows from the starting window to keep execution time reasonable
-            max_windows = window_num + 9
-            print(f"  Auto-setting max windows to {max_windows} for random start (starting from window {window_num})")
+            max_windows = 10
+            print(f"  Auto-setting max windows to {max_windows} for random start (starting from window {starting_window})")
         
         current_date = start_date
+        windows_processed = 0
         
         while current_date < end_date:
-            # Check max_windows limit
-            if max_windows and window_num > max_windows:
+            # Check max_windows limit (count windows processed, not absolute window number)
+            if max_windows and windows_processed >= max_windows:
                 print(f"  Reached maximum windows limit ({max_windows}), stopping...")
                 break
                 
@@ -178,6 +180,7 @@ class OptimizedBacktester(ModelBacktester):
             if len(test_data) < self.config.sequence_length + 1:
                 current_date += timedelta(days=30 * self.config.slide_months)
                 window_num += 1
+                windows_processed += 1
                 continue
             
             # Load models for this window
@@ -187,6 +190,7 @@ class OptimizedBacktester(ModelBacktester):
                 print(f"    XGBoost model not found for window {window_num}, skipping...")
                 current_date += timedelta(days=30 * self.config.slide_months)
                 window_num += 1
+                windows_processed += 1
                 continue
             
             # Skip window if either model fails to load (both models required)
@@ -194,6 +198,7 @@ class OptimizedBacktester(ModelBacktester):
                 print(f"    LSTM model failed to load for window {window_num}, skipping window...")
                 current_date += timedelta(days=30 * self.config.slide_months)
                 window_num += 1
+                windows_processed += 1
                 continue
             
             # Simulate trading for this window
@@ -212,6 +217,7 @@ class OptimizedBacktester(ModelBacktester):
             # Move to next window
             current_date += timedelta(days=30 * self.config.slide_months)
             window_num += 1
+            windows_processed += 1
         
         # Calculate performance metrics
         performance = self.calculate_performance_metrics(trades, equity_history, symbol)

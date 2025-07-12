@@ -25,21 +25,24 @@ A comprehensive backtesting framework for evaluating hybrid LSTM-XGBoost cryptoc
 ## 📁 File Structure
 
 ```
-trade_bot_2.0/
-├── scripts/                   # Core backtesting modules
-│   ├── backtest_models.py     # Core backtesting engine
-│   ├── backtest_config.py     # Configuration management
-│   ├── backtest_analysis.py   # Results analysis and reporting
-│   └── bootstrap_backtest.py  # Bootstrap robustness testing
-├── run_backtest.py            # Main execution script
+bot/
+├── run_backtest.py            # Main optimized backtesting script
+├── train_hybrid_models.py     # Model training with walk-forward validation
 ├── README_BACKTEST.md         # This documentation
 ├── requirements_backtest.txt   # Python dependencies
+├── data/                      # Market data databases
+│   ├── btceur_15m.db
+│   ├── etheur_15m.db
+│   └── ...
+├── models/                    # Trained models by window
+│   ├── lstm/
+│   ├── xgboost/
+│   └── scalers/
 └── backtests/                 # Results directory
     ├── BTCEUR/               # Symbol-specific results
     ├── ETHEUR/
-    ├── bootstrap/            # Bootstrap analysis results
-    ├── sensitivity/          # Sensitivity analysis results
-    └── multi_config/         # Multi-configuration results
+    ├── configs/              # Configuration presets
+    └── ...
 ```
 
 ## 🛠️ Installation
@@ -72,66 +75,57 @@ trade_bot_2.0/
 
 ### Basic Backtest
 ```bash
-# Run standard backtest with balanced configuration
-python run_backtest.py --mode standard
+# Run optimized backtest with balanced configuration
+python run_backtest.py --symbol BTCEUR --config aggressive
 
-# Run with specific symbols
-python run_backtest.py --mode standard --symbols BTCEUR ETHEUR
+# Run with different symbols
+python run_backtest.py --symbol ETHEUR --config very_aggressive
 
-# Run with aggressive configuration
-python run_backtest.py --mode standard --config aggressive
+# Run with random start date (auto-limited to 10 windows)
+python run_backtest.py --symbol BTCEUR --config very_aggressive --random
+
+# Run with custom window limit
+python run_backtest.py --symbol BTCEUR --config aggressive --max-windows 5
 ```
 
 ### Advanced Testing
 ```bash
-# Compare multiple configurations
-python run_backtest.py --mode multi-config
+# Test different market conditions with random start
+python run_backtest.py --symbol BTCEUR --config very_aggressive --random
 
-# Test symbol-specific optimizations
-python run_backtest.py --mode symbol-specific
+# Quick testing with limited windows
+python run_backtest.py --symbol ETHEUR --config aggressive --max-windows 10
 
-# Run bootstrap robustness testing
-python run_backtest.py --mode bootstrap --bootstrap-runs 10
+# Generate performance plots
+python run_backtest.py --symbol BTCEUR --config very_aggressive --save-plots
 
-# Sensitivity analysis
-python run_backtest.py --mode sensitivity
-
-# Comprehensive analysis of existing results
-python run_backtest.py --mode analysis
-
-# Run everything (comprehensive suite)
-python run_backtest.py --mode all
+# Test multiple symbols sequentially
+python run_backtest.py --symbol ADAEUR --config aggressive --random
+python run_backtest.py --symbol SOLEUR --config very_aggressive --max-windows 15
 ```
 
 ## ⚙️ Configuration Options
 
-### Trading Parameters
-```python
-class BacktestConfig:
-    # Portfolio Management
-    initial_capital: float = 10000.0
-    risk_per_trade: float = 0.02          # 2% risk per trade
-    max_positions: int = 10               # Maximum simultaneous positions
-    max_trades_per_hour: int = 3          # Trade frequency limit
-    
-    # Trading Costs
-    trading_fee: float = 0.002            # 0.2% per trade
-    slippage: float = 0.001               # 0.1% slippage
-    
-    # Risk Management
-    stop_loss_pct: float = 0.03           # 3% stop loss
-    
-    # Signal Thresholds
-    buy_threshold: float = 0.7            # XGBoost probability threshold
-    sell_threshold: float = 0.3
-    lstm_delta_threshold: float = 0.5     # LSTM prediction threshold
+### Available Configurations
+- **aggressive**: Balanced risk settings (2% per trade, 70%/30% thresholds)
+- **very_aggressive**: Higher risk settings (3% per trade, 60%/40% thresholds)
+- **fast_test**: Quick testing configuration with relaxed parameters
+
+### Command Line Options
+```bash
+--symbol SYMBOL          # Choose: BTCEUR, ETHEUR, ADAEUR, SOLEUR, XRPEUR
+--config CONFIG          # Choose: aggressive, very_aggressive, fast_test
+--max-windows N          # Limit number of testing windows (auto-set for --random)
+--random                 # Randomly select starting date (prevents data leakage)
+--save-plots             # Generate and save performance visualization plots
 ```
 
-### Preset Configurations
-- **Conservative**: Lower risk (1% per trade), higher thresholds (80%/20%)
-- **Balanced**: Standard settings (2% risk, 70%/30% thresholds)
-- **Aggressive**: Higher risk (3% per trade), lower thresholds (60%/40%)
-- **High Frequency**: Many small trades (0.5% risk, 55%/45% thresholds)
+### Random Start Feature
+The `--random` flag provides several benefits:
+- **Prevents temporal data leakage** by using chronologically appropriate models
+- **Tests different market conditions** by starting from random time periods
+- **Auto-limits execution time** to 10 windows from the random start point
+- **Maintains walk-forward validation integrity** with proper window calculation
 
 ## 📊 Understanding Results
 
@@ -227,60 +221,94 @@ eth_config = get_symbol_config('ETHEUR')
 
 ### Common Issues
 
-1. **"Database not found" Error**:
-   ```
-   FileNotFoundError: Database not found: data/btceur_15m.db
-   ```
-   **Solution**: Ensure data files are in the correct location
+#### 1. No Trades Generated (0 trades, 0% return)
+```bash
+# Check if models exist for the calculated window
+ls models/lstm/btceur_window_*.keras
+ls models/xgboost/btceur_window_*.pkl
 
-2. **"Models not found" Warning**:
-   ```
-   Models not found for window 1, skipping...
-   ```
-   **Solution**: Train models first using `train_hybrid_models.py`
+# Try a less aggressive configuration
+python run_backtest.py --symbol BTCEUR --config fast_test --max-windows 5
 
-3. **Memory Issues**:
-   **Solution**: Reduce bootstrap runs or test fewer symbols
+# Use random start to test different market conditions
+python run_backtest.py --symbol BTCEUR --config aggressive --random
+```
 
-4. **Slow Performance**:
-   **Solution**: Use fewer symbols or shorter time periods for testing
+#### 2. Model Loading Failures
+```bash
+# Verify models exist for the symbol and window
+ls models/lstm/btceur_window_1.keras
+ls models/xgboost/btceur_window_1.pkl
+ls models/scalers/btceur_window_1_scaler.pkl
+
+# Check if training was completed
+python train_hybrid_models.py --symbol BTCEUR --config aggressive
+```
+
+#### 3. Random Backtest Takes Too Long
+```bash
+# The system automatically limits random backtests to 10 windows
+# To manually control duration:
+python run_backtest.py --symbol BTCEUR --config aggressive --random --max-windows 5
+```
+
+#### 4. Data Issues
+```bash
+# Check if data files exist
+ls data/btceur_15m.db
+ls data/etheur_15m.db
+
+# Verify data has sufficient history (need at least 40+ months)
+sqlite3 data/btceur_15m.db "SELECT MIN(timestamp), MAX(timestamp) FROM market_data;"
+```
 
 ### Debug Mode
 ```bash
-# Run with verbose output for debugging
-python run_backtest.py --mode standard --verbose
+# Check available models and data
+ls models/lstm/btceur_window_*.keras
+ls data/btceur_15m.db
+
+# Test with minimal windows for debugging
+python run_backtest.py --symbol BTCEUR --config fast_test --max-windows 2
 ```
 
 ## 🔄 Workflow Recommendations
 
 ### 1. Initial Testing
 ```bash
-# Start with standard backtest
-python run_backtest.py --mode standard --symbols BTCEUR
+# Start with basic backtest
+python run_backtest.py --symbol BTCEUR --config aggressive --max-windows 5
 
-# Analyze results
-python run_backtest.py --mode analysis
+# Test with random market conditions
+python run_backtest.py --symbol BTCEUR --config aggressive --random
 ```
 
 ### 2. Configuration Optimization
 ```bash
-# Test different configurations
-python run_backtest.py --mode multi-config --symbols BTCEUR ETHEUR
+# Test different risk levels
+python run_backtest.py --symbol BTCEUR --config very_aggressive --random
+python run_backtest.py --symbol BTCEUR --config fast_test --max-windows 10
 
-# Fine-tune with sensitivity analysis
-python run_backtest.py --mode sensitivity --symbols BTCEUR
+# Compare across symbols
+python run_backtest.py --symbol ETHEUR --config aggressive --random
+python run_backtest.py --symbol ADAEUR --config very_aggressive --random
 ```
 
-### 3. Robustness Validation
+### 3. Performance Analysis
 ```bash
-# Test stability with bootstrap
-python run_backtest.py --mode bootstrap --symbols BTCEUR --bootstrap-runs 20
+# Generate detailed plots
+python run_backtest.py --symbol BTCEUR --config very_aggressive --save-plots
+
+# Test longer periods
+python run_backtest.py --symbol BTCEUR --config aggressive --max-windows 20
 ```
 
-### 4. Production Deployment
+### 4. Production Validation
 ```bash
-# Final comprehensive test
-python run_backtest.py --mode all
+# Test multiple random periods for robustness
+python run_backtest.py --symbol BTCEUR --config very_aggressive --random
+python run_backtest.py --symbol BTCEUR --config very_aggressive --random
+python run_backtest.py --symbol BTCEUR --config very_aggressive --random
 ```
 
 ## 📋 Performance Benchmarks
