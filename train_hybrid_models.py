@@ -1093,6 +1093,7 @@ class HybridModelTrainer:
             return []
         
         results = []
+        start_time = time.time()  # Initialize start_time for progress tracking
         
         for i, (train_start, train_end, test_end) in enumerate(windows):
             window_start_time = time.time()
