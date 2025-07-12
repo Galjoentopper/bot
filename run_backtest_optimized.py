@@ -65,8 +65,8 @@ class OptimizedBacktester(ModelBacktester):
         if cache_key in self.model_cache:
             return self.model_cache[cache_key]
         
-        # Load models using parent method
-        models = self.load_models(symbol, window_num)
+        # Load models using parent method directly
+        models = super().load_models(symbol, window_num)
         
         # Cache the models (but be careful with memory)
         if len(self.model_cache) < 10:  # Limit cache size
