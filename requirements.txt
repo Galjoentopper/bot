@@ -1,6 +1,6 @@
 # Essential Requirements for Enhanced Hybrid LSTM + XGBoost Training
 # =================================================================
-# Minimal set of dependencies to avoid conflicts
+# Compatible with Jupyter and existing packages
 
 # ===== CORE DATA SCIENCE =====
 numpy>=1.24.0
@@ -26,7 +26,13 @@ pytz>=2023.3
 tqdm>=4.62.0
 
 # ===== CONFIGURATION =====
-pyyaml>=6.0
+# Compatible with gradient package requirements
+pyyaml>=5.0,<6.0
+jinja2>=3.0.3
+
+# ===== COMPATIBILITY =====
+# For gradient package compatibility
+attrs<=19
 
 # ===== SYSTEM =====
 psutil>=5.8.0
@@ -34,8 +40,20 @@ joblib>=1.1.0
 
 # =============================================================================
 # INSTALLATION:
+# 
+# RECOMMENDED: Use a virtual environment to avoid conflicts
+# python -m venv venv
+# venv\Scripts\activate  # On Windows
+# source venv/bin/activate  # On Linux/Mac
+#
+# Then install:
 # pip install -r requirements.txt
 #
-# For gradient package (if needed separately):
-# pip install -r requirements_gradient.txt
+# NOTE: This version is compatible with:
+# - Jupyter Lab/Notebook environments
+# - Gradient package (already installed)
+# - Existing system packages
+#
+# If you encounter conflicts, try:
+# pip install -r requirements.txt --force-reinstall
 # =============================================================================
