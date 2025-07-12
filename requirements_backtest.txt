@@ -1,0 +1,58 @@
+# Core Data Science Libraries
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.7.0
+scikit-learn>=1.0.0
+
+# Machine Learning Frameworks
+tensorflow>=2.8.0
+xgboost>=1.5.0
+
+# Data Visualization
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.0.0
+
+# Technical Analysis
+TA-Lib>=0.4.24
+
+# Progress Bars and Utilities
+tqdm>=4.62.0
+
+# Excel Export
+openpyxl>=3.0.9
+xlsxwriter>=3.0.2
+
+# HTML Report Generation
+jinja2>=3.0.0
+
+# Statistical Analysis
+statsmodels>=0.13.0
+
+# Database Support
+# sqlite3 is built-in with Python - no installation needed
+
+# Configuration and Logging
+pyyaml>=6.0
+
+# Date/Time Handling
+python-dateutil>=2.8.0
+
+# Memory Optimization
+psutil>=5.8.0
+
+# Parallel Processing
+joblib>=1.1.0
+
+# Data Validation
+cerberus>=1.3.4
+
+# Performance Profiling (Optional)
+line_profiler>=3.5.0
+memory_profiler>=0.60.0
+
+# Development and Testing (Optional)
+pytest>=6.2.0
+pytest-cov>=3.0.0
+black>=22.0.0
+flake8>=4.0.0

@@ -1,0 +1,932 @@
+#!/usr/bin/env python3
+"""
+Hybrid LSTM + XGBoost Model Training Script with Walk-Forward Analysis
+====================================================================
+
+This script implements a walk-forward training pipeline:
+1. Generate time windows (train N months → test 1 month)
+2. For each window:
+   - Train LSTM on training data
+   - Generate lstm_delta predictions
+   - Train XGBoost with lstm_delta + technical features
+   - Evaluate on test period
+3. Aggregate performance metrics across all folds
+
+Supported pairs: BTCEUR, ETHEUR, ADAEUR, SOLEUR, XRPEUR
+"""
+
+import os
+import sqlite3
+import pandas as pd
+import numpy as np
+import warnings
+import time
+from datetime import datetime, timedelta
+import pickle
+import json
+import argparse
+from typing import Dict, Tuple, List
+
+# ML Libraries
+from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, mean_absolute_error, f1_score, precision_score, recall_score, classification_report
+import xgboost as xgb
+
+# Deep Learning
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+
+# Technical Analysis
+import pandas_ta as ta
+
+# Visualization
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+warnings.filterwarnings('ignore')
+
+class HybridModelTrainer:
+    """
+    Hybrid LSTM + XGBoost Model Trainer for Cryptocurrency Trading
+    """
+    
+    def __init__(self, data_dir: str = "data", models_dir: str = "models", 
+                 train_months: int = 3, test_months: int = 1, step_months: int = 1,
+                 symbols: List[str] = None):
+        self.data_dir = data_dir
+        self.models_dir = models_dir
+        self.symbols = symbols or ['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR']
+        
+        # Walk-forward parameters
+        self.train_months = train_months    # Training window size in months
+        self.test_months = test_months      # Test window size in months
+        self.step_months = step_months      # Step size for rolling window
+        self.min_training_samples = 5000    # Minimum samples for training
+        
+        # Create models directory
+        os.makedirs(self.models_dir, exist_ok=True)
+        os.makedirs(f"{self.models_dir}/lstm", exist_ok=True)
+        os.makedirs(f"{self.models_dir}/xgboost", exist_ok=True)
+        os.makedirs(f"{self.models_dir}/scalers", exist_ok=True)
+        os.makedirs("results", exist_ok=True)
+        os.makedirs("logs", exist_ok=True)
+        os.makedirs("logs/feature_importance", exist_ok=True)
+        
+        # Model parameters
+        self.lstm_sequence_length = 60  # 15 hours of 15-min candles
+        self.prediction_horizon = 1     # Next 15-min candle
+        self.price_change_threshold = 0.002  # 0.2% for binary classification (more sensitive)
+        
+        print("🚀 Hybrid LSTM + XGBoost Model Trainer with Walk-Forward Analysis Initialized")
+        print(f"📁 Data directory: {self.data_dir}")
+        print(f"🤖 Models directory: {self.models_dir}")
+        print(f"💰 Symbols: {', '.join(self.symbols)}")
+        print(f"📊 Walk-Forward Config: Train {self.train_months}m → Test {self.test_months}m (Step: {self.step_months}m)")
+    
+    def load_data(self, symbol: str) -> pd.DataFrame:
+        """
+        Load OHLCV data from SQLite database
+        """
+        db_path = f"{self.data_dir}/{symbol.lower()}_15m.db"
+        
+        if not os.path.exists(db_path):
+            raise FileNotFoundError(f"Database not found: {db_path}")
+        
+        conn = sqlite3.connect(db_path)
+        query = """
+        SELECT timestamp, open, high, low, close, volume
+        FROM market_data
+        ORDER BY timestamp ASC
+        """
+        
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+        
+        # Convert timestamp to datetime
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df.set_index('timestamp', inplace=True)
+        
+        print(f"📊 Loaded {len(df):,} candles for {symbol}")
+        print(f"📅 Date range: {df.index.min()} to {df.index.max()}")
+        
+        return df
+    
+    def create_technical_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create comprehensive technical indicators
+        """
+        data = df.copy()
+        
+        # Price-based features
+        data['returns'] = data['close'].pct_change()
+        data['log_returns'] = np.log(data['close'] / data['close'].shift(1))
+        data['price_change_1h'] = data['close'].pct_change(4)  # 4 * 15min = 1h
+        data['price_change_4h'] = data['close'].pct_change(16) # 16 * 15min = 4h
+        
+        # Volume features
+        data['volume_sma_20'] = data['volume'].rolling(20).mean()
+        data['volume_ratio'] = data['volume'] / data['volume_sma_20']
+        data['volume_change'] = data['volume'].pct_change()
+        
+        # Volatility
+        data['volatility_20'] = data['returns'].rolling(20).std()
+        data['atr'] = ta.atr(data['high'], data['low'], data['close'], length=14)
+        
+        # Moving Averages
+        data['ema_9'] = ta.ema(data['close'], length=9)
+        data['ema_21'] = ta.ema(data['close'], length=21)
+        data['ema_50'] = ta.ema(data['close'], length=50)
+        data['sma_200'] = ta.sma(data['close'], length=200)
+        
+        # Price relative to MAs
+        data['price_vs_ema9'] = (data['close'] - data['ema_9']) / data['ema_9']
+        data['price_vs_ema21'] = (data['close'] - data['ema_21']) / data['ema_21']
+        data['price_vs_sma200'] = (data['close'] - data['sma_200']) / data['sma_200']
+        
+        # Oscillators
+        data['rsi'] = ta.rsi(data['close'], length=14)
+        data['rsi_oversold'] = (data['rsi'] < 30).astype(int)
+        data['rsi_overbought'] = (data['rsi'] > 70).astype(int)
+        
+        # MACD
+        macd_data = ta.macd(data['close'])
+        data['macd'] = macd_data['MACD_12_26_9']
+        data['macd_signal'] = macd_data['MACDs_12_26_9']
+        data['macd_histogram'] = macd_data['MACDh_12_26_9']
+        data['macd_bullish'] = (data['macd'] > data['macd_signal']).astype(int)
+        
+        # Bollinger Bands
+        bb_data = ta.bbands(data['close'], length=20, std=2)
+        data['bb_upper'] = bb_data['BBU_20_2.0']
+        data['bb_lower'] = bb_data['BBL_20_2.0']
+        data['bb_middle'] = bb_data['BBM_20_2.0']
+        data['bb_width'] = (data['bb_upper'] - data['bb_lower']) / data['bb_middle']
+        data['bb_position'] = (data['close'] - data['bb_lower']) / (data['bb_upper'] - data['bb_lower'])
+        
+        # VWAP
+        data['vwap'] = (data['close'] * data['volume']).cumsum() / data['volume'].cumsum()
+        data['price_vs_vwap'] = (data['close'] - data['vwap']) / data['vwap']
+        
+        # Candle patterns
+        data['candle_body'] = abs(data['close'] - data['open']) / data['open']
+        data['upper_wick'] = (data['high'] - np.maximum(data['open'], data['close'])) / data['open']
+        data['lower_wick'] = (np.minimum(data['open'], data['close']) - data['low']) / data['open']
+        
+        # Time-based features
+        data['hour'] = data.index.hour
+        data['day_of_week'] = data.index.dayofweek
+        data['is_weekend'] = (data.index.dayofweek >= 5).astype(int)
+        
+        # Momentum indicators
+        data['momentum_10'] = ta.mom(data['close'], length=10)
+        data['roc_10'] = ta.roc(data['close'], length=10)
+        
+        # Support/Resistance levels
+        data['high_20'] = data['high'].rolling(20).max()
+        data['low_20'] = data['low'].rolling(20).min()
+        data['near_resistance'] = (data['close'] / data['high_20'] > 0.98).astype(int)
+        data['near_support'] = (data['close'] / data['low_20'] < 1.02).astype(int)
+        
+        # Feature Interactions (combined signals)
+        data['rsi_macd_combo'] = data['rsi'] * data['macd_signal']
+        data['volatility_ema_ratio'] = data['volatility_20'] / data['ema_21']
+        data['volume_price_momentum'] = data['volume_ratio'] * data['momentum_10']
+        data['bb_rsi_signal'] = data['bb_position'] * data['rsi']
+        data['trend_strength'] = data['price_vs_ema9'] * data['price_vs_ema21']
+        data['volatility_breakout'] = data['atr'] * data['bb_width']
+        
+        print(f"✅ Created {len([col for col in data.columns if col not in df.columns])} technical features (including interactions)")
+        
+        return data
+    
+    def generate_walk_forward_windows(self, df: pd.DataFrame) -> List[Tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp]]:
+        """
+        Generate walk-forward time windows for training and testing
+        Returns list of (train_start, train_end, test_end) tuples
+        """
+        windows = []
+        start_date = df.index.min()
+        end_date = df.index.max()
+        
+        # Start from train_months after the beginning to have enough training data
+        current_date = start_date + pd.DateOffset(months=self.train_months)
+        
+        while current_date + pd.DateOffset(months=self.test_months) <= end_date:
+            train_start = current_date - pd.DateOffset(months=self.train_months)
+            train_end = current_date
+            test_end = current_date + pd.DateOffset(months=self.test_months)
+            
+            windows.append((train_start, train_end, test_end))
+            current_date += pd.DateOffset(months=self.step_months)
+        
+        print(f"📅 Generated {len(windows)} walk-forward windows")
+        return windows
+    
+    def prepare_lstm_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Prepare sequences for LSTM training
+        """
+        # Use price and volume for LSTM
+        price_data = df[['close', 'volume']].values
+        
+        # Create target: next period price change %
+        targets = df['close'].pct_change(self.prediction_horizon).shift(-self.prediction_horizon).values
+        
+        # Create sequences
+        X, y = [], []
+        
+        for i in range(self.lstm_sequence_length, len(price_data) - self.prediction_horizon):
+            X.append(price_data[i-self.lstm_sequence_length:i])
+            y.append(targets[i])
+        
+        X = np.array(X)
+        y = np.array(y)
+        
+        # Remove NaN values
+        valid_indices = ~np.isnan(y)
+        X = X[valid_indices]
+        y = y[valid_indices]
+        
+        # Get corresponding timestamps for alignment
+        timestamps = df.index[self.lstm_sequence_length:-self.prediction_horizon][valid_indices]
+        
+        print(f"📊 LSTM sequences: {X.shape}, targets: {y.shape}")
+        
+        return X, y, timestamps
+    
+    def train_lstm_model(self, X_train: np.ndarray, y_train: np.ndarray, 
+                        X_val: np.ndarray, y_val: np.ndarray) -> tf.keras.Model:
+        """
+        Train LSTM model for temporal pattern recognition
+        """
+        print(f"🧠 Training LSTM model...")
+        
+        # Build LSTM architecture
+        model = Sequential([
+            LSTM(64, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])),
+            Dropout(0.2),
+            LSTM(32, return_sequences=False),
+            Dropout(0.2),
+            Dense(32, activation='relu'),
+            Dense(1, activation='linear')  # Regression output
+        ])
+        
+        # Compile model
+        model.compile(
+            optimizer=Adam(learning_rate=0.001),
+            loss='mse',
+            metrics=['mae']
+        )
+        
+        # Callbacks
+        callbacks = [
+            EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
+            ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+        ]
+        
+        # Train model
+        history = model.fit(
+            X_train, y_train,
+            validation_data=(X_val, y_val),
+            epochs=100,
+            batch_size=32,
+            callbacks=callbacks,
+            verbose=0  # Reduced verbosity for walk-forward
+        )
+        
+        return model
+    
+    def generate_lstm_predictions(self, model: tf.keras.Model, X: np.ndarray) -> np.ndarray:
+        """
+        Generate lstm_delta predictions
+        """
+        predictions = model.predict(X, batch_size=64, verbose=0)
+        return predictions.flatten()
+    
+    def prepare_xgboost_features(self, df: pd.DataFrame, lstm_delta: np.ndarray, 
+                                timestamps: np.ndarray) -> pd.DataFrame:
+        """
+        Prepare feature matrix for XGBoost including lstm_delta
+        """
+        # Align lstm_delta with dataframe
+        lstm_df = pd.DataFrame({
+            'lstm_delta': lstm_delta
+        }, index=timestamps)
+        
+        # Merge with technical features
+        features_df = df.join(lstm_df, how='inner')
+        
+        # Select features for XGBoost (exclude OHLCV and intermediate calculations)
+        feature_columns = [
+            # Price features
+            'returns', 'price_change_1h', 'price_change_4h',
+            # Volume features
+            'volume_ratio', 'volume_change',
+            # Volatility
+            'volatility_20', 'atr',
+            # Moving averages relationships
+            'price_vs_ema9', 'price_vs_ema21', 'price_vs_sma200',
+            # Oscillators
+            'rsi', 'rsi_oversold', 'rsi_overbought',
+            # MACD
+            'macd', 'macd_histogram', 'macd_bullish',
+            # Bollinger Bands
+            'bb_width', 'bb_position',
+            # VWAP
+            'price_vs_vwap',
+            # Candle patterns
+            'candle_body', 'upper_wick', 'lower_wick',
+            # Time features
+            'hour', 'day_of_week', 'is_weekend',
+            # Momentum
+            'momentum_10', 'roc_10',
+            # Support/Resistance
+            'near_resistance', 'near_support',
+            # Feature Interactions
+            'rsi_macd_combo', 'volatility_ema_ratio', 'volume_price_momentum',
+            'bb_rsi_signal', 'trend_strength', 'volatility_breakout',
+            # LSTM prediction
+            'lstm_delta'
+        ]
+        
+        # Filter available columns
+        available_features = [col for col in feature_columns if col in features_df.columns]
+        
+        # Create target: binary classification
+        features_df['target'] = (features_df['close'].pct_change(self.prediction_horizon).shift(-self.prediction_horizon) > self.price_change_threshold).astype(int)
+        
+        # Select final dataset
+        final_df = features_df[available_features + ['target']].copy()
+        
+        # Data cleaning: handle NaN and infinite values
+        print(f"🧹 Data cleaning: {len(final_df)} samples before cleaning")
+        
+        # Replace infinite values with NaN
+        final_df = final_df.replace([np.inf, -np.inf], np.nan)
+        
+        # Check for NaN values
+        nan_counts = final_df.isnull().sum()
+        if nan_counts.sum() > 0:
+            print(f"⚠️  Found NaN values: {nan_counts[nan_counts > 0].to_dict()}")
+        
+        # Drop rows with NaN values
+        final_df = final_df.dropna()
+        
+        # Additional validation: ensure no infinite values remain
+        if np.isinf(final_df.select_dtypes(include=[np.number]).values).any():
+            print("⚠️  Warning: Infinite values still present after cleaning")
+            # Force remove any remaining infinite values
+            numeric_cols = final_df.select_dtypes(include=[np.number]).columns
+            for col in numeric_cols:
+                final_df = final_df[np.isfinite(final_df[col])]
+        
+        print(f"📊 XGBoost features: {len(available_features)} features, {len(final_df)} samples after cleaning")
+        print(f"🎯 Target distribution: {final_df['target'].value_counts().to_dict()}")
+        
+        return final_df
+    
+    def train_xgboost_model(self, train_df: pd.DataFrame, val_df: pd.DataFrame) -> xgb.XGBClassifier:
+        """
+        Train XGBoost model with class balancing and enhanced configuration
+        """
+        print(f"🌲 Training XGBoost model with class balancing...")
+        
+        # Prepare training data
+        X_train = train_df.drop('target', axis=1)
+        y_train = train_df['target']
+        X_val = val_df.drop('target', axis=1)
+        y_val = val_df['target']
+        
+        # Calculate class distribution and balancing
+        class_counts = y_train.value_counts()
+        total_samples = len(y_train)
+        
+        # Calculate scale_pos_weight for class balancing
+        neg_samples = class_counts[0] if 0 in class_counts else 0
+        pos_samples = class_counts[1] if 1 in class_counts else 1
+        scale_pos_weight = neg_samples / pos_samples if pos_samples > 0 else 1.0
+        
+        print(f"📊 Class Distribution:")
+        print(f"   Negative (0): {neg_samples:,} ({neg_samples/total_samples*100:.1f}%)")
+        print(f"   Positive (1): {pos_samples:,} ({pos_samples/total_samples*100:.1f}%)")
+        print(f"⚖️  Scale Pos Weight: {scale_pos_weight:.3f}")
+        
+        # Train XGBoost with class balancing
+        model = xgb.XGBClassifier(
+            n_estimators=300,
+            max_depth=6,
+            learning_rate=0.05,  # Reduced for better convergence
+            subsample=0.8,
+            colsample_bytree=0.8,
+            scale_pos_weight=scale_pos_weight,  # Class balancing
+            random_state=42,
+            eval_metric='logloss',
+            early_stopping_rounds=30,
+            tree_method='hist'  # Faster training
+        )
+        
+        # Fit with validation
+        model.fit(
+            X_train, y_train,
+            eval_set=[(X_val, y_val)],
+            verbose=False
+        )
+        
+        return model
+    
+    def evaluate_window(self, window_idx: int, lstm_model: tf.keras.Model, 
+                       xgb_model: xgb.XGBClassifier, test_data: Dict) -> Dict:
+        """
+        Comprehensive evaluation with all classification metrics
+        """
+        # LSTM evaluation
+        lstm_pred = self.generate_lstm_predictions(lstm_model, test_data['X_lstm'])
+        lstm_mae = mean_absolute_error(test_data['y_lstm'], lstm_pred)
+        lstm_rmse = np.sqrt(mean_squared_error(test_data['y_lstm'], lstm_pred))
+        
+        # XGBoost evaluation
+        X_test = test_data['xgb_df'].drop('target', axis=1)
+        y_test = test_data['xgb_df']['target']
+        
+        xgb_pred = xgb_model.predict(X_test)
+        xgb_pred_proba = xgb_model.predict_proba(X_test)[:, 1]
+        
+        # Comprehensive XGBoost metrics
+        xgb_accuracy = accuracy_score(y_test, xgb_pred)
+        xgb_precision = precision_score(y_test, xgb_pred, zero_division=0)
+        xgb_recall = recall_score(y_test, xgb_pred, zero_division=0)
+        xgb_f1 = f1_score(y_test, xgb_pred, zero_division=0)
+        xgb_auc = roc_auc_score(y_test, xgb_pred_proba) if len(np.unique(y_test)) > 1 else 0.5
+        
+        # Confidence-based predictions (alternative thresholds)
+        high_confidence_buys = (xgb_pred_proba > 0.7).astype(int)
+        conservative_pred = (xgb_pred_proba > 0.6).astype(int)
+        
+        # Calculate metrics for different confidence levels
+        conf_precision_70 = precision_score(y_test, high_confidence_buys, zero_division=0)
+        conf_recall_70 = recall_score(y_test, high_confidence_buys, zero_division=0)
+        conf_f1_70 = f1_score(y_test, high_confidence_buys, zero_division=0)
+        
+        conf_precision_60 = precision_score(y_test, conservative_pred, zero_division=0)
+        conf_recall_60 = recall_score(y_test, conservative_pred, zero_division=0)
+        conf_f1_60 = f1_score(y_test, conservative_pred, zero_division=0)
+        
+        # Class distribution in test set
+        test_class_dist = pd.Series(y_test).value_counts()
+        
+        print(f"📊 Window {window_idx} Detailed Results:")
+        print(f"   🧠 LSTM: MAE={lstm_mae:.6f}, RMSE={lstm_rmse:.6f}")
+        print(f"   🌲 XGBoost Metrics (Default 0.5 threshold):")
+        print(f"      Accuracy:  {xgb_accuracy:.4f}")
+        print(f"      Precision: {xgb_precision:.4f}")
+        print(f"      Recall:    {xgb_recall:.4f}")
+        print(f"      F1-Score:  {xgb_f1:.4f}")
+        print(f"      AUC:       {xgb_auc:.4f}")
+        print(f"   🎯 Confidence-Based Metrics:")
+        print(f"      70% Threshold - P: {conf_precision_70:.4f}, R: {conf_recall_70:.4f}, F1: {conf_f1_70:.4f}")
+        print(f"      60% Threshold - P: {conf_precision_60:.4f}, R: {conf_recall_60:.4f}, F1: {conf_f1_60:.4f}")
+        print(f"   📈 Test Distribution: {dict(test_class_dist)}")
+        
+        return {
+            'window': window_idx,
+            'lstm_mae': float(lstm_mae),
+            'lstm_rmse': float(lstm_rmse),
+            'xgb_accuracy': float(xgb_accuracy),
+            'xgb_precision': float(xgb_precision),
+            'xgb_recall': float(xgb_recall),
+            'xgb_f1': float(xgb_f1),
+            'xgb_auc': float(xgb_auc),
+            'conf_precision_70': float(conf_precision_70),
+            'conf_recall_70': float(conf_recall_70),
+            'conf_f1_70': float(conf_f1_70),
+            'conf_precision_60': float(conf_precision_60),
+            'conf_recall_60': float(conf_recall_60),
+            'conf_f1_60': float(conf_f1_60),
+            'test_samples': len(test_data['xgb_df']),
+            'test_positive_ratio': float(test_class_dist.get(1, 0) / len(y_test))
+        }
+    
+    def evaluate_models(self, symbol: str, lstm_model: tf.keras.Model, xgb_model: xgb.XGBClassifier,
+                       test_data: Dict) -> Dict:
+        """
+        Comprehensive model evaluation
+        """
+        print(f"📊 Evaluating models for {symbol}...")
+        
+        results = {}
+        
+        # LSTM Evaluation
+        lstm_pred = self.generate_lstm_predictions(lstm_model, test_data['X_lstm'])
+        lstm_mae = mean_absolute_error(test_data['y_lstm'], lstm_pred)
+        lstm_rmse = np.sqrt(mean_squared_error(test_data['y_lstm'], lstm_pred))
+        
+        results['lstm'] = {
+            'mae': lstm_mae,
+            'rmse': lstm_rmse,
+            'predictions': lstm_pred
+        }
+        
+        # XGBoost Evaluation
+        X_test = test_data['xgb_df'].drop('target', axis=1)
+        y_test = test_data['xgb_df']['target']
+        
+        xgb_pred = xgb_model.predict(X_test)
+        xgb_pred_proba = xgb_model.predict_proba(X_test)[:, 1]
+        
+        xgb_accuracy = accuracy_score(y_test, xgb_pred)
+        xgb_auc = roc_auc_score(y_test, xgb_pred_proba)
+        
+        results['xgboost'] = {
+            'accuracy': xgb_accuracy,
+            'auc': xgb_auc,
+            'predictions': xgb_pred,
+            'probabilities': xgb_pred_proba
+        }
+        
+        # Save results
+        with open(f"results/{symbol.lower()}_evaluation.json", 'w') as f:
+            json.dump({
+                'lstm_mae': float(lstm_mae),
+                'lstm_rmse': float(lstm_rmse),
+                'xgb_accuracy': float(xgb_accuracy),
+                'xgb_auc': float(xgb_auc)
+            }, f, indent=2)
+        
+        print(f"📈 LSTM - MAE: {lstm_mae:.6f}, RMSE: {lstm_rmse:.6f}")
+        print(f"🎯 XGBoost - Accuracy: {xgb_accuracy:.4f}, AUC: {xgb_auc:.4f}")
+        
+        return results
+    
+    def log_window_results(self, symbol: str, window_results: Dict):
+        """
+        Log detailed results to CSV for analysis
+        """
+        csv_path = f'logs/{symbol.lower()}_metrics.csv'
+        
+        # Create DataFrame from results
+        df_row = pd.DataFrame([window_results])
+        
+        # Append to CSV (create if doesn't exist)
+        if os.path.exists(csv_path):
+            df_row.to_csv(csv_path, mode='a', header=False, index=False)
+        else:
+            df_row.to_csv(csv_path, mode='w', header=True, index=False)
+        
+        print(f"📝 Results logged to {csv_path}")
+    
+    def plot_feature_importance(self, model: xgb.XGBClassifier, symbol: str, window_idx: int):
+        """
+        Generate and save feature importance plot
+        """
+        importance_df = pd.DataFrame({
+            'feature': model.feature_names_in_,
+            'importance': model.feature_importances_
+        }).sort_values('importance', ascending=False).head(20)
+        
+        plt.figure(figsize=(10, 8))
+        sns.barplot(data=importance_df, x='importance', y='feature')
+        plt.title(f'{symbol} - Window {window_idx} - Top 20 Feature Importance')
+        plt.xlabel('Importance Score')
+        plt.tight_layout()
+        
+        plot_path = f'logs/feature_importance/{symbol.lower()}_window_{window_idx}.png'
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"📊 Feature importance plot saved: {plot_path}")
+    
+    def train_symbol_walkforward(self, symbol: str) -> List[Dict]:
+        """
+        Walk-forward training pipeline for a single symbol
+        """
+        print(f"\n{'='*60}")
+        print(f"🚀 Walk-Forward Training for {symbol}")
+        print(f"{'='*60}")
+        
+        # Load and prepare data
+        print("\n📊 Data Preparation")
+        df = self.load_data(symbol)
+        df_features = self.create_technical_features(df)
+        
+        # Generate walk-forward windows
+        windows = self.generate_walk_forward_windows(df_features)
+        
+        if not windows:
+            print(f"⚠️  No valid windows found for {symbol}")
+            return []
+        
+        results = []
+        
+        for i, (train_start, train_end, test_end) in enumerate(windows):
+            print(f"\n🔄 Window {i+1}/{len(windows)}: {train_start.date()} to {test_end.date()}")
+            
+            # Split data for this window
+            train_data = df_features[train_start:train_end]
+            test_data = df_features[train_end:test_end]
+            
+            if len(train_data) < self.min_training_samples:
+                print(f"⚠️  Skipping window {i+1}: insufficient training data ({len(train_data)} samples)")
+                continue
+            
+            # Prepare LSTM data for training window
+            X_lstm, y_lstm, timestamps = self.prepare_lstm_data(train_data)
+            
+            if len(X_lstm) < 1000:
+                print(f"⚠️  Skipping window {i+1}: insufficient LSTM sequences ({len(X_lstm)})")
+                continue
+            
+            # Split LSTM data (80% train, 20% val)
+            split_idx = int(0.8 * len(X_lstm))
+            X_train_lstm = X_lstm[:split_idx]
+            y_train_lstm = y_lstm[:split_idx]
+            X_val_lstm = X_lstm[split_idx:]
+            y_val_lstm = y_lstm[split_idx:]
+            
+            # Scale LSTM data
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train_lstm.reshape(-1, X_train_lstm.shape[-1])).reshape(X_train_lstm.shape)
+            X_val_scaled = scaler.transform(X_val_lstm.reshape(-1, X_val_lstm.shape[-1])).reshape(X_val_lstm.shape)
+            
+            # Train LSTM
+            lstm_model = self.train_lstm_model(X_train_scaled, y_train_lstm, X_val_scaled, y_val_lstm)
+            
+            # Generate LSTM predictions for full training period
+            X_full_scaled = scaler.transform(X_lstm.reshape(-1, X_lstm.shape[-1])).reshape(X_lstm.shape)
+            lstm_delta_full = self.generate_lstm_predictions(lstm_model, X_full_scaled)
+            
+            # Prepare XGBoost data for training
+            xgb_df = self.prepare_xgboost_features(train_data, lstm_delta_full, timestamps)
+            
+            if len(xgb_df) < 500:
+                print(f"⚠️  Skipping window {i+1}: insufficient XGBoost data ({len(xgb_df)} samples)")
+                continue
+            
+            # Split XGBoost data (80% train, 20% val)
+            split_idx_xgb = int(0.8 * len(xgb_df))
+            train_df_xgb = xgb_df.iloc[:split_idx_xgb]
+            val_df_xgb = xgb_df.iloc[split_idx_xgb:]
+            
+            # Train XGBoost
+            xgb_model = self.train_xgboost_model(train_df_xgb, val_df_xgb)
+            
+            # Prepare test data
+            X_test_lstm, y_test_lstm, test_timestamps = self.prepare_lstm_data(test_data)
+            
+            if len(X_test_lstm) == 0:
+                print(f"⚠️  Skipping window {i+1}: no test data available")
+                continue
+            
+            X_test_scaled = scaler.transform(X_test_lstm.reshape(-1, X_test_lstm.shape[-1])).reshape(X_test_lstm.shape)
+            lstm_delta_test = self.generate_lstm_predictions(lstm_model, X_test_scaled)
+            
+            xgb_test_df = self.prepare_xgboost_features(test_data, lstm_delta_test, test_timestamps)
+            
+            if len(xgb_test_df) == 0:
+                print(f"⚠️  Skipping window {i+1}: no XGBoost test data")
+                continue
+            
+            # Evaluate
+            test_data_dict = {
+                'X_lstm': X_test_scaled,
+                'y_lstm': y_test_lstm,
+                'xgb_df': xgb_test_df
+            }
+            
+            window_results = self.evaluate_window(i+1, lstm_model, xgb_model, test_data_dict)
+            window_results['symbol'] = symbol
+            window_results['train_start'] = train_start.strftime('%Y-%m-%d')
+            window_results['train_end'] = train_end.strftime('%Y-%m-%d')
+            window_results['test_end'] = test_end.strftime('%Y-%m-%d')
+            
+            results.append(window_results)
+            
+            # Log results to CSV
+            self.log_window_results(symbol, window_results)
+            
+            # Generate feature importance plot
+            self.plot_feature_importance(xgb_model, symbol, i+1)
+            
+            # Save models per window
+            lstm_model.save(f'{self.models_dir}/lstm/{symbol.lower()}_window_{i+1}.keras')
+            with open(f'{self.models_dir}/xgboost/{symbol.lower()}_window_{i+1}.pkl', 'wb') as f:
+                pickle.dump(xgb_model, f)
+            with open(f'{self.models_dir}/scalers/{symbol.lower()}_window_{i+1}_scaler.pkl', 'wb') as f:
+                pickle.dump(scaler, f)
+            
+            # Save best models from last window
+            if i == len(windows) - 1:  # Last window
+                # Save final models
+                lstm_model.save(f"{self.models_dir}/lstm/{symbol.lower()}_lstm.h5")
+                with open(f"{self.models_dir}/xgboost/{symbol.lower()}_xgboost.pkl", 'wb') as f:
+                    pickle.dump(xgb_model, f)
+                with open(f"{self.models_dir}/scalers/{symbol.lower()}_scaler.pkl", 'wb') as f:
+                    pickle.dump(scaler, f)
+                
+                # Save feature importance
+                X_features = train_df_xgb.drop('target', axis=1)
+                importance_df = pd.DataFrame({
+                    'feature': X_features.columns,
+                    'importance': xgb_model.feature_importances_
+                }).sort_values('importance', ascending=False)
+                importance_df.to_csv(f"results/{symbol.lower()}_feature_importance.csv", index=False)
+                
+                print(f"✅ Final models saved for {symbol}")
+                print(f"🔍 Top 5 features: {importance_df.head()['feature'].tolist()}")
+        
+        return results
+    
+    def train_all_models(self):
+        """
+        Train models for all symbols using walk-forward validation and save summary
+        """
+        print(f"\n{'='*80}")
+        print(f"🚀 WALK-FORWARD HYBRID LSTM + XGBOOST TRAINING PIPELINE")
+        print(f"{'='*80}")
+        print(f"📊 Symbols: {', '.join(self.symbols)}")
+        print(f"📅 Walk-Forward Config: {self.train_months}M train → {self.test_months}M test (step: {self.step_months}M)")
+        print(f"⏰ Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        all_results = {}
+        start_time = time.time()
+        
+        for i, symbol in enumerate(self.symbols, 1):
+            symbol_start = time.time()
+            
+            try:
+                symbol_results = self.train_symbol_walkforward(symbol)
+                all_results[symbol] = symbol_results
+                
+                symbol_time = (time.time() - symbol_start) / 60
+                
+                if symbol_results:
+                    # Calculate aggregated metrics
+                    avg_lstm_mae = np.mean([r['lstm_mae'] for r in symbol_results])
+                    avg_lstm_rmse = np.mean([r['lstm_rmse'] for r in symbol_results])
+                    avg_xgb_accuracy = np.mean([r['xgb_accuracy'] for r in symbol_results])
+                    avg_xgb_precision = np.mean([r['xgb_precision'] for r in symbol_results])
+                    avg_xgb_recall = np.mean([r['xgb_recall'] for r in symbol_results])
+                    avg_xgb_f1 = np.mean([r['xgb_f1'] for r in symbol_results])
+                    avg_xgb_auc = np.mean([r['xgb_auc'] for r in symbol_results])
+                    
+                    print(f"\n📊 {symbol} Summary ({len(symbol_results)} windows):")
+                    print(f"   LSTM: MAE={avg_lstm_mae:.6f}, RMSE={avg_lstm_rmse:.6f}")
+                    print(f"   XGBoost: Acc={avg_xgb_accuracy:.4f}, Prec={avg_xgb_precision:.4f}, Rec={avg_xgb_recall:.4f}, F1={avg_xgb_f1:.4f}, AUC={avg_xgb_auc:.4f}")
+                    print(f"⏱️  Completed in {symbol_time:.1f} minutes")
+                else:
+                    print(f"⚠️  {symbol}: No valid windows processed")
+                
+            except Exception as e:
+                print(f"\n❌ Error training {symbol}: {str(e)}")
+                traceback.print_exc()
+                all_results[symbol] = {'error': str(e)}
+        
+        total_time = (time.time() - start_time) / 60
+        
+        # Calculate overall statistics
+        successful_symbols = [s for s in all_results if isinstance(all_results[s], list) and all_results[s]]
+        failed_symbols = [s for s in all_results if 'error' in str(all_results[s]) or not all_results[s]]
+        
+        # Aggregate metrics across all symbols
+        all_window_results = []
+        for symbol_results in all_results.values():
+            if isinstance(symbol_results, list):
+                all_window_results.extend(symbol_results)
+        
+        # Save comprehensive results
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        results_file = f"results/walkforward_results_{timestamp}.json"
+        
+        summary = {
+            'timestamp': timestamp,
+            'training_type': 'walk_forward',
+            'config': {
+                'train_months': self.train_months,
+                'test_months': self.test_months,
+                'step_months': self.step_months,
+                'min_training_samples': self.min_training_samples
+            },
+            'total_time_minutes': total_time,
+            'symbols_trained': len(successful_symbols),
+            'symbols_failed': len(failed_symbols),
+            'total_windows': len(all_window_results),
+            'results_by_symbol': all_results
+        }
+        
+        # Add aggregated metrics if we have results
+        if all_window_results:
+            summary['aggregated_metrics'] = {
+                'avg_lstm_mae': float(np.mean([r['lstm_mae'] for r in all_window_results])),
+                'avg_lstm_rmse': float(np.mean([r['lstm_rmse'] for r in all_window_results])),
+                'avg_xgb_accuracy': float(np.mean([r['xgb_accuracy'] for r in all_window_results])),
+                'avg_xgb_precision': float(np.mean([r['xgb_precision'] for r in all_window_results])),
+                'avg_xgb_recall': float(np.mean([r['xgb_recall'] for r in all_window_results])),
+                'avg_xgb_f1': float(np.mean([r['xgb_f1'] for r in all_window_results])),
+                'avg_xgb_auc': float(np.mean([r['xgb_auc'] for r in all_window_results])),
+                'std_lstm_mae': float(np.std([r['lstm_mae'] for r in all_window_results])),
+                'std_xgb_accuracy': float(np.std([r['xgb_accuracy'] for r in all_window_results])),
+                'std_xgb_f1': float(np.std([r['xgb_f1'] for r in all_window_results]))
+            }
+        
+        with open(results_file, 'w') as f:
+            json.dump(summary, f, indent=2, default=str)
+        
+        # Print final summary
+        print(f"\n{'='*80}")
+        print(f"🎉 WALK-FORWARD TRAINING COMPLETED!")
+        print(f"{'='*80}")
+        print(f"⏰ Total time: {total_time:.1f} minutes")
+        print(f"✅ Successful: {len(successful_symbols)}/{len(self.symbols)} symbols")
+        print(f"📊 Total windows processed: {len(all_window_results)}")
+        
+        if all_window_results:
+            agg = summary['aggregated_metrics']
+            print(f"\n📈 Overall Performance:")
+            print(f"   LSTM: MAE={agg['avg_lstm_mae']:.6f}±{agg['std_lstm_mae']:.6f}")
+            print(f"   XGBoost: Acc={agg['avg_xgb_accuracy']:.4f}±{agg['std_xgb_accuracy']:.4f}, F1={agg['avg_xgb_f1']:.4f}±{agg['std_xgb_f1']:.4f}, AUC={agg['avg_xgb_auc']:.4f}")
+            print(f"   Precision={agg['avg_xgb_precision']:.4f}, Recall={agg['avg_xgb_recall']:.4f}")
+        
+        print(f"📁 Results saved to: {results_file}")
+        
+        if failed_symbols:
+            print(f"❌ Failed symbols: {', '.join(failed_symbols)}")
+        
+        return summary
+
+def parse_arguments():
+    """
+    Parse command line arguments
+    """
+    parser = argparse.ArgumentParser(
+        description='Hybrid LSTM + XGBoost Model Training with Walk-Forward Analysis',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python train_hybrid_models.py                    # Train all symbols
+  python train_hybrid_models.py --symbols BTCEUR   # Train only BTCEUR
+  python train_hybrid_models.py --symbols BTCEUR ETHEUR  # Train BTCEUR and ETHEUR
+        """
+    )
+    
+    parser.add_argument(
+        '--symbols', 
+        nargs='+', 
+        help='Symbols to train (e.g., BTCEUR ETHEUR). If not specified, trains all symbols.',
+        choices=['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR'],
+        default=None
+    )
+    
+    parser.add_argument(
+        '--train-months',
+        type=int,
+        default=3,
+        help='Training window size in months (default: 3)'
+    )
+    
+    parser.add_argument(
+        '--test-months',
+        type=int,
+        default=1,
+        help='Test window size in months (default: 1)'
+    )
+    
+    parser.add_argument(
+        '--step-months',
+        type=int,
+        default=1,
+        help='Step size for rolling window in months (default: 1)'
+    )
+    
+    return parser.parse_args()
+
+
+def main():
+    """
+    Main training execution
+    """
+    # Parse command line arguments
+    args = parse_arguments()
+    
+    # Initialize trainer with specified symbols
+    trainer = HybridModelTrainer(
+        symbols=args.symbols,
+        train_months=args.train_months,
+        test_months=args.test_months,
+        step_months=args.step_months
+    )
+    
+    # Train all models
+    results = trainer.train_all_models()
+    
+    print("\n🎯 Training pipeline completed successfully!")
+    print("\n📋 Next steps:")
+    print("   1. Review model performance in results/")
+    print("   2. Analyze feature importance files")
+    print("   3. Implement trading strategy using trained models")
+    print("   4. Set up paper trading for validation")
+
+if __name__ == "__main__":
+    main()

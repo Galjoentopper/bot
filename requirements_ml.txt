@@ -1,0 +1,51 @@
+# Machine Learning Requirements for Hybrid LSTM + XGBoost Training
+# ================================================================
+# Updated to resolve TA-Lib installation issues on Windows
+
+# Core ML Libraries
+tensorflow>=2.13.0
+xgboost>=1.7.0
+scikit-learn>=1.3.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Technical Analysis
+pandas-ta>=0.3.14b
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Existing dependencies (from original requirements.txt)
+requests>=2.31.0
+pytz>=2023.3
+python-dateutil>=2.8.2
+
+# Optional: For advanced optimization
+# optuna>=3.3.0
+# hyperopt>=0.2.7
+
+# =============================================================================
+# INSTALLATION NOTES FOR WINDOWS:
+# =============================================================================
+#
+# If TA-Lib-binary installation fails, try these alternatives:
+#
+# Option 1: Download pre-compiled wheel
+# 1. Go to: https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib
+# 2. Download the appropriate .whl file for your Python version
+# 3. Install with: pip install path/to/downloaded/file.whl
+#
+# Option 2: Use alternative technical analysis library
+# 1. Comment out TA-Lib-binary above
+# 2. Uncomment pandas-ta or finta
+# 3. Modify train_hybrid_models.py to use alternative library
+#
+# Option 3: Install TA-Lib C library manually
+# 1. Download TA-Lib from: http://ta-lib.org/hdr_dw.html
+# 2. Extract to C:\ta-lib
+# 3. Then install: pip install TA-Lib
+#
+# =============================================================================
