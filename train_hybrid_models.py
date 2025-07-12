@@ -48,18 +48,18 @@ try:
     if gpus:
         for gpu in gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
-            # Set virtual GPU memory limit for better memory management
-            tf.config.experimental.set_virtual_device_configuration(
-                gpu,
-                [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15000)]  # 15GB limit
-            )
-        print(f"🚀 GPU Configuration: Found {len(gpus)} GPU(s), memory growth enabled with 15GB limit")
+            # Remove memory limit for maximum GPU utilization
+            # tf.config.experimental.set_virtual_device_configuration(
+            #     gpu,
+            #     [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15000)]  # 15GB limit removed
+            # )
+        print(f"🚀 GPU Configuration: Found {len(gpus)} GPU(s), memory growth enabled with NO LIMIT for maximum utilization")
         
-        # Enable mixed precision for better GPU utilization
-        from tensorflow.keras import mixed_precision
-        policy = mixed_precision.Policy('mixed_float16')
-        mixed_precision.set_global_policy(policy)
-        print("⚡ Mixed precision training enabled for better GPU utilization")
+        # Disable mixed precision to reduce overhead and improve speed
+        # from tensorflow.keras import mixed_precision
+        # policy = mixed_precision.Policy('mixed_float16')
+        # mixed_precision.set_global_policy(policy)
+        print("⚡ Mixed precision DISABLED for maximum speed (using float32)")
         
         # Additional GPU optimizations
         tf.config.optimizer.set_jit(True)  # Enable XLA compilation
@@ -125,18 +125,18 @@ class HybridModelTrainer:
         self.attention_units = 128          # Increased attention units for more computation
         self.use_attention = True           # Enable attention mechanism
         
-        # Aggressively optimized XGBoost parameters for maximum CPU utilization
+        # Optimized XGBoost parameters for speed and performance balance
         self.xgb_params = {
-            'n_estimators': 800,            # Significantly increased for better performance
-            'max_depth': 10,                # Deeper trees for complex patterns
-            'learning_rate': 0.05,          # Optimized learning rate
-            'subsample': 0.85,              # Higher subsampling for more data usage
-            'colsample_bytree': 0.85,       # More features per tree
-            'reg_alpha': 0.05,              # Reduced L1 regularization
-            'reg_lambda': 0.8,              # Reduced L2 regularization
-            'min_child_weight': 2,          # Lower for more splits
-            'gamma': 0.05,                  # Lower minimum split loss
-            'early_stopping_rounds': 75,    # Increased patience
+            'n_estimators': 300,            # Reduced for faster training
+            'max_depth': 6,                 # Reduced depth for faster training
+            'learning_rate': 0.1,           # Increased learning rate for faster convergence
+            'subsample': 0.8,               # Standard subsampling
+            'colsample_bytree': 0.8,        # Standard feature sampling
+            'reg_alpha': 0.1,               # Standard L1 regularization
+            'reg_lambda': 1.0,              # Standard L2 regularization
+            'min_child_weight': 1,          # Standard setting
+            'gamma': 0,                     # No minimum split loss for speed
+            'early_stopping_rounds': 30,    # Reduced patience for speed
             'eval_metric': 'logloss',
             'objective': 'binary:logistic',
             'random_state': 42,
@@ -144,7 +144,7 @@ class HybridModelTrainer:
             'nthread': -1,                  # Explicitly use all threads
             'tree_method': 'hist',          # Fastest training method
             'grow_policy': 'depthwise',     # Optimized growth policy
-            'max_leaves': 1024,             # Increased for more complex trees
+            'max_leaves': 256,              # Reduced for faster training
             'verbosity': 0,                 # Reduce output
             'enable_categorical': False,    # Optimize for numerical features
             'predictor': 'cpu_predictor'    # Optimized CPU prediction
@@ -545,8 +545,8 @@ class HybridModelTrainer:
         dense2 = Dropout(self.dropout_rate)(dense2)
         dense2 = BatchNormalization()(dense2)
         
-        # Output layer (use float32 for mixed precision compatibility)
-        outputs = Dense(1, activation='linear', dtype='float32')(dense2)
+        # Output layer (using float32 for maximum performance)
+        outputs = Dense(1, activation='linear')(dense2)
         
         # Create model
         model = Model(inputs=inputs, outputs=outputs)
@@ -574,19 +574,15 @@ class HybridModelTrainer:
             metrics=['mae', 'mse']
         )
         
-        # Enhanced callbacks
+        # Optimized callbacks for faster training
         callbacks = [
-            EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True, min_delta=1e-6),
-            ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=7, min_lr=1e-7, verbose=0),
-            # Cosine annealing scheduler
-            tf.keras.callbacks.LearningRateScheduler(
-                lambda epoch: 0.001 * (0.5 ** (epoch // 20)), verbose=0
-            )
+            EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, min_delta=1e-5),
+            ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6, verbose=0)
         ]
         
         # Train model with aggressive GPU optimization for maximum utilization
         # Start with very large batch size to maximize GPU usage
-        batch_size = 1024  # Significantly increased for better GPU utilization
+        batch_size = 4096  # Massively increased for maximum GPU utilization
         
         # Create optimized TensorFlow datasets with advanced prefetching
         train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
@@ -609,16 +605,17 @@ class HybridModelTrainer:
             history = model.fit(
                 train_dataset,
                 validation_data=val_dataset,
-                epochs=200,  # Increased epochs for better convergence
+                epochs=100,  # Reduced epochs for faster training
                 callbacks=callbacks,
                 verbose=0
             )
+            print(f"✅ LSTM training completed with massive batch size {batch_size}")
         except tf.errors.ResourceExhaustedError:
-            # If GPU memory is insufficient, fall back to medium batch size
-            print(f"⚠️ GPU memory insufficient for batch_size={batch_size}, falling back to 512")
-            batch_size = 512
+            # If GPU memory is insufficient, fall back to large batch size
+            print(f"⚠️ GPU memory insufficient for batch_size={batch_size}, falling back to 2048")
+            batch_size = 2048
             
-            # Recreate datasets with medium batch size
+            # Recreate datasets with large batch size
             train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
             train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
             
@@ -626,21 +623,21 @@ class HybridModelTrainer:
             val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
             
             try:
-                print(f"🔄 Attempting training with medium batch size: {batch_size}")
+                print(f"🔄 Attempting training with large batch size: {batch_size}")
                 history = model.fit(
                     train_dataset,
                     validation_data=val_dataset,
-                    epochs=200,
+                    epochs=100,
                     callbacks=callbacks,
                     verbose=0
                 )
-                print(f"✅ LSTM training completed with medium batch size {batch_size}")
+                print(f"✅ LSTM training completed with large batch size {batch_size}")
                 
             except tf.errors.ResourceExhaustedError:
-                print(f"⚠️ Still insufficient memory with batch_size={batch_size}, using conservative 256")
-                batch_size = 256
+                print(f"⚠️ Still insufficient memory with batch_size={batch_size}, using medium 1024")
+                batch_size = 1024
                 
-                # Recreate datasets with conservative batch size
+                # Recreate datasets with medium batch size
                 train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
                 train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
                 
@@ -650,11 +647,11 @@ class HybridModelTrainer:
                 history = model.fit(
                     train_dataset,
                     validation_data=val_dataset,
-                    epochs=200,
+                    epochs=100,
                     callbacks=callbacks,
                     verbose=0
                 )
-                print(f"✅ LSTM training completed with conservative batch size {batch_size}")
+                print(f"✅ LSTM training completed with medium batch size {batch_size}")
         
         print(f"✅ LSTM training completed. Best val_loss: {min(history.history['val_loss']):.6f}")
         
@@ -665,7 +662,7 @@ class HybridModelTrainer:
         Generate lstm_delta predictions with aggressive GPU optimization
         """
         # Use very large batch size for maximum GPU utilization during inference
-        batch_size = 2048  # Significantly increased for maximum GPU usage
+        batch_size = 8192  # Massively increased for maximum GPU usage
         
         try:
             print(f"🚀 Generating predictions with batch size: {batch_size}")
@@ -673,18 +670,18 @@ class HybridModelTrainer:
             print(f"✅ Predictions generated successfully with batch size {batch_size}")
             
         except tf.errors.ResourceExhaustedError:
-            print(f"⚠️ GPU memory insufficient for prediction batch_size={batch_size}, trying 1024")
-            batch_size = 1024
+            print(f"⚠️ GPU memory insufficient for prediction batch_size={batch_size}, trying 4096")
+            batch_size = 4096
             
             try:
                 predictions = model.predict(X, batch_size=batch_size, verbose=0)
-                print(f"✅ Predictions generated with medium batch size {batch_size}")
+                print(f"✅ Predictions generated with large batch size {batch_size}")
                 
             except tf.errors.ResourceExhaustedError:
-                print(f"⚠️ Still insufficient memory, using conservative batch size 512")
-                batch_size = 512
+                print(f"⚠️ Still insufficient memory, using medium batch size 2048")
+                batch_size = 2048
                 predictions = model.predict(X, batch_size=batch_size, verbose=0)
-                print(f"✅ Predictions generated with conservative batch size {batch_size}")
+                print(f"✅ Predictions generated with medium batch size {batch_size}")
                 
         return predictions.flatten()
     
@@ -1098,7 +1095,9 @@ class HybridModelTrainer:
         results = []
         
         for i, (train_start, train_end, test_end) in enumerate(windows):
+            window_start_time = time.time()
             print(f"\n🔄 Window {i+1}/{len(windows)}: {train_start.date()} to {test_end.date()}")
+            print(f"⏰ Window started at: {datetime.now().strftime('%H:%M:%S')}")
             
             # Split data for this window
             train_data = df_features[train_start:train_end]
@@ -1137,8 +1136,12 @@ class HybridModelTrainer:
             X_train_scaled = scaler.fit_transform(X_train_lstm.reshape(-1, X_train_lstm.shape[-1])).reshape(X_train_lstm.shape)
             X_val_scaled = scaler.transform(X_val_lstm.reshape(-1, X_val_lstm.shape[-1])).reshape(X_val_lstm.shape)
             
-            # Train LSTM
+            # Train LSTM with timing
+            print(f"🧠 Starting LSTM training for window {i+1}...")
+            lstm_start = time.time()
             lstm_model = self.train_lstm_model(X_train_scaled, y_train_lstm, X_val_scaled, y_val_lstm)
+            lstm_time = (time.time() - lstm_start) / 60
+            print(f"✅ LSTM training completed in {lstm_time:.1f} minutes")
             
             # Generate LSTM predictions for full training period
             X_full_scaled = scaler.transform(X_lstm.reshape(-1, X_lstm.shape[-1])).reshape(X_lstm.shape)
@@ -1156,8 +1159,12 @@ class HybridModelTrainer:
             train_df_xgb = xgb_df.iloc[:split_idx_xgb]
             val_df_xgb = xgb_df.iloc[split_idx_xgb:]
             
-            # Train XGBoost
+            # Train XGBoost with timing
+            print(f"🌳 Starting XGBoost training for window {i+1}...")
+            xgb_start = time.time()
             xgb_model = self.train_xgboost_model(train_df_xgb, val_df_xgb)
+            xgb_time = (time.time() - xgb_start) / 60
+            print(f"✅ XGBoost training completed in {xgb_time:.1f} minutes")
             
             # Prepare test data
             X_test_lstm, y_test_lstm, test_timestamps = self.prepare_lstm_data(test_data)
@@ -1196,11 +1203,24 @@ class HybridModelTrainer:
             
             results.append(window_results)
             
+            # Calculate and display window timing
+            window_time = (time.time() - window_start_time) / 60
+            print(f"⏱️  Window {i+1} completed in {window_time:.1f} minutes")
+            print(f"📊 Progress: {i+1}/{len(windows)} windows ({(i+1)/len(windows)*100:.1f}%)")
+            
+            # Estimate remaining time
+            if i > 0:
+                avg_time_per_window = (time.time() - start_time) / (i + 1) / 60
+                remaining_windows = len(windows) - (i + 1)
+                estimated_remaining = avg_time_per_window * remaining_windows
+                print(f"🕐 Estimated remaining time: {estimated_remaining:.1f} minutes")
+            
             # Log results to CSV
             self.log_window_results(symbol, window_results)
             
-            # Generate feature importance plot
-            self.plot_feature_importance(xgb_model, symbol, i+1)
+            # Skip feature importance plot for speed (only save for last window)
+            if i == len(windows) - 1:  # Only plot for last window
+                self.plot_feature_importance(xgb_model, symbol, i+1)
             
             # Save models per window
             lstm_model.save(f'{self.models_dir}/lstm/{symbol.lower()}_window_{i+1}.keras')
@@ -1247,12 +1267,17 @@ class HybridModelTrainer:
         
         for i, symbol in enumerate(self.symbols, 1):
             symbol_start = time.time()
+            print(f"\n🚀 Starting training for symbol {i}/{len(self.symbols)}: {symbol}")
+            print(f"⏰ Symbol training started at: {datetime.now().strftime('%H:%M:%S')}")
             
             try:
                 symbol_results = self.train_symbol_walkforward(symbol)
                 all_results[symbol] = symbol_results
                 
                 symbol_time = (time.time() - symbol_start) / 60
+                print(f"\n🎯 {symbol} Training Summary:")
+                print(f"⏱️  Total time: {symbol_time:.1f} minutes")
+                print(f"📊 Windows processed: {len(symbol_results)}/{len(windows) if 'windows' in locals() else 'N/A'}")
                 
                 if symbol_results:
                     # Calculate aggregated metrics
@@ -1267,7 +1292,7 @@ class HybridModelTrainer:
                     print(f"\n📊 {symbol} Summary ({len(symbol_results)} windows):")
                     print(f"   LSTM: MAE={avg_lstm_mae:.6f}, RMSE={avg_lstm_rmse:.6f}")
                     print(f"   XGBoost: Acc={avg_xgb_accuracy:.4f}, Prec={avg_xgb_precision:.4f}, Rec={avg_xgb_recall:.4f}, F1={avg_xgb_f1:.4f}, AUC={avg_xgb_auc:.4f}")
-                    print(f"⏱️  Completed in {symbol_time:.1f} minutes")
+                    print(f"⏱️  Average time per window: {symbol_time/len(symbol_results):.1f} minutes")
                 else:
                     print(f"⚠️  {symbol}: No valid windows processed")
                 
