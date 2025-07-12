@@ -580,16 +580,9 @@ class HybridModelTrainer:
             ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6, verbose=0)
         ]
         
-        # Train model with aggressive GPU optimization for maximum utilization
-        # Start with very large batch size to maximize GPU usage
-        batch_size = 4096  # Massively increased for maximum GPU utilization
-        
-        # Create optimized TensorFlow datasets with advanced prefetching
-        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-        train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
-        
-        val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
-        val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
+        # Train model with conservative memory management to prevent crashes
+        # Start with moderate batch size and implement robust fallback
+        batch_size = 1024  # Conservative starting point to prevent allocation failures
         
         # Enable XLA compilation for additional performance
         model.compile(
@@ -599,59 +592,43 @@ class HybridModelTrainer:
             jit_compile=True  # Enable XLA compilation
         )
         
-        try:
-            # Try very large batch size first for maximum GPU utilization
-            print(f"🚀 Attempting training with batch size: {batch_size}")
-            history = model.fit(
-                train_dataset,
-                validation_data=val_dataset,
-                epochs=100,  # Reduced epochs for faster training
-                callbacks=callbacks,
-                verbose=0
-            )
-            print(f"✅ LSTM training completed with massive batch size {batch_size}")
-        except tf.errors.ResourceExhaustedError:
-            # If GPU memory is insufficient, fall back to large batch size
-            print(f"⚠️ GPU memory insufficient for batch_size={batch_size}, falling back to 2048")
-            batch_size = 2048
-            
-            # Recreate datasets with large batch size
-            train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-            train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
-            
-            val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
-            val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
-            
+        # Implement robust batch size fallback with memory clearing
+        batch_sizes = [1024, 512, 256, 128, 64]  # Conservative progression
+        history = None
+        
+        for batch_size in batch_sizes:
             try:
-                print(f"🔄 Attempting training with large batch size: {batch_size}")
-                history = model.fit(
-                    train_dataset,
-                    validation_data=val_dataset,
-                    epochs=100,
-                    callbacks=callbacks,
-                    verbose=0
-                )
-                print(f"✅ LSTM training completed with large batch size {batch_size}")
+                # Clear any existing GPU memory
+                tf.keras.backend.clear_session()
                 
-            except tf.errors.ResourceExhaustedError:
-                print(f"⚠️ Still insufficient memory with batch_size={batch_size}, using medium 1024")
-                batch_size = 1024
-                
-                # Recreate datasets with medium batch size
+                # Create optimized TensorFlow datasets
                 train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-                train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
+                train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
                 
                 val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
-                val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
+                val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
                 
+                print(f"🚀 Attempting training with batch size: {batch_size}")
                 history = model.fit(
                     train_dataset,
                     validation_data=val_dataset,
-                    epochs=100,
+                    epochs=100,  # Reduced epochs for faster training
                     callbacks=callbacks,
                     verbose=0
                 )
-                print(f"✅ LSTM training completed with medium batch size {batch_size}")
+                print(f"✅ LSTM training completed successfully with batch size {batch_size}")
+                break  # Success, exit the loop
+                
+            except (tf.errors.ResourceExhaustedError, tf.errors.InternalError) as e:
+                print(f"⚠️ Memory error with batch_size={batch_size}: {str(e)[:100]}...")
+                # Clear memory before trying next batch size
+                tf.keras.backend.clear_session()
+                if batch_size == batch_sizes[-1]:  # Last attempt
+                    raise RuntimeError(f"Unable to train LSTM model - all batch sizes failed. Last error: {e}")
+                continue
+        
+        if history is None:
+            raise RuntimeError("LSTM training failed - no successful batch size found")
         
         print(f"✅ LSTM training completed. Best val_loss: {min(history.history['val_loss']):.6f}")
         
@@ -659,29 +636,29 @@ class HybridModelTrainer:
     
     def generate_lstm_predictions(self, model: tf.keras.Model, X: np.ndarray) -> np.ndarray:
         """
-        Generate lstm_delta predictions with aggressive GPU optimization
+        Generate lstm_delta predictions with conservative memory management
         """
-        # Use very large batch size for maximum GPU utilization during inference
-        batch_size = 8192  # Massively increased for maximum GPU usage
+        # Use conservative batch sizes to prevent memory allocation failures
+        batch_sizes = [2048, 1024, 512, 256, 128]  # Conservative progression
+        predictions = None
         
-        try:
-            print(f"🚀 Generating predictions with batch size: {batch_size}")
-            predictions = model.predict(X, batch_size=batch_size, verbose=0)
-            print(f"✅ Predictions generated successfully with batch size {batch_size}")
-            
-        except tf.errors.ResourceExhaustedError:
-            print(f"⚠️ GPU memory insufficient for prediction batch_size={batch_size}, trying 4096")
-            batch_size = 4096
-            
+        for batch_size in batch_sizes:
             try:
+                print(f"🚀 Generating predictions with batch size: {batch_size}")
                 predictions = model.predict(X, batch_size=batch_size, verbose=0)
-                print(f"✅ Predictions generated with large batch size {batch_size}")
+                print(f"✅ Predictions generated successfully with batch size {batch_size}")
+                break  # Success, exit the loop
                 
-            except tf.errors.ResourceExhaustedError:
-                print(f"⚠️ Still insufficient memory, using medium batch size 2048")
-                batch_size = 2048
-                predictions = model.predict(X, batch_size=batch_size, verbose=0)
-                print(f"✅ Predictions generated with medium batch size {batch_size}")
+            except (tf.errors.ResourceExhaustedError, tf.errors.InternalError) as e:
+                print(f"⚠️ Memory error during prediction with batch_size={batch_size}: {str(e)[:100]}...")
+                # Clear memory before trying next batch size
+                tf.keras.backend.clear_session()
+                if batch_size == batch_sizes[-1]:  # Last attempt
+                    raise RuntimeError(f"Unable to generate predictions - all batch sizes failed. Last error: {e}")
+                continue
+        
+        if predictions is None:
+            raise RuntimeError("Prediction generation failed - no successful batch size found")
                 
         return predictions.flatten()
     
