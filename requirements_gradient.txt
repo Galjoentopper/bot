@@ -1,0 +1,11 @@
+# Requirements for gradient package compatibility
+# Install this separately if you need the gradient package
+# Usage: pip install -r requirements_gradient.txt
+
+# Gradient package with its specific requirements
+gradient==2.0.6
+attrs<=19
+PyYAML==5.*
+
+# Note: This conflicts with the main requirements.txt
+# Install gradient separately after main requirements if needed

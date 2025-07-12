@@ -4,6 +4,11 @@
 # - requirements.txt (data collection)
 # - requirements_backtest.txt (backtesting)
 # - requirements_ml.txt (enhanced ML training)
+#
+# INSTALLATION INSTRUCTIONS:
+# 1. Install main requirements: pip install -r requirements.txt
+# 2. If you need gradient package: pip install -r requirements_gradient.txt
+#    (Note: gradient has conflicting version requirements)
 
 # ===== CORE DATA SCIENCE LIBRARIES =====
 numpy>=1.24.0
@@ -59,8 +64,9 @@ joblib>=1.1.0
 cerberus>=1.3.4
 
 # ===== COMPATIBILITY CONSTRAINTS =====
-# Note: Removed attrs constraint - using latest version for better compatibility
-# attrs>=19.0,<20.0  # Commented out - was for gradient package
+# Note: gradient package has conflicting requirements (PyYAML 5.x, attrs<=19)
+# If you need gradient, install it separately using requirements_gradient.txt
+# pip install -r requirements_gradient.txt
 
 # ===== PERFORMANCE PROFILING (OPTIONAL) =====
 # Uncomment if needed for performance analysis
