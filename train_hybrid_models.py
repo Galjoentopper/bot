@@ -423,8 +423,13 @@ class HybridModelTrainer:
         
         from tensorflow.keras.layers import Input, LSTM, Dense, Dropout, BatchNormalization, Add
         from tensorflow.keras.models import Model
-        from tensorflow.keras.optimizers import AdamW
-        from tensorflow.keras.callbacks import CosineRestartScheduler
+        try:
+            from tensorflow.keras.optimizers import AdamW
+        except ImportError:
+            # Fallback to Adam if AdamW is not available
+            from tensorflow.keras.optimizers import Adam as AdamW
+        # CosineRestartScheduler is not available in standard TensorFlow
+        # Using LearningRateScheduler instead for cosine annealing
         
         # Input layer
         inputs = Input(shape=(X_train.shape[1], X_train.shape[2]))
@@ -472,13 +477,21 @@ class HybridModelTrainer:
         # Create model
         model = Model(inputs=inputs, outputs=outputs)
         
-        # Enhanced optimizer with weight decay
-        optimizer = AdamW(
-            learning_rate=0.001,
-            weight_decay=0.01,
-            beta_1=0.9,
-            beta_2=0.999
-        )
+        # Enhanced optimizer with weight decay (if available)
+        try:
+            optimizer = AdamW(
+                learning_rate=0.001,
+                weight_decay=0.01,
+                beta_1=0.9,
+                beta_2=0.999
+            )
+        except TypeError:
+            # Fallback to Adam without weight_decay if AdamW is not available
+            optimizer = AdamW(
+                learning_rate=0.001,
+                beta_1=0.9,
+                beta_2=0.999
+            )
         
         # Compile with custom loss
         model.compile(
