@@ -401,7 +401,7 @@ class HybridModelTrainer:
         import tensorflow as tf
         
         # Standard MSE
-        mse = tf.keras.losses.mean_squared_error(y_true, y_pred)
+        mse = tf.keras.losses.MeanSquaredError()(y_true, y_pred)
         
         # Directional penalty
         direction_true = tf.sign(y_true)
