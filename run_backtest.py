@@ -16,6 +16,7 @@ import argparse
 import os
 import sys
 import time
+import random
 from datetime import timedelta
 from typing import Dict, List
 
@@ -74,11 +75,13 @@ class OptimizedBacktester(ModelBacktester):
         
         return models
     
-    def backtest_symbol(self, symbol: str, max_windows: int = None) -> Dict:
-        """Override backtest_symbol to support max_windows limit"""
+    def backtest_symbol(self, symbol: str, max_windows: int = None, random_start: bool = False) -> Dict:
+        """Override backtest_symbol to support max_windows limit and random starting date"""
         print(f"\nBacktesting {symbol}...")
         if max_windows:
             print(f"  Limited to {max_windows} windows")
+        if random_start:
+            print(f"  Using random starting date")
         
         # Load data
         data = self.load_data(symbol)
@@ -93,8 +96,31 @@ class OptimizedBacktester(ModelBacktester):
         equity_history = []
         
         # Walk-forward validation
-        start_date = data.index[0]
+        original_start_date = data.index[0]
         end_date = data.index[-1]
+        
+        # Calculate random starting date if requested
+        if random_start:
+            # Calculate minimum required data for training + testing
+            min_required_days = (self.config.train_months + self.config.test_months) * 30
+            if max_windows:
+                # Add extra days for additional windows
+                min_required_days += (max_windows - 1) * self.config.slide_months * 30
+            
+            # Find the latest possible start date that still allows for required data
+            latest_start = end_date - timedelta(days=min_required_days)
+            
+            if latest_start > original_start_date:
+                # Generate random date between original start and latest possible start
+                time_diff = latest_start - original_start_date
+                random_days = random.randint(0, time_diff.days)
+                start_date = original_start_date + timedelta(days=random_days)
+                print(f"  Random start date selected: {start_date.date()}")
+            else:
+                start_date = original_start_date
+                print(f"  Dataset too small for random start, using original start: {start_date.date()}")
+        else:
+            start_date = original_start_date
         
         window_num = 1
         current_date = start_date
@@ -168,7 +194,7 @@ class OptimizedBacktester(ModelBacktester):
             'final_capital': capital
         }
     
-    def run_fast_backtest(self, symbol: str, max_windows: int = None) -> Dict:
+    def run_fast_backtest(self, symbol: str, max_windows: int = None, random_start: bool = False) -> Dict:
         """Run optimized backtest for a single symbol"""
         print(f"\n{'='*60}")
         print(f"RUNNING OPTIMIZED BACKTEST FOR {symbol}")
@@ -181,8 +207,8 @@ class OptimizedBacktester(ModelBacktester):
         self.load_models = self.load_models_cached
         
         try:
-            # Run backtest for single symbol with max_windows limit
-            results = self.backtest_symbol(symbol, max_windows)
+            # Run backtest for single symbol with max_windows limit and random start
+            results = self.backtest_symbol(symbol, max_windows, random_start)
             
             # Save results
             self.save_results(results)
@@ -228,6 +254,8 @@ def main():
                        help='Configuration preset')
     parser.add_argument('--max-windows', type=int, default=None,
                        help='Maximum number of windows to test (for quick testing)')
+    parser.add_argument('--random', action='store_true',
+                       help='Randomly select starting date from dataset')
     parser.add_argument('--save-plots', action='store_true',
                        help='Generate and save performance plots')
     
@@ -238,6 +266,8 @@ def main():
     print(f"Configuration: {args.config}")
     if args.max_windows:
         print(f"Max windows: {args.max_windows}")
+    if args.random:
+        print(f"Random start: enabled")
     
     # Create configuration
     config = create_config(args.config)
@@ -247,7 +277,7 @@ def main():
     
     # Run backtest
     try:
-        results = backtester.run_fast_backtest(args.symbol, args.max_windows)
+        results = backtester.run_fast_backtest(args.symbol, args.max_windows, args.random)
         
         if args.save_plots:
             print("\nGenerating performance plots...")
