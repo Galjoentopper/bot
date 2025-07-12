@@ -48,7 +48,8 @@ import traceback
 try:
     # Disable CUDA graphs and set conservative memory allocator
     os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
-    os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_graph_level=0'
+    # Remove problematic XLA flag that causes 'Unknown flags' error
+    # os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_graph_level=0'
     
     # Enable GPU memory growth to avoid allocating all GPU memory at once
     gpus = tf.config.experimental.list_physical_devices('GPU')
