@@ -26,11 +26,33 @@ from backtest_models import ModelBacktester, BacktestConfig, Trade
 
 # Configuration presets with more aggressive thresholds
 CONFIG_PRESETS = {
+    'balanced': {
+        'buy_threshold': 0.45,
+        'sell_threshold': 0.55,
+        'lstm_delta_threshold': 0.0001,
+        'risk_per_trade': 0.01,
+        'stop_loss_pct': 0.02,
+        'train_months': 4,
+        'test_months': 1,
+        'slide_months': 1
+    },
     'aggressive': {
-        'buy_threshold': 0.52,
-        'sell_threshold': 0.48,
-        'lstm_delta_threshold': 0.001,
-        'train_months': 3,  # Reduced for faster execution
+        'buy_threshold': 0.42,
+        'sell_threshold': 0.58,
+        'lstm_delta_threshold': 0.00005,
+        'risk_per_trade': 0.015,
+        'stop_loss_pct': 0.015,
+        'train_months': 3,
+        'test_months': 1,
+        'slide_months': 1
+    },
+    'conservative': {
+        'buy_threshold': 0.48,
+        'sell_threshold': 0.52,
+        'lstm_delta_threshold': 0.0005,
+        'risk_per_trade': 0.005,
+        'stop_loss_pct': 0.025,
+        'train_months': 4,
         'test_months': 1,
         'slide_months': 1
     },
@@ -472,8 +494,8 @@ def main():
     parser.add_argument('--symbol', default='BTCEUR', 
                        choices=['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR'],
                        help='Symbol to backtest')
-    parser.add_argument('--config', default='aggressive',
-                       choices=['aggressive', 'very_aggressive', 'fast_test'],
+    parser.add_argument('--config', default='balanced',
+                       choices=['balanced', 'aggressive', 'conservative', 'very_aggressive', 'fast_test'],
                        help='Configuration preset')
     parser.add_argument('--max-windows', type=int, default=None,
                        help='Maximum number of windows to test (for quick testing)')
