@@ -45,7 +45,8 @@ jinja2>=3.0.0
 statsmodels>=0.13.0
 
 # ===== CONFIGURATION & LOGGING =====
-pyyaml>=6.0
+# Note: Limited to 5.x for gradient package compatibility
+pyyaml>=5.0,<6.0
 
 # ===== SYSTEM MONITORING =====
 psutil>=5.8.0
@@ -55,6 +56,10 @@ joblib>=1.1.0
 
 # ===== DATA VALIDATION =====
 cerberus>=1.3.4
+
+# ===== COMPATIBILITY CONSTRAINTS =====
+# Required for gradient package compatibility
+attrs>=19.0,<20.0
 
 # ===== PERFORMANCE PROFILING (OPTIONAL) =====
 # Uncomment if needed for performance analysis
