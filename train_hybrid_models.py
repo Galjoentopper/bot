@@ -41,6 +41,25 @@ from tensorflow.keras.optimizers import Adam, AdamW
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, LearningRateScheduler
 import traceback
 
+# Configure GPU for optimal utilization
+try:
+    # Enable GPU memory growth to avoid allocating all GPU memory at once
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        print(f"🚀 GPU Configuration: Found {len(gpus)} GPU(s), memory growth enabled")
+        
+        # Enable mixed precision for better GPU utilization
+        from tensorflow.keras import mixed_precision
+        policy = mixed_precision.Policy('mixed_float16')
+        mixed_precision.set_global_policy(policy)
+        print("⚡ Mixed precision training enabled for better GPU utilization")
+    else:
+        print("💻 No GPU detected, using CPU")
+except Exception as e:
+    print(f"⚠️ GPU configuration warning: {e}")
+
 # Technical Analysis
 import pandas_ta as ta
 
@@ -82,10 +101,10 @@ class HybridModelTrainer:
         self.prediction_horizon = 1         # Next 15-min candle
         self.price_change_threshold = 0.001 # 0.1% for binary classification (more sensitive)
         
-        # Advanced LSTM parameters
-        self.lstm_units = [128, 64, 32]     # Multi-layer LSTM with decreasing units
+        # Advanced LSTM parameters (optimized for better GPU utilization)
+        self.lstm_units = [256, 128, 64]    # Increased units for better GPU utilization
         self.dropout_rate = 0.3             # Increased dropout for better regularization
-        self.attention_units = 64           # Attention mechanism units
+        self.attention_units = 128          # Increased attention units for more computation
         self.use_attention = True           # Enable attention mechanism
         
         # Enhanced XGBoost parameters
@@ -471,8 +490,8 @@ class HybridModelTrainer:
         dense2 = Dropout(self.dropout_rate)(dense2)
         dense2 = BatchNormalization()(dense2)
         
-        # Output layer
-        outputs = Dense(1, activation='linear')(dense2)
+        # Output layer (use float32 for mixed precision compatibility)
+        outputs = Dense(1, activation='linear', dtype='float32')(dense2)
         
         # Create model
         model = Model(inputs=inputs, outputs=outputs)
@@ -510,15 +529,45 @@ class HybridModelTrainer:
             )
         ]
         
-        # Train model with larger batch size for stability
-        history = model.fit(
-            X_train, y_train,
-            validation_data=(X_val, y_val),
-            epochs=150,  # Increased epochs
-            batch_size=64,  # Larger batch size
-            callbacks=callbacks,
-            verbose=0
-        )
+        # Train model with optimized batch size for better GPU utilization
+        # Dynamically adjust batch size based on available GPU memory
+        batch_size = 256  # Increased from 64 for better GPU utilization
+        
+        # Create TensorFlow datasets for better performance
+        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+        train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+        
+        val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+        val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+        
+        try:
+            # Try larger batch size first with optimized data pipeline
+            history = model.fit(
+                train_dataset,
+                validation_data=val_dataset,
+                epochs=150,  # Increased epochs
+                callbacks=callbacks,
+                verbose=0
+            )
+        except tf.errors.ResourceExhaustedError:
+            # If GPU memory is insufficient, fall back to smaller batch size
+            print(f"⚠️ GPU memory insufficient for batch_size={batch_size}, falling back to 128")
+            batch_size = 128
+            
+            # Recreate datasets with smaller batch size
+            train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+            train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+            
+            val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+            val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+            
+            history = model.fit(
+                train_dataset,
+                validation_data=val_dataset,
+                epochs=150,
+                callbacks=callbacks,
+                verbose=0
+            )
         
         print(f"✅ LSTM training completed. Best val_loss: {min(history.history['val_loss']):.6f}")
         
@@ -526,9 +575,16 @@ class HybridModelTrainer:
     
     def generate_lstm_predictions(self, model: tf.keras.Model, X: np.ndarray) -> np.ndarray:
         """
-        Generate lstm_delta predictions
+        Generate lstm_delta predictions with optimized batch size
         """
-        predictions = model.predict(X, batch_size=64, verbose=0)
+        # Use larger batch size for better GPU utilization during inference
+        batch_size = 512  # Increased from 64 for faster inference
+        try:
+            predictions = model.predict(X, batch_size=batch_size, verbose=0)
+        except tf.errors.ResourceExhaustedError:
+            # Fall back to smaller batch size if needed
+            batch_size = 256
+            predictions = model.predict(X, batch_size=batch_size, verbose=0)
         return predictions.flatten()
     
     def prepare_xgboost_features(self, df: pd.DataFrame, lstm_delta: np.ndarray, 
@@ -880,7 +936,7 @@ class HybridModelTrainer:
         Walk-forward training pipeline for a single symbol
         """
         print(f"\n{'='*60}")
-        print(f"🚀 Walk-Forward Training for {symbol}")
+        print(f"���0 Walk-Forward Training for {symbol}")
         print(f"{'='*60}")
         
         # Load and prepare data
@@ -1020,7 +1076,7 @@ class HybridModelTrainer:
         Train models for all symbols using walk-forward validation and save summary
         """
         print(f"\n{'='*80}")
-        print(f"🚀 WALK-FORWARD HYBRID LSTM + XGBOOST TRAINING PIPELINE")
+        print(f"���0 WALK-FORWARD HYBRID LSTM + XGBOOST TRAINING PIPELINE")
         print(f"{'='*80}")
         print(f"📊 Symbols: {', '.join(self.symbols)}")
         print(f"📅 Walk-Forward Config: {self.train_months}M train → {self.test_months}M test (step: {self.step_months}M)")
