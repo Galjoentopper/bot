@@ -1,6 +1,3 @@
-import os
-os.environ["XLA_FLAGS"] = "--xla_gpu_enable_cuda_graphs=false"
-
 #!/usr/bin/env python3
 """
 Hybrid LSTM + XGBoost Model Training Script with Walk-Forward Analysis
@@ -69,7 +66,7 @@ try:
         
         # Disable CUDA graphs to prevent graph execution failures
         os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
-        os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_graph_level=0'
+        os.environ['XLA_FLAGS'] = '--xla_gpu_enable_cuda_graph=false'
         
         # Enable TF32 for better performance (if available)
         try:
@@ -641,9 +638,794 @@ class HybridModelTrainer:
         
         return model
     
+    def generate_lstm_predictions(self, model: tf.keras.Model, X: np.ndarray) -> np.ndarray:
+        """
+        Generate lstm_delta predictions with conservative memory management
+        """
+        # Use conservative batch sizes to prevent memory allocation failures
+        batch_sizes = [2048, 1024, 512, 256, 128]  # Conservative progression
+        predictions = None
+        
+        for batch_size in batch_sizes:
+            try:
+                print(f"🚀 Generating predictions with batch size: {batch_size}")
+                predictions = model.predict(X, batch_size=batch_size, verbose=0)
+                print(f"✅ Predictions generated successfully with batch size {batch_size}")
+                break  # Success, exit the loop
+                
+            except (tf.errors.ResourceExhaustedError, tf.errors.InternalError) as e:
+                print(f"⚠️ Memory error during prediction with batch_size={batch_size}: {str(e)[:100]}...")
+                # Clear memory before trying next batch size
+                tf.keras.backend.clear_session()
+                if batch_size == batch_sizes[-1]:  # Last attempt
+                    raise RuntimeError(f"Unable to generate predictions - all batch sizes failed. Last error: {e}")
+                continue
+        
+        if predictions is None:
+            raise RuntimeError("Prediction generation failed - no successful batch size found")
+                
+        return predictions.flatten()
     
-def generate_lstm_predictions(self, model: tf.keras.Model, X: np.ndarray) -> np.ndarray:
-    print("🚀 Generating predictions with batch_size=1024")
-    preds = model.predict(X, batch_size=1024, verbose=0)
-    return preds.flatten()
+    def prepare_xgboost_features(self, df: pd.DataFrame, lstm_delta: np.ndarray, 
+                                timestamps: np.ndarray) -> pd.DataFrame:
+        """
+        Prepare feature matrix for XGBoost including lstm_delta
+        """
+        # Align lstm_delta with dataframe
+        lstm_df = pd.DataFrame({
+            'lstm_delta': lstm_delta
+        }, index=timestamps)
+        
+        # Merge with technical features
+        features_df = df.join(lstm_df, how='inner')
+        
+        # Enhanced feature set for XGBoost (comprehensive technical analysis)
+        feature_columns = [
+            # Enhanced Price features
+            'returns', 'log_returns', 'price_change_1h', 'price_change_4h', 'price_change_24h',
+            'price_zscore_20', 'price_zscore_50',
+            
+            # Lag features (important for time series)
+            'returns_lag_1', 'returns_lag_2', 'returns_lag_3', 'returns_lag_5', 'returns_lag_10',
+            'log_returns_lag_1', 'log_returns_lag_2', 'log_returns_lag_3',
+            
+            # Rolling statistics
+            'returns_mean_10', 'returns_std_10', 'returns_skew_20', 'returns_kurt_20',
+            
+            # Enhanced Volume features
+            'volume_ratio', 'volume_change', 'volume_zscore',
+            'volume_price_trend', 'volume_weighted_price',
+            
+            # Market microstructure
+            'spread', 'spread_ratio', 'buying_pressure', 'selling_pressure', 'net_pressure',
+            
+            # Enhanced Volatility
+            'volatility_20', 'volatility_50', 'volatility_ratio', 'atr', 'atr_ratio',
+            'realized_vol_5', 'realized_vol_20', 'vol_regime',
+            
+            # Enhanced Moving averages
+            'price_vs_ema9', 'price_vs_ema21', 'price_vs_ema50', 'price_vs_sma200',
+            'ema9_vs_ema21', 'ema21_vs_ema50', 'ema50_vs_ema100',
+            'ma_alignment', 'ma_slope_9', 'ma_slope_21',
+            
+            # Enhanced Oscillators
+            'rsi', 'rsi_9', 'rsi_21', 'rsi_oversold', 'rsi_overbought', 'rsi_divergence',
+            'stoch_k', 'stoch_d', 'stoch_oversold', 'stoch_overbought', 'williams_r',
+            
+            # MACD
+            'macd', 'macd_signal', 'macd_histogram', 'macd_bullish',
+            
+            # Bollinger Bands
+            'bb_width', 'bb_position',
+            
+            # VWAP
+            'price_vs_vwap',
+            
+            # Candle patterns
+            'candle_body', 'upper_wick', 'lower_wick',
+            
+            # Time features
+            'hour', 'day_of_week', 'is_weekend',
+            
+            # Momentum
+            'momentum_10', 'roc_10',
+            
+            # Support/Resistance
+            'near_resistance', 'near_support',
+            
+            # Enhanced Feature Interactions
+            'rsi_macd_combo', 'volatility_ema_ratio', 'volume_price_momentum',
+            'bb_rsi_signal', 'trend_strength', 'volatility_breakout',
+            'momentum_vol_signal', 'trend_momentum_align', 'pressure_volume_signal',
+            'volatility_regime_signal', 'multi_timeframe_signal', 'oscillator_consensus',
+            
+            # Market regime features
+            'trend_regime', 'consolidation_regime',
+            
+            # LSTM prediction
+            'lstm_delta'
+        ]
+        
+        # Filter available columns
+        available_features = [col for col in feature_columns if col in features_df.columns]
+        
+        # Create target: binary classification
+        features_df['target'] = (features_df['close'].pct_change(self.prediction_horizon).shift(-self.prediction_horizon) > self.price_change_threshold).astype(int)
+        
+        # Select final dataset
+        final_df = features_df[available_features + ['target']].copy()
+        
+        # Data cleaning: handle NaN and infinite values intelligently
+        print(f"🧹 Data cleaning: {len(final_df)} samples before cleaning")
+        
+        # Replace infinite values with NaN
+        final_df = final_df.replace([np.inf, -np.inf], np.nan)
+        
+        # Check for NaN values
+        nan_counts = final_df.isnull().sum()
+        if nan_counts.sum() > 0:
+            print(f"⚠️  Found NaN values: {nan_counts[nan_counts > 0].to_dict()}")
+        
+        # Intelligent NaN handling strategy
+        # 1. For features with high NaN percentage (>50%), fill with median/mode
+        # 2. For features with low NaN percentage (<10%), drop rows
+        # 3. For medium NaN percentage (10-50%), use forward fill then median
+        
+        total_samples = len(final_df)
+        
+        for col in final_df.columns:
+            if col == 'target':
+                continue
+                
+            nan_pct = final_df[col].isnull().sum() / total_samples
+            
+            if nan_pct > 0.5:  # High NaN percentage - fill with median
+                if final_df[col].dtype in ['int64', 'float64']:
+                    fill_value = final_df[col].median()
+                    final_df[col] = final_df[col].fillna(fill_value)
+                    print(f"📊 Filled {col} ({nan_pct:.1%} NaN) with median: {fill_value:.6f}")
+                else:
+                    fill_value = final_df[col].mode().iloc[0] if not final_df[col].mode().empty else 0
+                    final_df[col] = final_df[col].fillna(fill_value)
+                    print(f"📊 Filled {col} ({nan_pct:.1%} NaN) with mode: {fill_value}")
+            
+            elif nan_pct > 0.1:  # Medium NaN percentage - forward fill then median
+                if final_df[col].dtype in ['int64', 'float64']:
+                    final_df[col] = final_df[col].ffill()
+                    remaining_nan = final_df[col].isnull().sum()
+                    if remaining_nan > 0:
+                        fill_value = final_df[col].median()
+                        final_df[col] = final_df[col].fillna(fill_value)
+                    print(f"📊 Forward filled {col} ({nan_pct:.1%} NaN), then median for remaining")
+                else:
+                    final_df[col] = final_df[col].ffill()
+                    remaining_nan = final_df[col].isnull().sum()
+                    if remaining_nan > 0:
+                        fill_value = final_df[col].mode().iloc[0] if not final_df[col].mode().empty else 0
+                        final_df[col] = final_df[col].fillna(fill_value)
+                    print(f"📊 Forward filled {col} ({nan_pct:.1%} NaN), then mode for remaining")
+        
+        # After intelligent filling, drop remaining rows with NaN (should be minimal)
+        rows_before_final_drop = len(final_df)
+        final_df = final_df.dropna()
+        rows_dropped = rows_before_final_drop - len(final_df)
+        
+        if rows_dropped > 0:
+            print(f"📉 Dropped {rows_dropped} rows with remaining NaN values")
+        
+        # Additional validation: ensure no infinite values remain
+        if len(final_df) > 0 and np.isinf(final_df.select_dtypes(include=[np.number]).values).any():
+            print("⚠️  Warning: Infinite values still present after cleaning")
+            # Force remove any remaining infinite values
+            numeric_cols = final_df.select_dtypes(include=[np.number]).columns
+            for col in numeric_cols:
+                final_df = final_df[np.isfinite(final_df[col])]
+        
+        print(f"📊 XGBoost features: {len(available_features)} features, {len(final_df)} samples after cleaning")
+        print(f"🎯 Target distribution: {final_df['target'].value_counts().to_dict()}")
+        
+        return final_df
+    
+    def focal_loss_objective(self, y_true, y_pred, alpha=0.25, gamma=2.0):
+        """
+        Focal loss for XGBoost to handle class imbalance
+        """
+        import numpy as np
+        
+        # Convert to probabilities
+        p = 1 / (1 + np.exp(-y_pred))
+        
+        # Calculate focal loss components
+        alpha_t = alpha * y_true + (1 - alpha) * (1 - y_true)
+        p_t = p * y_true + (1 - p) * (1 - y_true)
+        
+        # Focal loss gradient
+        grad = alpha_t * (gamma * p_t * np.log(p_t + 1e-8) + p_t - y_true)
+        
+        # Focal loss hessian
+        hess = alpha_t * gamma * p_t * (1 - p_t) * (2 * np.log(p_t + 1e-8) + 1)
+        
+        return grad, hess
+    
+    def train_xgboost_model(self, train_df: pd.DataFrame, val_df: pd.DataFrame) -> xgb.XGBClassifier:
+        """
+        Train enhanced XGBoost model with advanced configuration
+        """
+        print(f"🌲 Training Enhanced XGBoost model...")
+        
+        # Prepare training data
+        X_train = train_df.drop('target', axis=1)
+        y_train = train_df['target']
+        X_val = val_df.drop('target', axis=1)
+        y_val = val_df['target']
+        
+        # Calculate class distribution and balancing
+        class_counts = y_train.value_counts()
+        total_samples = len(y_train)
+        
+        # Calculate scale_pos_weight for class balancing
+        neg_samples = class_counts[0] if 0 in class_counts else 0
+        pos_samples = class_counts[1] if 1 in class_counts else 1
+        scale_pos_weight = neg_samples / pos_samples if pos_samples > 0 else 1.0
+        
+        print(f"📊 Class Distribution:")
+        print(f"   Negative (0): {neg_samples:,} ({neg_samples/total_samples*100:.1f}%)")
+        print(f"   Positive (1): {pos_samples:,} ({pos_samples/total_samples*100:.1f}%)")
+        print(f"⚖️  Scale Pos Weight: {scale_pos_weight:.3f}")
+        
+        # Enhanced XGBoost with improved parameters
+        model = xgb.XGBClassifier(
+            **self.xgb_params,
+            scale_pos_weight=scale_pos_weight  # Dynamic class balancing
+        )
+        
+        # Fit with validation and enhanced monitoring
+        model.fit(
+            X_train, y_train,
+            eval_set=[(X_train, y_train), (X_val, y_val)],
+            verbose=False
+        )
+        
+        # Print training summary
+        best_iteration = model.best_iteration if hasattr(model, 'best_iteration') else self.xgb_params['n_estimators']
+        print(f"✅ XGBoost training completed. Best iteration: {best_iteration}")
+        
+        return model
+    
+    def evaluate_window(self, window_idx: int, lstm_model: tf.keras.Model, 
+                       xgb_model: xgb.XGBClassifier, test_data: Dict) -> Dict:
+        """
+        Comprehensive evaluation with all classification metrics
+        """
+        # LSTM evaluation
+        lstm_pred = self.generate_lstm_predictions(lstm_model, test_data['X_lstm'])
+        lstm_mae = mean_absolute_error(test_data['y_lstm'], lstm_pred)
+        lstm_rmse = np.sqrt(mean_squared_error(test_data['y_lstm'], lstm_pred))
+        
+        # XGBoost evaluation
+        X_test = test_data['xgb_df'].drop('target', axis=1)
+        y_test = test_data['xgb_df']['target']
+        
+        xgb_pred = xgb_model.predict(X_test)
+        xgb_pred_proba = xgb_model.predict_proba(X_test)[:, 1]
+        
+        # Comprehensive XGBoost metrics
+        xgb_accuracy = accuracy_score(y_test, xgb_pred)
+        xgb_precision = precision_score(y_test, xgb_pred, zero_division=0)
+        xgb_recall = recall_score(y_test, xgb_pred, zero_division=0)
+        xgb_f1 = f1_score(y_test, xgb_pred, zero_division=0)
+        xgb_auc = roc_auc_score(y_test, xgb_pred_proba) if len(np.unique(y_test)) > 1 else 0.5
+        
+        # Confidence-based predictions (alternative thresholds)
+        high_confidence_buys = (xgb_pred_proba > 0.7).astype(int)
+        conservative_pred = (xgb_pred_proba > 0.6).astype(int)
+        
+        # Calculate metrics for different confidence levels
+        conf_precision_70 = precision_score(y_test, high_confidence_buys, zero_division=0)
+        conf_recall_70 = recall_score(y_test, high_confidence_buys, zero_division=0)
+        conf_f1_70 = f1_score(y_test, high_confidence_buys, zero_division=0)
+        
+        conf_precision_60 = precision_score(y_test, conservative_pred, zero_division=0)
+        conf_recall_60 = recall_score(y_test, conservative_pred, zero_division=0)
+        conf_f1_60 = f1_score(y_test, conservative_pred, zero_division=0)
+        
+        # Class distribution in test set
+        test_class_dist = pd.Series(y_test).value_counts()
+        
+        print(f"📊 Window {window_idx} Detailed Results:")
+        print(f"   🧠 LSTM: MAE={lstm_mae:.6f}, RMSE={lstm_rmse:.6f}")
+        print(f"   🌲 XGBoost Metrics (Default 0.5 threshold):")
+        print(f"      Accuracy:  {xgb_accuracy:.4f}")
+        print(f"      Precision: {xgb_precision:.4f}")
+        print(f"      Recall:    {xgb_recall:.4f}")
+        print(f"      F1-Score:  {xgb_f1:.4f}")
+        print(f"      AUC:       {xgb_auc:.4f}")
+        print(f"   🎯 Confidence-Based Metrics:")
+        print(f"      70% Threshold - P: {conf_precision_70:.4f}, R: {conf_recall_70:.4f}, F1: {conf_f1_70:.4f}")
+        print(f"      60% Threshold - P: {conf_precision_60:.4f}, R: {conf_recall_60:.4f}, F1: {conf_f1_60:.4f}")
+        print(f"   📈 Test Distribution: {dict(test_class_dist)}")
+        
+        return {
+            'window': window_idx,
+            'lstm_mae': float(lstm_mae),
+            'lstm_rmse': float(lstm_rmse),
+            'xgb_accuracy': float(xgb_accuracy),
+            'xgb_precision': float(xgb_precision),
+            'xgb_recall': float(xgb_recall),
+            'xgb_f1': float(xgb_f1),
+            'xgb_auc': float(xgb_auc),
+            'conf_precision_70': float(conf_precision_70),
+            'conf_recall_70': float(conf_recall_70),
+            'conf_f1_70': float(conf_f1_70),
+            'conf_precision_60': float(conf_precision_60),
+            'conf_recall_60': float(conf_recall_60),
+            'conf_f1_60': float(conf_f1_60),
+            'test_samples': len(test_data['xgb_df']),
+            'test_positive_ratio': float(test_class_dist.get(1, 0) / len(y_test))
+        }
+    
+    def evaluate_models(self, symbol: str, lstm_model: tf.keras.Model, xgb_model: xgb.XGBClassifier,
+                       test_data: Dict) -> Dict:
+        """
+        Comprehensive model evaluation
+        """
+        print(f"📊 Evaluating models for {symbol}...")
+        
+        results = {}
+        
+        # LSTM Evaluation
+        lstm_pred = self.generate_lstm_predictions(lstm_model, test_data['X_lstm'])
+        lstm_mae = mean_absolute_error(test_data['y_lstm'], lstm_pred)
+        lstm_rmse = np.sqrt(mean_squared_error(test_data['y_lstm'], lstm_pred))
+        
+        results['lstm'] = {
+            'mae': lstm_mae,
+            'rmse': lstm_rmse,
+            'predictions': lstm_pred
+        }
+        
+        # XGBoost Evaluation
+        X_test = test_data['xgb_df'].drop('target', axis=1)
+        y_test = test_data['xgb_df']['target']
+        
+        xgb_pred = xgb_model.predict(X_test)
+        xgb_pred_proba = xgb_model.predict_proba(X_test)[:, 1]
+        
+        xgb_accuracy = accuracy_score(y_test, xgb_pred)
+        xgb_auc = roc_auc_score(y_test, xgb_pred_proba)
+        
+        results['xgboost'] = {
+            'accuracy': xgb_accuracy,
+            'auc': xgb_auc,
+            'predictions': xgb_pred,
+            'probabilities': xgb_pred_proba
+        }
+        
+        # Save results
+        with open(f"results/{symbol.lower()}_evaluation.json", 'w') as f:
+            json.dump({
+                'lstm_mae': float(lstm_mae),
+                'lstm_rmse': float(lstm_rmse),
+                'xgb_accuracy': float(xgb_accuracy),
+                'xgb_auc': float(xgb_auc)
+            }, f, indent=2)
+        
+        print(f"📈 LSTM - MAE: {lstm_mae:.6f}, RMSE: {lstm_rmse:.6f}")
+        print(f"🎯 XGBoost - Accuracy: {xgb_accuracy:.4f}, AUC: {xgb_auc:.4f}")
+        
+        return results
+    
+    def log_window_results(self, symbol: str, window_results: Dict):
+        """
+        Log detailed results to CSV for analysis
+        """
+        csv_path = f'logs/{symbol.lower()}_metrics.csv'
+        
+        # Create DataFrame from results
+        df_row = pd.DataFrame([window_results])
+        
+        # Append to CSV (create if doesn't exist)
+        if os.path.exists(csv_path):
+            df_row.to_csv(csv_path, mode='a', header=False, index=False)
+        else:
+            df_row.to_csv(csv_path, mode='w', header=True, index=False)
+        
+        print(f"📝 Results logged to {csv_path}")
+    
+    def plot_feature_importance(self, model: xgb.XGBClassifier, symbol: str, window_idx: int):
+        """
+        Generate and save feature importance plot
+        """
+        importance_df = pd.DataFrame({
+            'feature': model.feature_names_in_,
+            'importance': model.feature_importances_
+        }).sort_values('importance', ascending=False).head(20)
+        
+        plt.figure(figsize=(10, 8))
+        sns.barplot(data=importance_df, x='importance', y='feature')
+        plt.title(f'{symbol} - Window {window_idx} - Top 20 Feature Importance')
+        plt.xlabel('Importance Score')
+        plt.tight_layout()
+        
+        plot_path = f'logs/feature_importance/{symbol.lower()}_window_{window_idx}.png'
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"📊 Feature importance plot saved: {plot_path}")
+    
+    def train_symbol_walkforward(self, symbol: str) -> List[Dict]:
+        """
+        Walk-forward training pipeline for a single symbol
+        """
+        print(f"\n{'='*60}")
+        print(f"���0 Walk-Forward Training for {symbol}")
+        print(f"{'='*60}")
+        
+        # Load and prepare data
+        print("\n📊 Data Preparation")
+        df = self.load_data(symbol)
+        df_features = self.create_technical_features(df)
+        
+        # Generate walk-forward windows
+        windows = self.generate_walk_forward_windows(df_features)
+        
+        if not windows:
+            print(f"⚠️  No valid windows found for {symbol}")
+            return []
+        
+        results = []
+        start_time = time.time()  # Initialize start_time for progress tracking
+        
+        for i, (train_start, train_end, test_end) in enumerate(windows):
+            window_start_time = time.time()
+            print(f"\n🔄 Window {i+1}/{len(windows)}: {train_start.date()} to {test_end.date()}")
+            print(f"⏰ Window started at: {datetime.now().strftime('%H:%M:%S')}")
+            
+            # Split data for this window
+            train_data = df_features[train_start:train_end]
+            test_data = df_features[train_end:test_end]
+            
+            if len(train_data) < self.min_training_samples:
+                print(f"⚠️  Skipping window {i+1}: insufficient training data ({len(train_data)} samples)")
+                continue
+            
+            # Prepare LSTM data for training window
+            X_lstm, y_lstm, timestamps = self.prepare_lstm_data(train_data)
+            
+            # Validate LSTM data preparation
+            if len(X_lstm) == 0 or len(y_lstm) == 0:
+                print(f"⚠️  Skipping window {i+1}: no valid LSTM sequences created")
+                continue
+                
+            if len(X_lstm) < 1000:
+                print(f"⚠️  Skipping window {i+1}: insufficient LSTM sequences ({len(X_lstm)})")
+                continue
+                
+            # Additional validation for LSTM targets
+            if np.isnan(y_lstm).any() or np.isinf(y_lstm).any():
+                print(f"⚠️  Skipping window {i+1}: invalid LSTM targets detected")
+                continue
+            
+            # Split LSTM data (80% train, 20% val)
+            split_idx = int(0.8 * len(X_lstm))
+            X_train_lstm = X_lstm[:split_idx]
+            y_train_lstm = y_lstm[:split_idx]
+            X_val_lstm = X_lstm[split_idx:]
+            y_val_lstm = y_lstm[split_idx:]
+            
+            # Scale LSTM data
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train_lstm.reshape(-1, X_train_lstm.shape[-1])).reshape(X_train_lstm.shape)
+            X_val_scaled = scaler.transform(X_val_lstm.reshape(-1, X_val_lstm.shape[-1])).reshape(X_val_lstm.shape)
+            
+            # Train LSTM with timing
+            print(f"🧠 Starting LSTM training for window {i+1}...")
+            lstm_start = time.time()
+            lstm_model = self.train_lstm_model(X_train_scaled, y_train_lstm, X_val_scaled, y_val_lstm)
+            lstm_time = (time.time() - lstm_start) / 60
+            print(f"✅ LSTM training completed in {lstm_time:.1f} minutes")
+            
+            # Generate LSTM predictions for full training period
+            X_full_scaled = scaler.transform(X_lstm.reshape(-1, X_lstm.shape[-1])).reshape(X_lstm.shape)
+            lstm_delta_full = self.generate_lstm_predictions(lstm_model, X_full_scaled)
+            
+            # Prepare XGBoost data for training
+            xgb_df = self.prepare_xgboost_features(train_data, lstm_delta_full, timestamps)
+            
+            if len(xgb_df) < 500:
+                print(f"⚠️  Skipping window {i+1}: insufficient XGBoost data ({len(xgb_df)} samples)")
+                continue
+            
+            # Split XGBoost data (80% train, 20% val)
+            split_idx_xgb = int(0.8 * len(xgb_df))
+            train_df_xgb = xgb_df.iloc[:split_idx_xgb]
+            val_df_xgb = xgb_df.iloc[split_idx_xgb:]
+            
+            # Train XGBoost with timing
+            print(f"🌳 Starting XGBoost training for window {i+1}...")
+            xgb_start = time.time()
+            xgb_model = self.train_xgboost_model(train_df_xgb, val_df_xgb)
+            xgb_time = (time.time() - xgb_start) / 60
+            print(f"✅ XGBoost training completed in {xgb_time:.1f} minutes")
+            
+            # Prepare test data
+            X_test_lstm, y_test_lstm, test_timestamps = self.prepare_lstm_data(test_data)
+            
+            # Validate test data preparation
+            if len(X_test_lstm) == 0 or len(y_test_lstm) == 0:
+                print(f"⚠️  Skipping window {i+1}: no valid test LSTM sequences created")
+                continue
+                
+            # Additional validation for test LSTM targets
+            if np.isnan(y_test_lstm).any() or np.isinf(y_test_lstm).any():
+                print(f"⚠️  Skipping window {i+1}: invalid test LSTM targets detected")
+                continue
+            
+            X_test_scaled = scaler.transform(X_test_lstm.reshape(-1, X_test_lstm.shape[-1])).reshape(X_test_lstm.shape)
+            lstm_delta_test = self.generate_lstm_predictions(lstm_model, X_test_scaled)
+            
+            xgb_test_df = self.prepare_xgboost_features(test_data, lstm_delta_test, test_timestamps)
+            
+            if len(xgb_test_df) == 0:
+                print(f"⚠️  Skipping window {i+1}: no XGBoost test data")
+                continue
+            
+            # Evaluate
+            test_data_dict = {
+                'X_lstm': X_test_scaled,
+                'y_lstm': y_test_lstm,
+                'xgb_df': xgb_test_df
+            }
+            
+            window_results = self.evaluate_window(i+1, lstm_model, xgb_model, test_data_dict)
+            window_results['symbol'] = symbol
+            window_results['train_start'] = train_start.strftime('%Y-%m-%d')
+            window_results['train_end'] = train_end.strftime('%Y-%m-%d')
+            window_results['test_end'] = test_end.strftime('%Y-%m-%d')
+            
+            results.append(window_results)
+            
+            # Calculate and display window timing
+            window_time = (time.time() - window_start_time) / 60
+            print(f"⏱️  Window {i+1} completed in {window_time:.1f} minutes")
+            print(f"📊 Progress: {i+1}/{len(windows)} windows ({(i+1)/len(windows)*100:.1f}%)")
+            
+            # Estimate remaining time
+            if i > 0:
+                avg_time_per_window = (time.time() - start_time) / (i + 1) / 60
+                remaining_windows = len(windows) - (i + 1)
+                estimated_remaining = avg_time_per_window * remaining_windows
+                print(f"🕐 Estimated remaining time: {estimated_remaining:.1f} minutes")
+            
+            # Log results to CSV
+            self.log_window_results(symbol, window_results)
+            
+            # Skip feature importance plot for speed (only save for last window)
+            if i == len(windows) - 1:  # Only plot for last window
+                self.plot_feature_importance(xgb_model, symbol, i+1)
+            
+            # Save models per window
+            lstm_model.save(f'{self.models_dir}/lstm/{symbol.lower()}_window_{i+1}.keras')
+            with open(f'{self.models_dir}/xgboost/{symbol.lower()}_window_{i+1}.pkl', 'wb') as f:
+                pickle.dump(xgb_model, f)
+            with open(f'{self.models_dir}/scalers/{symbol.lower()}_window_{i+1}_scaler.pkl', 'wb') as f:
+                pickle.dump(scaler, f)
+            
+            # Save best models from last window
+            if i == len(windows) - 1:  # Last window
+                # Save final models
+                lstm_model.save(f"{self.models_dir}/lstm/{symbol.lower()}_lstm.h5")
+                with open(f"{self.models_dir}/xgboost/{symbol.lower()}_xgboost.pkl", 'wb') as f:
+                    pickle.dump(xgb_model, f)
+                with open(f"{self.models_dir}/scalers/{symbol.lower()}_scaler.pkl", 'wb') as f:
+                    pickle.dump(scaler, f)
+                
+                # Save feature importance
+                X_features = train_df_xgb.drop('target', axis=1)
+                importance_df = pd.DataFrame({
+                    'feature': X_features.columns,
+                    'importance': xgb_model.feature_importances_
+                }).sort_values('importance', ascending=False)
+                importance_df.to_csv(f"results/{symbol.lower()}_feature_importance.csv", index=False)
+                
+                print(f"✅ Final models saved for {symbol}")
+                print(f"🔍 Top 5 features: {importance_df.head()['feature'].tolist()}")
+        
+        return results
+    
+    def train_all_models(self):
+        """
+        Train models for all symbols using walk-forward validation and save summary
+        """
+        print(f"\n{'='*80}")
+        print(f"���0 WALK-FORWARD HYBRID LSTM + XGBOOST TRAINING PIPELINE")
+        print(f"{'='*80}")
+        print(f"📊 Symbols: {', '.join(self.symbols)}")
+        print(f"📅 Walk-Forward Config: {self.train_months}M train → {self.test_months}M test (step: {self.step_months}M)")
+        print(f"⏰ Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        all_results = {}
+        start_time = time.time()
+        
+        for i, symbol in enumerate(self.symbols, 1):
+            symbol_start = time.time()
+            print(f"\n🚀 Starting training for symbol {i}/{len(self.symbols)}: {symbol}")
+            print(f"⏰ Symbol training started at: {datetime.now().strftime('%H:%M:%S')}")
+            
+            try:
+                symbol_results = self.train_symbol_walkforward(symbol)
+                all_results[symbol] = symbol_results
+                
+                symbol_time = (time.time() - symbol_start) / 60
+                print(f"\n🎯 {symbol} Training Summary:")
+                print(f"⏱️  Total time: {symbol_time:.1f} minutes")
+                print(f"📊 Windows processed: {len(symbol_results)}/{len(windows) if 'windows' in locals() else 'N/A'}")
+                
+                if symbol_results:
+                    # Calculate aggregated metrics
+                    avg_lstm_mae = np.mean([r['lstm_mae'] for r in symbol_results])
+                    avg_lstm_rmse = np.mean([r['lstm_rmse'] for r in symbol_results])
+                    avg_xgb_accuracy = np.mean([r['xgb_accuracy'] for r in symbol_results])
+                    avg_xgb_precision = np.mean([r['xgb_precision'] for r in symbol_results])
+                    avg_xgb_recall = np.mean([r['xgb_recall'] for r in symbol_results])
+                    avg_xgb_f1 = np.mean([r['xgb_f1'] for r in symbol_results])
+                    avg_xgb_auc = np.mean([r['xgb_auc'] for r in symbol_results])
+                    
+                    print(f"\n📊 {symbol} Summary ({len(symbol_results)} windows):")
+                    print(f"   LSTM: MAE={avg_lstm_mae:.6f}, RMSE={avg_lstm_rmse:.6f}")
+                    print(f"   XGBoost: Acc={avg_xgb_accuracy:.4f}, Prec={avg_xgb_precision:.4f}, Rec={avg_xgb_recall:.4f}, F1={avg_xgb_f1:.4f}, AUC={avg_xgb_auc:.4f}")
+                    print(f"⏱️  Average time per window: {symbol_time/len(symbol_results):.1f} minutes")
+                else:
+                    print(f"⚠️  {symbol}: No valid windows processed")
+                
+            except Exception as e:
+                print(f"\n❌ Error training {symbol}: {str(e)}")
+                traceback.print_exc()
+                all_results[symbol] = {'error': str(e)}
+        
+        total_time = (time.time() - start_time) / 60
+        
+        # Calculate overall statistics
+        successful_symbols = [s for s in all_results if isinstance(all_results[s], list) and all_results[s]]
+        failed_symbols = [s for s in all_results if 'error' in str(all_results[s]) or not all_results[s]]
+        
+        # Aggregate metrics across all symbols
+        all_window_results = []
+        for symbol_results in all_results.values():
+            if isinstance(symbol_results, list):
+                all_window_results.extend(symbol_results)
+        
+        # Save comprehensive results
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        results_file = f"results/walkforward_results_{timestamp}.json"
+        
+        summary = {
+            'timestamp': timestamp,
+            'training_type': 'walk_forward',
+            'config': {
+                'train_months': self.train_months,
+                'test_months': self.test_months,
+                'step_months': self.step_months,
+                'min_training_samples': self.min_training_samples
+            },
+            'total_time_minutes': total_time,
+            'symbols_trained': len(successful_symbols),
+            'symbols_failed': len(failed_symbols),
+            'total_windows': len(all_window_results),
+            'results_by_symbol': all_results
+        }
+        
+        # Add aggregated metrics if we have results
+        if all_window_results:
+            summary['aggregated_metrics'] = {
+                'avg_lstm_mae': float(np.mean([r['lstm_mae'] for r in all_window_results])),
+                'avg_lstm_rmse': float(np.mean([r['lstm_rmse'] for r in all_window_results])),
+                'avg_xgb_accuracy': float(np.mean([r['xgb_accuracy'] for r in all_window_results])),
+                'avg_xgb_precision': float(np.mean([r['xgb_precision'] for r in all_window_results])),
+                'avg_xgb_recall': float(np.mean([r['xgb_recall'] for r in all_window_results])),
+                'avg_xgb_f1': float(np.mean([r['xgb_f1'] for r in all_window_results])),
+                'avg_xgb_auc': float(np.mean([r['xgb_auc'] for r in all_window_results])),
+                'std_lstm_mae': float(np.std([r['lstm_mae'] for r in all_window_results])),
+                'std_xgb_accuracy': float(np.std([r['xgb_accuracy'] for r in all_window_results])),
+                'std_xgb_f1': float(np.std([r['xgb_f1'] for r in all_window_results]))
+            }
+        
+        with open(results_file, 'w') as f:
+            json.dump(summary, f, indent=2, default=str)
+        
+        # Print final summary
+        print(f"\n{'='*80}")
+        print(f"🎉 WALK-FORWARD TRAINING COMPLETED!")
+        print(f"{'='*80}")
+        print(f"⏰ Total time: {total_time:.1f} minutes")
+        print(f"✅ Successful: {len(successful_symbols)}/{len(self.symbols)} symbols")
+        print(f"📊 Total windows processed: {len(all_window_results)}")
+        
+        if all_window_results:
+            agg = summary['aggregated_metrics']
+            print(f"\n📈 Overall Performance:")
+            print(f"   LSTM: MAE={agg['avg_lstm_mae']:.6f}±{agg['std_lstm_mae']:.6f}")
+            print(f"   XGBoost: Acc={agg['avg_xgb_accuracy']:.4f}±{agg['std_xgb_accuracy']:.4f}, F1={agg['avg_xgb_f1']:.4f}±{agg['std_xgb_f1']:.4f}, AUC={agg['avg_xgb_auc']:.4f}")
+            print(f"   Precision={agg['avg_xgb_precision']:.4f}, Recall={agg['avg_xgb_recall']:.4f}")
+        
+        print(f"📁 Results saved to: {results_file}")
+        
+        if failed_symbols:
+            print(f"❌ Failed symbols: {', '.join(failed_symbols)}")
+        
+        return summary
+
+def parse_arguments():
+    """
+    Parse command line arguments
+    """
+    parser = argparse.ArgumentParser(
+        description='Hybrid LSTM + XGBoost Model Training with Walk-Forward Analysis',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python train_hybrid_models.py                    # Train all symbols
+  python train_hybrid_models.py --symbols BTCEUR   # Train only BTCEUR
+  python train_hybrid_models.py --symbols BTCEUR ETHEUR  # Train BTCEUR and ETHEUR
+        """
+    )
+    
+    parser.add_argument(
+        '--symbols', 
+        nargs='+', 
+        help='Symbols to train (e.g., BTCEUR ETHEUR). If not specified, trains all symbols.',
+        choices=['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR'],
+        default=None
+    )
+    
+    parser.add_argument(
+        '--train-months',
+        type=int,
+        default=3,
+        help='Training window size in months (default: 3)'
+    )
+    
+    parser.add_argument(
+        '--test-months',
+        type=int,
+        default=1,
+        help='Test window size in months (default: 1)'
+    )
+    
+    parser.add_argument(
+        '--step-months',
+        type=int,
+        default=1,
+        help='Step size for rolling window in months (default: 1)'
+    )
+    
+    return parser.parse_args()
+
+
+def main():
+    """
+    Main training execution
+    """
+    # Parse command line arguments
+    args = parse_arguments()
+    
+    # Initialize trainer with specified symbols
+    trainer = HybridModelTrainer(
+        symbols=args.symbols,
+        train_months=args.train_months,
+        test_months=args.test_months,
+        step_months=args.step_months
+    )
+    
+    # Train all models
+    results = trainer.train_all_models()
+    
+    print("\n🎯 Training pipeline completed successfully!")
+    print("\n📋 Next steps:")
+    print("   1. Review model performance in results/")
+    print("   2. Analyze feature importance files")
+    print("   3. Implement trading strategy using trained models")
+    print("   4. Set up paper trading for validation")
+
+if __name__ == "__main__":
     main()
