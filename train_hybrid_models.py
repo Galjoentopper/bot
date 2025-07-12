@@ -63,8 +63,16 @@ try:
         
         # Additional GPU optimizations
         tf.config.optimizer.set_jit(True)  # Enable XLA compilation
-        tf.config.experimental.enable_tensor_float_32()  # Enable TF32 for better performance
-        print("🔥 Advanced GPU optimizations: XLA compilation and TF32 enabled")
+        
+        # Enable TF32 for better performance (if available)
+        try:
+            tf.config.experimental.enable_tensor_float_32()
+            print("🔥 Advanced GPU optimizations: XLA compilation and TF32 enabled")
+        except AttributeError:
+            # TF32 not available in this TensorFlow version
+            print("🔥 Advanced GPU optimizations: XLA compilation enabled (TF32 not available)")
+        except Exception as tf32_error:
+            print(f"🔥 Advanced GPU optimizations: XLA compilation enabled (TF32 error: {tf32_error})")
     else:
         print("💻 No GPU detected, using CPU")
 except Exception as e:
@@ -397,8 +405,8 @@ class HybridModelTrainer:
         valid_target_mask = ~(np.isnan(targets) | np.isinf(targets))
         print(f"📊 Target validation: {valid_target_mask.sum()}/{len(targets)} valid targets")
         
-        # Create sequences
-        X, y = [], []
+        # Create sequences and track valid indices
+        X, y, valid_indices = [], [], []
         
         for i in range(self.lstm_sequence_length, len(feature_data) - self.prediction_horizon):
             # Check if current sequence and target are valid
@@ -409,9 +417,11 @@ class HybridModelTrainer:
             if not (np.isnan(sequence).any() or np.isinf(sequence).any()) and not (np.isnan(target) or np.isinf(target)):
                 X.append(sequence)
                 y.append(target)
+                valid_indices.append(i)
         
         X = np.array(X)
         y = np.array(y)
+        valid_indices = np.array(valid_indices)
         
         # Additional validation and clipping for extreme values
         if len(y) > 0:
@@ -424,6 +434,7 @@ class HybridModelTrainer:
             extreme_mask = np.abs(y - y_mean) <= clip_threshold
             X = X[extreme_mask]
             y = y[extreme_mask]
+            valid_indices = valid_indices[extreme_mask]
             
             if len(y) < original_count:
                 print(f"📉 Removed {original_count - len(y)} extreme target values (>{clip_threshold:.6f})")
@@ -435,8 +446,8 @@ class HybridModelTrainer:
             print("⚠️  Warning: No valid sequences created for LSTM training")
             return np.array([]), np.array([]), np.array([])
         
-        # Get corresponding timestamps for alignment
-        timestamps = df.index[self.lstm_sequence_length:-self.prediction_horizon][valid_indices]
+        # Get corresponding timestamps for alignment using valid indices
+        timestamps = df.index[valid_indices]
         
         print(f"📊 LSTM sequences: {X.shape}, targets: {y.shape}")
         
