@@ -1,0 +1,2 @@
+entry_time,exit_time,direction,entry_price,exit_price,position_size,pnl,confidence,exit_reason,fees,slippage
+2025-02-20 23:00:00,2025-02-21 10:00:00,SELL,93400.53597,94083.00902,0.45171490336527986,-683.250337810158,0.9741518050432205,STOP_LOSS,374.96708997999997,187.48305

@@ -1,0 +1,12 @@
+{
+  "total_trades": 1,
+  "win_rate": 0.0,
+  "total_pnl": -683.250337810158,
+  "avg_win": 0,
+  "avg_loss": -683.250337810158,
+  "profit_factor": 0.0,
+  "sharpe_ratio": -9.16515138991168,
+  "sortino_ratio": 0,
+  "max_drawdown": -4.306046548970405,
+  "total_return": -4.306046548970405
+}
