@@ -1,15 +1,23 @@
-# Machine Learning Requirements for Hybrid LSTM + XGBoost Training
-# ================================================================
-# Updated to resolve TA-Lib installation issues on Windows
+# Machine Learning Requirements for Enhanced Hybrid LSTM + XGBoost Training
+# ==========================================================================
+# Updated for enhanced model architecture with attention mechanisms,
+# advanced feature engineering, and improved regularization techniques
+# Also resolves TA-Lib installation issues on Windows
 
 # Core ML Libraries
-tensorflow>=2.13.0
-xgboost>=1.7.0
+tensorflow>=2.15.0
+xgboost>=2.0.0
 scikit-learn>=1.3.0
 
 # Data Processing
 pandas>=2.0.0
 numpy>=1.24.0
+scipy>=1.11.0
+
+# Enhanced Model Features Requirements:
+# - TensorFlow 2.15+ for attention mechanisms, AdamW optimizer, and advanced callbacks
+# - XGBoost 2.0+ for improved focal loss and enhanced regularization
+# - SciPy 1.11+ for advanced statistical functions in feature engineering
 
 # Technical Analysis
 pandas-ta>=0.3.14b
