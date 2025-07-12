@@ -35,10 +35,11 @@ import xgboost as xgb
 
 # Deep Learning
 import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Input, BatchNormalization, GlobalAveragePooling1D, Dot
+from tensorflow.keras.optimizers import Adam, AdamW
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, LearningRateScheduler
+import traceback
 
 # Technical Analysis
 import pandas_ta as ta
@@ -76,10 +77,34 @@ class HybridModelTrainer:
         os.makedirs("logs", exist_ok=True)
         os.makedirs("logs/feature_importance", exist_ok=True)
         
-        # Model parameters
-        self.lstm_sequence_length = 60  # 15 hours of 15-min candles
-        self.prediction_horizon = 1     # Next 15-min candle
-        self.price_change_threshold = 0.002  # 0.2% for binary classification (more sensitive)
+        # Enhanced Model parameters
+        self.lstm_sequence_length = 96      # 24 hours of 15-min candles (increased from 60)
+        self.prediction_horizon = 1         # Next 15-min candle
+        self.price_change_threshold = 0.001 # 0.1% for binary classification (more sensitive)
+        
+        # Advanced LSTM parameters
+        self.lstm_units = [128, 64, 32]     # Multi-layer LSTM with decreasing units
+        self.dropout_rate = 0.3             # Increased dropout for better regularization
+        self.attention_units = 64           # Attention mechanism units
+        self.use_attention = True           # Enable attention mechanism
+        
+        # Enhanced XGBoost parameters
+        self.xgb_params = {
+            'n_estimators': 500,            # Increased from 300
+            'max_depth': 8,                 # Increased from 6
+            'learning_rate': 0.03,          # Decreased for better convergence
+            'subsample': 0.8,               # Add subsampling
+            'colsample_bytree': 0.8,        # Feature subsampling
+            'reg_alpha': 0.1,               # L1 regularization
+            'reg_lambda': 1.0,              # L2 regularization
+            'min_child_weight': 3,          # Minimum child weight
+            'gamma': 0.1,                   # Minimum split loss
+            'early_stopping_rounds': 50,    # Increased early stopping
+            'eval_metric': 'logloss',
+            'objective': 'binary:logistic',
+            'random_state': 42,
+            'n_jobs': -1
+        }
         
         print("🚀 Hybrid LSTM + XGBoost Model Trainer with Walk-Forward Analysis Initialized")
         print(f"📁 Data directory: {self.data_dir}")
@@ -117,40 +142,108 @@ class HybridModelTrainer:
     
     def create_technical_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Create comprehensive technical indicators
+        Create comprehensive technical indicators with advanced features
         """
         data = df.copy()
         
-        # Price-based features
+        # Enhanced Price-based features
         data['returns'] = data['close'].pct_change()
         data['log_returns'] = np.log(data['close'] / data['close'].shift(1))
         data['price_change_1h'] = data['close'].pct_change(4)  # 4 * 15min = 1h
         data['price_change_4h'] = data['close'].pct_change(16) # 16 * 15min = 4h
+        data['price_change_24h'] = data['close'].pct_change(96) # 96 * 15min = 24h
         
-        # Volume features
+        # Price normalization features
+        data['price_zscore_20'] = (data['close'] - data['close'].rolling(20).mean()) / data['close'].rolling(20).std()
+        data['price_zscore_50'] = (data['close'] - data['close'].rolling(50).mean()) / data['close'].rolling(50).std()
+        
+        # Lag features for returns (important for prediction)
+        for lag in [1, 2, 3, 5, 10, 20]:
+            data[f'returns_lag_{lag}'] = data['returns'].shift(lag)
+            data[f'log_returns_lag_{lag}'] = data['log_returns'].shift(lag)
+        
+        # Rolling statistics for returns
+        data['returns_mean_10'] = data['returns'].rolling(10).mean()
+        data['returns_std_10'] = data['returns'].rolling(10).std()
+        data['returns_skew_20'] = data['returns'].rolling(20).skew()
+        data['returns_kurt_20'] = data['returns'].rolling(20).kurt()
+        
+        # Enhanced Volume features
         data['volume_sma_20'] = data['volume'].rolling(20).mean()
         data['volume_ratio'] = data['volume'] / data['volume_sma_20']
         data['volume_change'] = data['volume'].pct_change()
+        data['volume_zscore'] = (data['volume'] - data['volume'].rolling(20).mean()) / data['volume'].rolling(20).std()
         
-        # Volatility
+        # Volume-Price relationship
+        data['volume_price_trend'] = data['volume'] * data['returns']
+        data['volume_weighted_price'] = (data['volume'] * data['close']).rolling(20).sum() / data['volume'].rolling(20).sum()
+        
+        # Market microstructure features
+        data['spread'] = (data['high'] - data['low']) / data['close']
+        data['spread_ma'] = data['spread'].rolling(20).mean()
+        data['spread_ratio'] = data['spread'] / data['spread_ma']
+        
+        # Order flow approximation
+        data['buying_pressure'] = (data['close'] - data['low']) / (data['high'] - data['low'])
+        data['selling_pressure'] = (data['high'] - data['close']) / (data['high'] - data['low'])
+        data['net_pressure'] = data['buying_pressure'] - data['selling_pressure']
+        
+        # Enhanced Volatility features
         data['volatility_20'] = data['returns'].rolling(20).std()
+        data['volatility_50'] = data['returns'].rolling(50).std()
+        data['volatility_ratio'] = data['volatility_20'] / data['volatility_50']
         data['atr'] = ta.atr(data['high'], data['low'], data['close'], length=14)
+        data['atr_ratio'] = data['atr'] / data['close']
         
-        # Moving Averages
+        # Realized volatility (different timeframes)
+        data['realized_vol_5'] = data['returns'].rolling(5).std() * np.sqrt(5)
+        data['realized_vol_20'] = data['returns'].rolling(20).std() * np.sqrt(20)
+        
+        # Volatility clustering
+        data['vol_regime'] = (data['volatility_20'] > data['volatility_20'].rolling(100).quantile(0.75)).astype(int)
+        
+        # Enhanced Moving Averages
         data['ema_9'] = ta.ema(data['close'], length=9)
         data['ema_21'] = ta.ema(data['close'], length=21)
         data['ema_50'] = ta.ema(data['close'], length=50)
+        data['ema_100'] = ta.ema(data['close'], length=100)
         data['sma_200'] = ta.sma(data['close'], length=200)
         
         # Price relative to MAs
         data['price_vs_ema9'] = (data['close'] - data['ema_9']) / data['ema_9']
         data['price_vs_ema21'] = (data['close'] - data['ema_21']) / data['ema_21']
+        data['price_vs_ema50'] = (data['close'] - data['ema_50']) / data['ema_50']
         data['price_vs_sma200'] = (data['close'] - data['sma_200']) / data['sma_200']
         
-        # Oscillators
+        # MA crossovers and trends
+        data['ema9_vs_ema21'] = (data['ema_9'] - data['ema_21']) / data['ema_21']
+        data['ema21_vs_ema50'] = (data['ema_21'] - data['ema_50']) / data['ema_50']
+        data['ema50_vs_ema100'] = (data['ema_50'] - data['ema_100']) / data['ema_100']
+        
+        # Trend strength indicators
+        data['ma_alignment'] = ((data['ema_9'] > data['ema_21']) & 
+                               (data['ema_21'] > data['ema_50']) & 
+                               (data['ema_50'] > data['ema_100'])).astype(int)
+        data['ma_slope_9'] = data['ema_9'].pct_change(5)
+        data['ma_slope_21'] = data['ema_21'].pct_change(5)
+        
+        # Enhanced Oscillators
         data['rsi'] = ta.rsi(data['close'], length=14)
+        data['rsi_9'] = ta.rsi(data['close'], length=9)
+        data['rsi_21'] = ta.rsi(data['close'], length=21)
         data['rsi_oversold'] = (data['rsi'] < 30).astype(int)
         data['rsi_overbought'] = (data['rsi'] > 70).astype(int)
+        data['rsi_divergence'] = data['rsi'].diff(5) * data['close'].pct_change(5)
+        
+        # Stochastic oscillator
+        stoch = ta.stoch(data['high'], data['low'], data['close'])
+        data['stoch_k'] = stoch['STOCHk_14_3_3']
+        data['stoch_d'] = stoch['STOCHd_14_3_3']
+        data['stoch_oversold'] = (data['stoch_k'] < 20).astype(int)
+        data['stoch_overbought'] = (data['stoch_k'] > 80).astype(int)
+        
+        # Williams %R
+        data['williams_r'] = ta.willr(data['high'], data['low'], data['close'], length=14)
         
         # MACD
         macd_data = ta.macd(data['close'])
@@ -191,13 +284,26 @@ class HybridModelTrainer:
         data['near_resistance'] = (data['close'] / data['high_20'] > 0.98).astype(int)
         data['near_support'] = (data['close'] / data['low_20'] < 1.02).astype(int)
         
-        # Feature Interactions (combined signals)
+        # Enhanced Feature Interactions (combined signals)
         data['rsi_macd_combo'] = data['rsi'] * data['macd_signal']
         data['volatility_ema_ratio'] = data['volatility_20'] / data['ema_21']
         data['volume_price_momentum'] = data['volume_ratio'] * data['momentum_10']
         data['bb_rsi_signal'] = data['bb_position'] * data['rsi']
         data['trend_strength'] = data['price_vs_ema9'] * data['price_vs_ema21']
         data['volatility_breakout'] = data['atr'] * data['bb_width']
+        
+        # Advanced interaction features
+        data['momentum_vol_signal'] = data['momentum_10'] * data['volume_ratio'] * data['volatility_ratio']
+        data['trend_momentum_align'] = data['ma_alignment'] * data['momentum_10']
+        data['pressure_volume_signal'] = data['net_pressure'] * data['volume_zscore']
+        data['volatility_regime_signal'] = data['vol_regime'] * data['rsi']
+        data['multi_timeframe_signal'] = data['price_change_1h'] * data['price_change_4h'] * data['price_change_24h']
+        data['oscillator_consensus'] = (data['rsi_oversold'] + data['stoch_oversold']) - (data['rsi_overbought'] + data['stoch_overbought'])
+        
+        # Market regime features
+        data['trend_regime'] = ((data['ma_alignment'] == 1) & (data['price_vs_sma200'] > 0)).astype(int)
+        data['consolidation_regime'] = ((data['bb_width'] < data['bb_width'].rolling(50).quantile(0.3)) & 
+                                       (data['atr_ratio'] < data['atr_ratio'].rolling(50).quantile(0.3))).astype(int)
         
         print(f"✅ Created {len([col for col in data.columns if col not in df.columns])} technical features (including interactions)")
         
@@ -228,10 +334,25 @@ class HybridModelTrainer:
     
     def prepare_lstm_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Prepare sequences for LSTM training
+        Prepare enhanced sequences for LSTM training with multiple features
         """
-        # Use price and volume for LSTM
-        price_data = df[['close', 'volume']].values
+        # Enhanced feature set for LSTM (normalized and scaled)
+        lstm_features = [
+            'close', 'volume', 'returns', 'log_returns',
+            'volatility_20', 'atr_ratio', 'rsi', 'macd', 'bb_position',
+            'volume_ratio', 'price_vs_ema9', 'price_vs_ema21',
+            'buying_pressure', 'selling_pressure', 'spread_ratio',
+            'momentum_10', 'price_zscore_20'
+        ]
+        
+        # Ensure all features exist
+        available_features = [f for f in lstm_features if f in df.columns]
+        if len(available_features) < len(lstm_features):
+            missing = set(lstm_features) - set(available_features)
+            print(f"⚠️  Missing LSTM features: {missing}")
+        
+        # Use available features
+        feature_data = df[available_features].values
         
         # Create target: next period price change %
         targets = df['close'].pct_change(self.prediction_horizon).shift(-self.prediction_horizon).values
@@ -239,8 +360,8 @@ class HybridModelTrainer:
         # Create sequences
         X, y = [], []
         
-        for i in range(self.lstm_sequence_length, len(price_data) - self.prediction_horizon):
-            X.append(price_data[i-self.lstm_sequence_length:i])
+        for i in range(self.lstm_sequence_length, len(feature_data) - self.prediction_horizon):
+            X.append(feature_data[i-self.lstm_sequence_length:i])
             y.append(targets[i])
         
         X = np.array(X)
@@ -258,45 +379,135 @@ class HybridModelTrainer:
         
         return X, y, timestamps
     
+    def create_attention_layer(self, lstm_output, attention_units=64):
+        """
+        Create attention mechanism for LSTM
+        """
+        from tensorflow.keras.layers import Dense, Activation, Dot, Concatenate
+        
+        # Attention mechanism
+        attention = Dense(attention_units, activation='tanh')(lstm_output)
+        attention = Dense(1, activation='softmax')(attention)
+        
+        # Apply attention weights
+        context = Dot(axes=1)([attention, lstm_output])
+        
+        return context
+    
+    def directional_loss(self, y_true, y_pred):
+        """
+        Custom loss function that penalizes wrong directional predictions more
+        """
+        import tensorflow as tf
+        
+        # Standard MSE
+        mse = tf.keras.losses.mean_squared_error(y_true, y_pred)
+        
+        # Directional penalty
+        direction_true = tf.sign(y_true)
+        direction_pred = tf.sign(y_pred)
+        direction_penalty = tf.where(
+            tf.equal(direction_true, direction_pred),
+            0.0,
+            tf.abs(y_true - y_pred) * 2.0  # Double penalty for wrong direction
+        )
+        
+        return mse + tf.reduce_mean(direction_penalty)
+    
     def train_lstm_model(self, X_train: np.ndarray, y_train: np.ndarray, 
                         X_val: np.ndarray, y_val: np.ndarray) -> tf.keras.Model:
         """
-        Train LSTM model for temporal pattern recognition
+        Train enhanced LSTM model with attention mechanism
         """
-        print(f"🧠 Training LSTM model...")
+        print(f"🧠 Training Enhanced LSTM model with attention...")
         
-        # Build LSTM architecture
-        model = Sequential([
-            LSTM(64, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])),
-            Dropout(0.2),
-            LSTM(32, return_sequences=False),
-            Dropout(0.2),
-            Dense(32, activation='relu'),
-            Dense(1, activation='linear')  # Regression output
-        ])
+        from tensorflow.keras.layers import Input, LSTM, Dense, Dropout, BatchNormalization, Add
+        from tensorflow.keras.models import Model
+        from tensorflow.keras.optimizers import AdamW
+        from tensorflow.keras.callbacks import CosineRestartScheduler
         
-        # Compile model
-        model.compile(
-            optimizer=Adam(learning_rate=0.001),
-            loss='mse',
-            metrics=['mae']
+        # Input layer
+        inputs = Input(shape=(X_train.shape[1], X_train.shape[2]))
+        
+        # Multi-layer LSTM with residual connections
+        x = inputs
+        
+        # First LSTM layer
+        lstm1 = LSTM(self.lstm_units[0], return_sequences=True, dropout=self.dropout_rate, 
+                    recurrent_dropout=self.dropout_rate)(x)
+        lstm1 = BatchNormalization()(lstm1)
+        
+        # Second LSTM layer with residual connection
+        lstm2 = LSTM(self.lstm_units[1], return_sequences=True, dropout=self.dropout_rate,
+                    recurrent_dropout=self.dropout_rate)(lstm1)
+        lstm2 = BatchNormalization()(lstm2)
+        
+        # Third LSTM layer
+        lstm3 = LSTM(self.lstm_units[2], return_sequences=True, dropout=self.dropout_rate,
+                    recurrent_dropout=self.dropout_rate)(lstm2)
+        lstm3 = BatchNormalization()(lstm3)
+        
+        # Attention mechanism (if enabled)
+        if self.use_attention:
+            # Self-attention
+            attention_output = self.create_attention_layer(lstm3, self.attention_units)
+            x = attention_output
+        else:
+            # Global average pooling
+            from tensorflow.keras.layers import GlobalAveragePooling1D
+            x = GlobalAveragePooling1D()(lstm3)
+        
+        # Dense layers with residual connections
+        dense1 = Dense(64, activation='relu')(x)
+        dense1 = Dropout(self.dropout_rate)(dense1)
+        dense1 = BatchNormalization()(dense1)
+        
+        dense2 = Dense(32, activation='relu')(dense1)
+        dense2 = Dropout(self.dropout_rate)(dense2)
+        dense2 = BatchNormalization()(dense2)
+        
+        # Output layer
+        outputs = Dense(1, activation='linear')(dense2)
+        
+        # Create model
+        model = Model(inputs=inputs, outputs=outputs)
+        
+        # Enhanced optimizer with weight decay
+        optimizer = AdamW(
+            learning_rate=0.001,
+            weight_decay=0.01,
+            beta_1=0.9,
+            beta_2=0.999
         )
         
-        # Callbacks
+        # Compile with custom loss
+        model.compile(
+            optimizer=optimizer,
+            loss=self.directional_loss,
+            metrics=['mae', 'mse']
+        )
+        
+        # Enhanced callbacks
         callbacks = [
-            EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
-            ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+            EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True, min_delta=1e-6),
+            ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=7, min_lr=1e-7, verbose=0),
+            # Cosine annealing scheduler
+            tf.keras.callbacks.LearningRateScheduler(
+                lambda epoch: 0.001 * (0.5 ** (epoch // 20)), verbose=0
+            )
         ]
         
-        # Train model
+        # Train model with larger batch size for stability
         history = model.fit(
             X_train, y_train,
             validation_data=(X_val, y_val),
-            epochs=100,
-            batch_size=32,
+            epochs=150,  # Increased epochs
+            batch_size=64,  # Larger batch size
             callbacks=callbacks,
-            verbose=0  # Reduced verbosity for walk-forward
+            verbose=0
         )
+        
+        print(f"✅ LSTM training completed. Best val_loss: {min(history.history['val_loss']):.6f}")
         
         return model
     
@@ -320,35 +531,69 @@ class HybridModelTrainer:
         # Merge with technical features
         features_df = df.join(lstm_df, how='inner')
         
-        # Select features for XGBoost (exclude OHLCV and intermediate calculations)
+        # Enhanced feature set for XGBoost (comprehensive technical analysis)
         feature_columns = [
-            # Price features
-            'returns', 'price_change_1h', 'price_change_4h',
-            # Volume features
-            'volume_ratio', 'volume_change',
-            # Volatility
-            'volatility_20', 'atr',
-            # Moving averages relationships
-            'price_vs_ema9', 'price_vs_ema21', 'price_vs_sma200',
-            # Oscillators
-            'rsi', 'rsi_oversold', 'rsi_overbought',
+            # Enhanced Price features
+            'returns', 'log_returns', 'price_change_1h', 'price_change_4h', 'price_change_24h',
+            'price_zscore_20', 'price_zscore_50',
+            
+            # Lag features (important for time series)
+            'returns_lag_1', 'returns_lag_2', 'returns_lag_3', 'returns_lag_5', 'returns_lag_10',
+            'log_returns_lag_1', 'log_returns_lag_2', 'log_returns_lag_3',
+            
+            # Rolling statistics
+            'returns_mean_10', 'returns_std_10', 'returns_skew_20', 'returns_kurt_20',
+            
+            # Enhanced Volume features
+            'volume_ratio', 'volume_change', 'volume_zscore',
+            'volume_price_trend', 'volume_weighted_price',
+            
+            # Market microstructure
+            'spread', 'spread_ratio', 'buying_pressure', 'selling_pressure', 'net_pressure',
+            
+            # Enhanced Volatility
+            'volatility_20', 'volatility_50', 'volatility_ratio', 'atr', 'atr_ratio',
+            'realized_vol_5', 'realized_vol_20', 'vol_regime',
+            
+            # Enhanced Moving averages
+            'price_vs_ema9', 'price_vs_ema21', 'price_vs_ema50', 'price_vs_sma200',
+            'ema9_vs_ema21', 'ema21_vs_ema50', 'ema50_vs_ema100',
+            'ma_alignment', 'ma_slope_9', 'ma_slope_21',
+            
+            # Enhanced Oscillators
+            'rsi', 'rsi_9', 'rsi_21', 'rsi_oversold', 'rsi_overbought', 'rsi_divergence',
+            'stoch_k', 'stoch_d', 'stoch_oversold', 'stoch_overbought', 'williams_r',
+            
             # MACD
-            'macd', 'macd_histogram', 'macd_bullish',
+            'macd', 'macd_signal', 'macd_histogram', 'macd_bullish',
+            
             # Bollinger Bands
             'bb_width', 'bb_position',
+            
             # VWAP
             'price_vs_vwap',
+            
             # Candle patterns
             'candle_body', 'upper_wick', 'lower_wick',
+            
             # Time features
             'hour', 'day_of_week', 'is_weekend',
+            
             # Momentum
             'momentum_10', 'roc_10',
+            
             # Support/Resistance
             'near_resistance', 'near_support',
-            # Feature Interactions
+            
+            # Enhanced Feature Interactions
             'rsi_macd_combo', 'volatility_ema_ratio', 'volume_price_momentum',
             'bb_rsi_signal', 'trend_strength', 'volatility_breakout',
+            'momentum_vol_signal', 'trend_momentum_align', 'pressure_volume_signal',
+            'volatility_regime_signal', 'multi_timeframe_signal', 'oscillator_consensus',
+            
+            # Market regime features
+            'trend_regime', 'consolidation_regime',
+            
             # LSTM prediction
             'lstm_delta'
         ]
@@ -389,11 +634,32 @@ class HybridModelTrainer:
         
         return final_df
     
+    def focal_loss_objective(self, y_true, y_pred, alpha=0.25, gamma=2.0):
+        """
+        Focal loss for XGBoost to handle class imbalance
+        """
+        import numpy as np
+        
+        # Convert to probabilities
+        p = 1 / (1 + np.exp(-y_pred))
+        
+        # Calculate focal loss components
+        alpha_t = alpha * y_true + (1 - alpha) * (1 - y_true)
+        p_t = p * y_true + (1 - p) * (1 - y_true)
+        
+        # Focal loss gradient
+        grad = alpha_t * (gamma * p_t * np.log(p_t + 1e-8) + p_t - y_true)
+        
+        # Focal loss hessian
+        hess = alpha_t * gamma * p_t * (1 - p_t) * (2 * np.log(p_t + 1e-8) + 1)
+        
+        return grad, hess
+    
     def train_xgboost_model(self, train_df: pd.DataFrame, val_df: pd.DataFrame) -> xgb.XGBClassifier:
         """
-        Train XGBoost model with class balancing and enhanced configuration
+        Train enhanced XGBoost model with advanced configuration
         """
-        print(f"🌲 Training XGBoost model with class balancing...")
+        print(f"🌲 Training Enhanced XGBoost model...")
         
         # Prepare training data
         X_train = train_df.drop('target', axis=1)
@@ -415,26 +681,23 @@ class HybridModelTrainer:
         print(f"   Positive (1): {pos_samples:,} ({pos_samples/total_samples*100:.1f}%)")
         print(f"⚖️  Scale Pos Weight: {scale_pos_weight:.3f}")
         
-        # Train XGBoost with class balancing
+        # Enhanced XGBoost with improved parameters
         model = xgb.XGBClassifier(
-            n_estimators=300,
-            max_depth=6,
-            learning_rate=0.05,  # Reduced for better convergence
-            subsample=0.8,
-            colsample_bytree=0.8,
-            scale_pos_weight=scale_pos_weight,  # Class balancing
-            random_state=42,
-            eval_metric='logloss',
-            early_stopping_rounds=30,
-            tree_method='hist'  # Faster training
+            **self.xgb_params,
+            scale_pos_weight=scale_pos_weight  # Dynamic class balancing
         )
         
-        # Fit with validation
+        # Fit with validation and enhanced monitoring
         model.fit(
             X_train, y_train,
-            eval_set=[(X_val, y_val)],
+            eval_set=[(X_train, y_train), (X_val, y_val)],
+            eval_names=['train', 'val'],
             verbose=False
         )
+        
+        # Print training summary
+        best_iteration = model.best_iteration if hasattr(model, 'best_iteration') else self.xgb_params['n_estimators']
+        print(f"✅ XGBoost training completed. Best iteration: {best_iteration}")
         
         return model
     
