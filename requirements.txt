@@ -10,6 +10,11 @@ scikit-learn>=1.3.0
 
 # ===== MACHINE LEARNING =====
 tensorflow>=2.15.0
+# GPU support for TensorFlow (optional, for CUDA-enabled systems)
+tensorflow[and-cuda]>=2.15.0  # Alternative: use this for automatic CUDA setup
+# OR manually install CUDA packages:
+# nvidia-cudnn-cu12>=8.9.0
+# nvidia-cuda-runtime-cu12>=12.0
 xgboost>=2.0.0
 
 # ===== VISUALIZATION =====
@@ -51,6 +56,17 @@ urllib3>=1.25.4,<2.1
 #
 # Install main requirements (use --force-reinstall to resolve conflicts):
 # pip install -r requirements.txt --force-reinstall
+#
+# FOR GPU SUPPORT (NVIDIA CUDA):
+# 1. Ensure you have NVIDIA GPU with CUDA Compute Capability 3.5+
+# 2. Install NVIDIA GPU drivers
+# 3. The tensorflow[and-cuda] package will automatically install CUDA libraries
+# 4. Verify GPU detection: python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
+#
+# ALTERNATIVE GPU SETUP (manual CUDA installation):
+# 1. Install CUDA Toolkit 12.x from NVIDIA
+# 2. Uncomment the nvidia-cudnn-cu12 and nvidia-cuda-runtime-cu12 lines above
+# 3. Comment out the tensorflow[and-cuda] line
 #
 # NOTE: This version resolves common dependency conflicts by:
 # - Constraining numpy to <2.0 for compatibility with cupy, pyarrow, pywavelets
