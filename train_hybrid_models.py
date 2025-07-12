@@ -64,15 +64,19 @@ try:
         # Additional GPU optimizations
         tf.config.optimizer.set_jit(True)  # Enable XLA compilation
         
+        # Disable CUDA graphs to prevent graph execution failures
+        os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
+        os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_graph_level=0'
+        
         # Enable TF32 for better performance (if available)
         try:
             tf.config.experimental.enable_tensor_float_32()
-            print("🔥 Advanced GPU optimizations: XLA compilation and TF32 enabled")
+            print("🔥 Advanced GPU optimizations: XLA compilation, TF32 enabled, CUDA graphs disabled")
         except AttributeError:
             # TF32 not available in this TensorFlow version
-            print("🔥 Advanced GPU optimizations: XLA compilation enabled (TF32 not available)")
+            print("🔥 Advanced GPU optimizations: XLA compilation enabled, CUDA graphs disabled (TF32 not available)")
         except Exception as tf32_error:
-            print(f"🔥 Advanced GPU optimizations: XLA compilation enabled (TF32 error: {tf32_error})")
+            print(f"🔥 Advanced GPU optimizations: XLA compilation enabled, CUDA graphs disabled (TF32 error: {tf32_error})")
     else:
         print("💻 No GPU detected, using CPU")
 except Exception as e:
