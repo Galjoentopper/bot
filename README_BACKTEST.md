@@ -263,6 +263,27 @@ sqlite3 data/btceur_15m.db "SELECT MIN(timestamp), MAX(timestamp) FROM market_da
 ```
 
 ### Debug Mode
+
+The `--debug` flag generates a detailed CSV file with comprehensive trading information for analysis:
+
+```bash
+# Generate debug CSV with detailed trading signals
+python run_backtest.py --symbol BTCEUR --config aggressive --debug --max-windows 3
+
+# Debug with random start for different market conditions
+python run_backtest.py --symbol BTCEUR --config very_aggressive --debug --random --max-windows 5
+```
+
+**Debug CSV Contents** (`backtests/SYMBOL/debug_detailed.csv`):
+- **Timestamp & Price Data**: Every 15-minute interval with OHLCV data
+- **Model Predictions**: LSTM delta predictions and XGBoost probabilities
+- **Trading Signals**: BUY/SELL/HOLD decisions with threshold comparisons
+- **Technical Indicators**: RSI, MACD, Bollinger Bands, ATR values
+- **Trading Constraints**: Position limits, hourly trade limits, capital status
+- **Trade Execution**: When trades are executed with prices, fees, slippage
+- **Portfolio State**: Current capital, open positions, exit trade counts
+
+**Basic Debugging Commands**:
 ```bash
 # Check available models and data
 ls models/lstm/btceur_window_*.keras
@@ -281,6 +302,9 @@ python run_backtest.py --symbol BTCEUR --config aggressive --max-windows 5
 
 # Test with random market conditions
 python run_backtest.py --symbol BTCEUR --config aggressive --random
+
+# Debug mode for detailed analysis
+python run_backtest.py --symbol BTCEUR --config aggressive --debug --max-windows 3
 ```
 
 ### 2. Configuration Optimization

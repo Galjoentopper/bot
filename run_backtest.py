@@ -22,7 +22,7 @@ from typing import Dict, List
 
 # Add scripts directory to path
 sys.path.append('scripts')
-from backtest_models import ModelBacktester, BacktestConfig
+from backtest_models import ModelBacktester, BacktestConfig, Trade
 
 # Configuration presets with more aggressive thresholds
 CONFIG_PRESETS = {
@@ -55,10 +55,12 @@ CONFIG_PRESETS = {
 class OptimizedBacktester(ModelBacktester):
     """Optimized version of ModelBacktester with performance improvements"""
     
-    def __init__(self, config: BacktestConfig):
+    def __init__(self, config: BacktestConfig, debug_mode: bool = False):
         super().__init__(config)
         self.model_cache = {}  # Cache for loaded models (unlimited size)
         self.debug_frequency = 2000  # Reduce debug output frequency
+        self.debug_mode = debug_mode
+        self.debug_data = []  # Store debug information for CSV export
     
     def load_models_cached(self, symbol: str, window_num: int):
         """Load models with caching to avoid repeated TensorFlow loading"""
@@ -74,6 +76,187 @@ class OptimizedBacktester(ModelBacktester):
         self.model_cache[cache_key] = models
         
         return models
+    
+    def simulate_trading_window(self, data, lstm_model, xgb_model, scaler, symbol, initial_capital, positions):
+        """Override simulate_trading_window to add debug data collection"""
+        if not self.debug_mode:
+            # Use parent method if debug mode is disabled
+            return super().simulate_trading_window(data, lstm_model, xgb_model, scaler, symbol, initial_capital, positions)
+        
+        # Debug mode: collect detailed information
+        import csv
+        import pandas as pd
+        
+        capital = initial_capital
+        window_trades = []
+        trades_this_hour = 0
+        last_trade_hour = None
+        
+        for i in range(self.config.sequence_length, len(data)):
+            current_time = data.index[i]
+            current_price = data['close'].iloc[i]
+            
+            # Reset hourly trade counter
+            if last_trade_hour is None or current_time.hour != last_trade_hour:
+                trades_this_hour = 0
+                last_trade_hour = current_time.hour
+            
+            # Check for exits first
+            positions, exit_trades = self.check_exits(positions, current_time, current_price)
+            window_trades.extend(exit_trades)
+            
+            # Update capital from closed trades
+            for trade in exit_trades:
+                capital += trade.pnl
+            
+            # Skip if we've hit trade limits
+            position_limit_hit = len(positions) >= self.config.max_positions
+            hourly_limit_hit = trades_this_hour >= self.config.max_trades_per_hour
+            
+            # Generate predictions for debug data (even if we can't trade)
+            try:
+                # LSTM prediction
+                lstm_sequence = self.create_lstm_sequences(
+                    data.iloc[i-self.config.sequence_length:i+1], scaler
+                )[-1:]
+                lstm_pred = lstm_model.predict(lstm_sequence, verbose=0)[0][0]
+                lstm_delta = lstm_pred
+                
+                # XGBoost prediction
+                xgb_features = self.get_xgb_features(data.iloc[:i+1], lstm_delta)
+                xgb_prob = xgb_model.predict_proba(xgb_features)[0][1]
+                
+                # Generate signal
+                signal = self.generate_signal(xgb_prob, lstm_delta)
+                
+                # Collect debug data
+                debug_row = {
+                    'timestamp': current_time,
+                    'symbol': symbol,
+                    'price': current_price,
+                    'lstm_prediction': lstm_pred,
+                    'lstm_delta': lstm_delta,
+                    'xgb_probability': xgb_prob,
+                    'signal': signal,
+                    'buy_threshold': self.config.buy_threshold,
+                    'sell_threshold': self.config.sell_threshold,
+                    'lstm_delta_threshold': self.config.lstm_delta_threshold,
+                    'capital': capital,
+                    'open_positions': len(positions),
+                    'position_limit_hit': position_limit_hit,
+                    'hourly_limit_hit': hourly_limit_hit,
+                    'atr': data['atr'].iloc[i] if 'atr' in data.columns else 0,
+                    'volume': data['volume'].iloc[i] if 'volume' in data.columns else 0,
+                    'rsi': data['rsi'].iloc[i] if 'rsi' in data.columns else 0,
+                    'macd': data['macd'].iloc[i] if 'macd' in data.columns else 0,
+                    'bb_upper': data['bb_upper'].iloc[i] if 'bb_upper' in data.columns else 0,
+                    'bb_lower': data['bb_lower'].iloc[i] if 'bb_lower' in data.columns else 0,
+                    'trade_executed': False,
+                    'exit_trades_count': len(exit_trades)
+                }
+                
+                # Execute trade if conditions are met
+                if signal in ['BUY', 'SELL'] and not position_limit_hit and not hourly_limit_hit:
+                    # Calculate stop loss
+                    atr = data['atr'].iloc[i]
+                    if signal == 'BUY':
+                        stop_loss = current_price - (atr * 2)
+                    else:
+                        stop_loss = current_price + (atr * 2)
+                    
+                    # Calculate position size
+                    position_size = self.calculate_position_size(capital, current_price, stop_loss)
+                    
+                    if position_size > 0:
+                        # Execute trade
+                        execution_price, slippage, fees = self.apply_slippage_and_fees(current_price, signal)
+                        
+                        trade = Trade(
+                            symbol=symbol,
+                            entry_time=current_time,
+                            entry_price=execution_price,
+                            direction=signal,
+                            confidence=max(xgb_prob, 1-xgb_prob),
+                            position_size=position_size,
+                            stop_loss=stop_loss,
+                            fees=fees,
+                            slippage=slippage
+                        )
+                        
+                        positions.append(trade)
+                        capital -= (position_size * execution_price + fees)
+                        trades_this_hour += 1
+                        
+                        # Update debug data for executed trade
+                        debug_row.update({
+                            'trade_executed': True,
+                            'execution_price': execution_price,
+                            'position_size': position_size,
+                            'stop_loss': stop_loss,
+                            'fees': fees,
+                            'slippage': slippage,
+                            'confidence': trade.confidence
+                        })
+                
+                self.debug_data.append(debug_row)
+                
+            except Exception as e:
+                print(f"    Error generating signal at {current_time}: {e}")
+                # Still add debug row with error info
+                debug_row = {
+                    'timestamp': current_time,
+                    'symbol': symbol,
+                    'price': current_price,
+                    'error': str(e),
+                    'capital': capital,
+                    'open_positions': len(positions)
+                }
+                self.debug_data.append(debug_row)
+                continue
+        
+        # Close remaining positions at window end
+        final_time = data.index[-1]
+        final_price = data['close'].iloc[-1]
+        positions, final_trades = self.check_exits(positions, final_time, final_price, force_exit=True)
+        window_trades.extend(final_trades)
+        
+        # Update capital from final trades
+        for trade in final_trades:
+            capital += trade.pnl
+        
+        return window_trades, capital
+    
+    def save_debug_csv(self, symbol: str):
+        """Save debug data to CSV file"""
+        if not self.debug_data:
+            print("No debug data to save.")
+            return
+        
+        import pandas as pd
+        import os
+        
+        # Create debug directory
+        debug_dir = f"backtests/{symbol}"
+        os.makedirs(debug_dir, exist_ok=True)
+        
+        # Convert debug data to DataFrame
+        df = pd.DataFrame(self.debug_data)
+        
+        # Save to CSV
+        debug_file = f"{debug_dir}/debug_detailed.csv"
+        df.to_csv(debug_file, index=False)
+        
+        print(f"Debug data saved to: {debug_file}")
+        print(f"Debug CSV contains {len(df)} rows with detailed trading information")
+        
+        # Print summary statistics
+        if 'signal' in df.columns:
+            signal_counts = df['signal'].value_counts()
+            print(f"Signal distribution: {dict(signal_counts)}")
+        
+        if 'trade_executed' in df.columns:
+            executed_trades = df['trade_executed'].sum()
+            print(f"Total trades executed: {executed_trades}")
     
     def backtest_symbol(self, symbol: str, max_windows: int = None, random_start: bool = False) -> Dict:
         """Override backtest_symbol to support max_windows limit and random starting date"""
@@ -249,6 +432,10 @@ class OptimizedBacktester(ModelBacktester):
             # Save results
             self.save_results(results)
             
+            # Save debug CSV if debug mode is enabled
+            if self.debug_mode:
+                self.save_debug_csv(symbol)
+            
             execution_time = time.time() - start_time
             print(f"\nBacktest completed in {execution_time:.1f} seconds")
             
@@ -294,6 +481,8 @@ def main():
                        help='Randomly select starting date from dataset')
     parser.add_argument('--save-plots', action='store_true',
                        help='Generate and save performance plots')
+    parser.add_argument('--debug', action='store_true',
+                       help='Generate detailed debug CSV file with trading signals and model outputs')
     
     args = parser.parse_args()
     
@@ -304,12 +493,14 @@ def main():
         print(f"Max windows: {args.max_windows}")
     if args.random:
         print(f"Random start: enabled")
+    if args.debug:
+        print(f"Debug mode: enabled (will generate detailed CSV)")
     
     # Create configuration
     config = create_config(args.config)
     
     # Create optimized backtester
-    backtester = OptimizedBacktester(config)
+    backtester = OptimizedBacktester(config, debug_mode=args.debug)
     
     # Run backtest
     try:
