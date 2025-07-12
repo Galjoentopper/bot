@@ -41,20 +41,30 @@ from tensorflow.keras.optimizers import Adam, AdamW
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, LearningRateScheduler
 import traceback
 
-# Configure GPU for optimal utilization
+# Configure GPU for maximum utilization and performance
 try:
     # Enable GPU memory growth to avoid allocating all GPU memory at once
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
         for gpu in gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
-        print(f"🚀 GPU Configuration: Found {len(gpus)} GPU(s), memory growth enabled")
+            # Set virtual GPU memory limit for better memory management
+            tf.config.experimental.set_virtual_device_configuration(
+                gpu,
+                [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15000)]  # 15GB limit
+            )
+        print(f"🚀 GPU Configuration: Found {len(gpus)} GPU(s), memory growth enabled with 15GB limit")
         
         # Enable mixed precision for better GPU utilization
         from tensorflow.keras import mixed_precision
         policy = mixed_precision.Policy('mixed_float16')
         mixed_precision.set_global_policy(policy)
         print("⚡ Mixed precision training enabled for better GPU utilization")
+        
+        # Additional GPU optimizations
+        tf.config.optimizer.set_jit(True)  # Enable XLA compilation
+        tf.config.experimental.enable_tensor_float_32()  # Enable TF32 for better performance
+        print("🔥 Advanced GPU optimizations: XLA compilation and TF32 enabled")
     else:
         print("💻 No GPU detected, using CPU")
 except Exception as e:
@@ -107,22 +117,29 @@ class HybridModelTrainer:
         self.attention_units = 128          # Increased attention units for more computation
         self.use_attention = True           # Enable attention mechanism
         
-        # Enhanced XGBoost parameters
+        # Aggressively optimized XGBoost parameters for maximum CPU utilization
         self.xgb_params = {
-            'n_estimators': 500,            # Increased from 300
-            'max_depth': 8,                 # Increased from 6
-            'learning_rate': 0.03,          # Decreased for better convergence
-            'subsample': 0.8,               # Add subsampling
-            'colsample_bytree': 0.8,        # Feature subsampling
-            'reg_alpha': 0.1,               # L1 regularization
-            'reg_lambda': 1.0,              # L2 regularization
-            'min_child_weight': 3,          # Minimum child weight
-            'gamma': 0.1,                   # Minimum split loss
-            'early_stopping_rounds': 50,    # Increased early stopping
+            'n_estimators': 800,            # Significantly increased for better performance
+            'max_depth': 10,                # Deeper trees for complex patterns
+            'learning_rate': 0.05,          # Optimized learning rate
+            'subsample': 0.85,              # Higher subsampling for more data usage
+            'colsample_bytree': 0.85,       # More features per tree
+            'reg_alpha': 0.05,              # Reduced L1 regularization
+            'reg_lambda': 0.8,              # Reduced L2 regularization
+            'min_child_weight': 2,          # Lower for more splits
+            'gamma': 0.05,                  # Lower minimum split loss
+            'early_stopping_rounds': 75,    # Increased patience
             'eval_metric': 'logloss',
             'objective': 'binary:logistic',
             'random_state': 42,
-            'n_jobs': -1
+            'n_jobs': -1,                   # Use all CPU cores
+            'nthread': -1,                  # Explicitly use all threads
+            'tree_method': 'hist',          # Fastest training method
+            'grow_policy': 'depthwise',     # Optimized growth policy
+            'max_leaves': 1024,             # Increased for more complex trees
+            'verbosity': 0,                 # Reduce output
+            'enable_categorical': False,    # Optimize for numerical features
+            'predictor': 'cpu_predictor'    # Optimized CPU prediction
         }
         
         print("🚀 Hybrid LSTM + XGBoost Model Trainer with Walk-Forward Analysis Initialized")
@@ -373,23 +390,50 @@ class HybridModelTrainer:
         # Use available features
         feature_data = df[available_features].values
         
-        # Create target: next period price change %
+        # Create target: next period price change % with validation
         targets = df['close'].pct_change(self.prediction_horizon).shift(-self.prediction_horizon).values
+        
+        # Validate targets before creating sequences
+        valid_target_mask = ~(np.isnan(targets) | np.isinf(targets))
+        print(f"📊 Target validation: {valid_target_mask.sum()}/{len(targets)} valid targets")
         
         # Create sequences
         X, y = [], []
         
         for i in range(self.lstm_sequence_length, len(feature_data) - self.prediction_horizon):
-            X.append(feature_data[i-self.lstm_sequence_length:i])
-            y.append(targets[i])
+            # Check if current sequence and target are valid
+            sequence = feature_data[i-self.lstm_sequence_length:i]
+            target = targets[i]
+            
+            # Validate sequence (no NaN or inf)
+            if not (np.isnan(sequence).any() or np.isinf(sequence).any()) and not (np.isnan(target) or np.isinf(target)):
+                X.append(sequence)
+                y.append(target)
         
         X = np.array(X)
         y = np.array(y)
         
-        # Remove NaN values
-        valid_indices = ~np.isnan(y)
-        X = X[valid_indices]
-        y = y[valid_indices]
+        # Additional validation and clipping for extreme values
+        if len(y) > 0:
+            # Clip extreme target values to prevent training instability
+            y_std = np.std(y)
+            y_mean = np.mean(y)
+            clip_threshold = 3 * y_std  # 3 standard deviations
+            
+            original_count = len(y)
+            extreme_mask = np.abs(y - y_mean) <= clip_threshold
+            X = X[extreme_mask]
+            y = y[extreme_mask]
+            
+            if len(y) < original_count:
+                print(f"📉 Removed {original_count - len(y)} extreme target values (>{clip_threshold:.6f})")
+            
+            print(f"📊 Target statistics: mean={y_mean:.6f}, std={y_std:.6f}, range=[{y.min():.6f}, {y.max():.6f}]")
+        
+        # Final validation
+        if len(X) == 0 or len(y) == 0:
+            print("⚠️  Warning: No valid sequences created for LSTM training")
+            return np.array([]), np.array([]), np.array([])
         
         # Get corresponding timestamps for alignment
         timestamps = df.index[self.lstm_sequence_length:-self.prediction_horizon][valid_indices]
@@ -529,45 +573,77 @@ class HybridModelTrainer:
             )
         ]
         
-        # Train model with optimized batch size for better GPU utilization
-        # Dynamically adjust batch size based on available GPU memory
-        batch_size = 256  # Increased from 64 for better GPU utilization
+        # Train model with aggressive GPU optimization for maximum utilization
+        # Start with very large batch size to maximize GPU usage
+        batch_size = 1024  # Significantly increased for better GPU utilization
         
-        # Create TensorFlow datasets for better performance
+        # Create optimized TensorFlow datasets with advanced prefetching
         train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-        train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+        train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
         
         val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
-        val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+        val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
+        
+        # Enable XLA compilation for additional performance
+        model.compile(
+            optimizer=optimizer,
+            loss=self.directional_loss,
+            metrics=['mae', 'mse'],
+            jit_compile=True  # Enable XLA compilation
+        )
         
         try:
-            # Try larger batch size first with optimized data pipeline
+            # Try very large batch size first for maximum GPU utilization
+            print(f"🚀 Attempting training with batch size: {batch_size}")
             history = model.fit(
                 train_dataset,
                 validation_data=val_dataset,
-                epochs=150,  # Increased epochs
+                epochs=200,  # Increased epochs for better convergence
                 callbacks=callbacks,
                 verbose=0
             )
         except tf.errors.ResourceExhaustedError:
-            # If GPU memory is insufficient, fall back to smaller batch size
-            print(f"⚠️ GPU memory insufficient for batch_size={batch_size}, falling back to 128")
-            batch_size = 128
+            # If GPU memory is insufficient, fall back to medium batch size
+            print(f"⚠️ GPU memory insufficient for batch_size={batch_size}, falling back to 512")
+            batch_size = 512
             
-            # Recreate datasets with smaller batch size
+            # Recreate datasets with medium batch size
             train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-            train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+            train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
             
             val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
-            val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+            val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
             
-            history = model.fit(
-                train_dataset,
-                validation_data=val_dataset,
-                epochs=150,
-                callbacks=callbacks,
-                verbose=0
-            )
+            try:
+                print(f"🔄 Attempting training with medium batch size: {batch_size}")
+                history = model.fit(
+                    train_dataset,
+                    validation_data=val_dataset,
+                    epochs=200,
+                    callbacks=callbacks,
+                    verbose=0
+                )
+                print(f"✅ LSTM training completed with medium batch size {batch_size}")
+                
+            except tf.errors.ResourceExhaustedError:
+                print(f"⚠️ Still insufficient memory with batch_size={batch_size}, using conservative 256")
+                batch_size = 256
+                
+                # Recreate datasets with conservative batch size
+                train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+                train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
+                
+                val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+                val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE).cache()
+                
+                history = model.fit(
+                    train_dataset,
+                    validation_data=val_dataset,
+                    epochs=200,
+                    callbacks=callbacks,
+                    verbose=0
+                )
+                print(f"✅ LSTM training completed with conservative batch size {batch_size}")
         
         print(f"✅ LSTM training completed. Best val_loss: {min(history.history['val_loss']):.6f}")
         
@@ -575,16 +651,30 @@ class HybridModelTrainer:
     
     def generate_lstm_predictions(self, model: tf.keras.Model, X: np.ndarray) -> np.ndarray:
         """
-        Generate lstm_delta predictions with optimized batch size
+        Generate lstm_delta predictions with aggressive GPU optimization
         """
-        # Use larger batch size for better GPU utilization during inference
-        batch_size = 512  # Increased from 64 for faster inference
+        # Use very large batch size for maximum GPU utilization during inference
+        batch_size = 2048  # Significantly increased for maximum GPU usage
+        
         try:
+            print(f"🚀 Generating predictions with batch size: {batch_size}")
             predictions = model.predict(X, batch_size=batch_size, verbose=0)
+            print(f"✅ Predictions generated successfully with batch size {batch_size}")
+            
         except tf.errors.ResourceExhaustedError:
-            # Fall back to smaller batch size if needed
-            batch_size = 256
-            predictions = model.predict(X, batch_size=batch_size, verbose=0)
+            print(f"⚠️ GPU memory insufficient for prediction batch_size={batch_size}, trying 1024")
+            batch_size = 1024
+            
+            try:
+                predictions = model.predict(X, batch_size=batch_size, verbose=0)
+                print(f"✅ Predictions generated with medium batch size {batch_size}")
+                
+            except tf.errors.ResourceExhaustedError:
+                print(f"⚠️ Still insufficient memory, using conservative batch size 512")
+                batch_size = 512
+                predictions = model.predict(X, batch_size=batch_size, verbose=0)
+                print(f"✅ Predictions generated with conservative batch size {batch_size}")
+                
         return predictions.flatten()
     
     def prepare_xgboost_features(self, df: pd.DataFrame, lstm_delta: np.ndarray, 
@@ -676,7 +766,7 @@ class HybridModelTrainer:
         # Select final dataset
         final_df = features_df[available_features + ['target']].copy()
         
-        # Data cleaning: handle NaN and infinite values
+        # Data cleaning: handle NaN and infinite values intelligently
         print(f"🧹 Data cleaning: {len(final_df)} samples before cleaning")
         
         # Replace infinite values with NaN
@@ -687,11 +777,55 @@ class HybridModelTrainer:
         if nan_counts.sum() > 0:
             print(f"⚠️  Found NaN values: {nan_counts[nan_counts > 0].to_dict()}")
         
-        # Drop rows with NaN values
+        # Intelligent NaN handling strategy
+        # 1. For features with high NaN percentage (>50%), fill with median/mode
+        # 2. For features with low NaN percentage (<10%), drop rows
+        # 3. For medium NaN percentage (10-50%), use forward fill then median
+        
+        total_samples = len(final_df)
+        
+        for col in final_df.columns:
+            if col == 'target':
+                continue
+                
+            nan_pct = final_df[col].isnull().sum() / total_samples
+            
+            if nan_pct > 0.5:  # High NaN percentage - fill with median
+                if final_df[col].dtype in ['int64', 'float64']:
+                    fill_value = final_df[col].median()
+                    final_df[col] = final_df[col].fillna(fill_value)
+                    print(f"📊 Filled {col} ({nan_pct:.1%} NaN) with median: {fill_value:.6f}")
+                else:
+                    fill_value = final_df[col].mode().iloc[0] if not final_df[col].mode().empty else 0
+                    final_df[col] = final_df[col].fillna(fill_value)
+                    print(f"📊 Filled {col} ({nan_pct:.1%} NaN) with mode: {fill_value}")
+            
+            elif nan_pct > 0.1:  # Medium NaN percentage - forward fill then median
+                if final_df[col].dtype in ['int64', 'float64']:
+                    final_df[col] = final_df[col].ffill()
+                    remaining_nan = final_df[col].isnull().sum()
+                    if remaining_nan > 0:
+                        fill_value = final_df[col].median()
+                        final_df[col] = final_df[col].fillna(fill_value)
+                    print(f"📊 Forward filled {col} ({nan_pct:.1%} NaN), then median for remaining")
+                else:
+                    final_df[col] = final_df[col].ffill()
+                    remaining_nan = final_df[col].isnull().sum()
+                    if remaining_nan > 0:
+                        fill_value = final_df[col].mode().iloc[0] if not final_df[col].mode().empty else 0
+                        final_df[col] = final_df[col].fillna(fill_value)
+                    print(f"📊 Forward filled {col} ({nan_pct:.1%} NaN), then mode for remaining")
+        
+        # After intelligent filling, drop remaining rows with NaN (should be minimal)
+        rows_before_final_drop = len(final_df)
         final_df = final_df.dropna()
+        rows_dropped = rows_before_final_drop - len(final_df)
+        
+        if rows_dropped > 0:
+            print(f"📉 Dropped {rows_dropped} rows with remaining NaN values")
         
         # Additional validation: ensure no infinite values remain
-        if np.isinf(final_df.select_dtypes(include=[np.number]).values).any():
+        if len(final_df) > 0 and np.isinf(final_df.select_dtypes(include=[np.number]).values).any():
             print("⚠️  Warning: Infinite values still present after cleaning")
             # Force remove any remaining infinite values
             numeric_cols = final_df.select_dtypes(include=[np.number]).columns
@@ -967,8 +1101,18 @@ class HybridModelTrainer:
             # Prepare LSTM data for training window
             X_lstm, y_lstm, timestamps = self.prepare_lstm_data(train_data)
             
+            # Validate LSTM data preparation
+            if len(X_lstm) == 0 or len(y_lstm) == 0:
+                print(f"⚠️  Skipping window {i+1}: no valid LSTM sequences created")
+                continue
+                
             if len(X_lstm) < 1000:
                 print(f"⚠️  Skipping window {i+1}: insufficient LSTM sequences ({len(X_lstm)})")
+                continue
+                
+            # Additional validation for LSTM targets
+            if np.isnan(y_lstm).any() or np.isinf(y_lstm).any():
+                print(f"⚠️  Skipping window {i+1}: invalid LSTM targets detected")
                 continue
             
             # Split LSTM data (80% train, 20% val)
@@ -1008,8 +1152,14 @@ class HybridModelTrainer:
             # Prepare test data
             X_test_lstm, y_test_lstm, test_timestamps = self.prepare_lstm_data(test_data)
             
-            if len(X_test_lstm) == 0:
-                print(f"⚠️  Skipping window {i+1}: no test data available")
+            # Validate test data preparation
+            if len(X_test_lstm) == 0 or len(y_test_lstm) == 0:
+                print(f"⚠️  Skipping window {i+1}: no valid test LSTM sequences created")
+                continue
+                
+            # Additional validation for test LSTM targets
+            if np.isnan(y_test_lstm).any() or np.isinf(y_test_lstm).any():
+                print(f"⚠️  Skipping window {i+1}: invalid test LSTM targets detected")
                 continue
             
             X_test_scaled = scaler.transform(X_test_lstm.reshape(-1, X_test_lstm.shape[-1])).reshape(X_test_lstm.shape)
