@@ -16,6 +16,9 @@ Supported pairs: BTCEUR, ETHEUR, ADAEUR, SOLEUR, XRPEUR
 """
 
 import os
+# Disable CUDA graphs to prevent CUDA_ERROR_GRAPH_EXEC_UPDATE_FAILURE
+os.environ["XLA_FLAGS"] = "--xla_gpu_enable_cuda_graphs=false"
+
 import sqlite3
 import pandas as pd
 import numpy as np
@@ -43,6 +46,10 @@ import traceback
 
 # Configure GPU for maximum utilization and performance
 try:
+    # Disable CUDA graphs and set conservative memory allocator
+    os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
+    os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_graph_level=0'
+    
     # Enable GPU memory growth to avoid allocating all GPU memory at once
     gpus = tf.config.experimental.list_physical_devices('GPU')
     if gpus:
@@ -53,7 +60,7 @@ try:
             #     gpu,
             #     [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15000)]  # 15GB limit removed
             # )
-        print(f"🚀 GPU Configuration: Found {len(gpus)} GPU(s), memory growth enabled with NO LIMIT for maximum utilization")
+        print(f"🚀 GPU Configuration: Found {len(gpus)} GPU(s), memory growth enabled with CUDA graphs DISABLED")
         
         # Disable mixed precision to reduce overhead and improve speed
         # from tensorflow.keras import mixed_precision
@@ -61,22 +68,18 @@ try:
         # mixed_precision.set_global_policy(policy)
         print("⚡ Mixed precision DISABLED for maximum speed (using float32)")
         
-        # Additional GPU optimizations
-        tf.config.optimizer.set_jit(True)  # Enable XLA compilation
-        
-        # Disable CUDA graphs to prevent graph execution failures
-        os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
-        os.environ['XLA_FLAGS'] = '--xla_gpu_enable_cuda_graph=false'
+        # Conservative GPU optimizations (disable XLA to prevent graph errors)
+        # tf.config.optimizer.set_jit(True)  # Disable XLA compilation to prevent CUDA graph errors
         
         # Enable TF32 for better performance (if available)
         try:
             tf.config.experimental.enable_tensor_float_32()
-            print("🔥 Advanced GPU optimizations: XLA compilation, TF32 enabled, CUDA graphs disabled")
+            print("🔥 Conservative GPU optimizations: CUDA graphs disabled, TF32 enabled")
         except AttributeError:
             # TF32 not available in this TensorFlow version
-            print("🔥 Advanced GPU optimizations: XLA compilation enabled, CUDA graphs disabled (TF32 not available)")
+            print("🔥 Conservative GPU optimizations: CUDA graphs disabled (TF32 not available)")
         except Exception as tf32_error:
-            print(f"🔥 Advanced GPU optimizations: XLA compilation enabled, CUDA graphs disabled (TF32 error: {tf32_error})")
+            print(f"🔥 Conservative GPU optimizations: CUDA graphs disabled (TF32 error: {tf32_error})")
     else:
         print("💻 No GPU detected, using CPU")
 except Exception as e:
@@ -588,12 +591,12 @@ class HybridModelTrainer:
         # Start with moderate batch size and implement robust fallback
         batch_size = 1024  # Conservative starting point to prevent allocation failures
         
-        # Enable XLA compilation for additional performance
+        # Disable XLA compilation to prevent CUDA graph conflicts
         model.compile(
             optimizer=optimizer,
             loss=self.directional_loss,
             metrics=['mae', 'mse'],
-            jit_compile=True  # Enable XLA compilation
+            jit_compile=False  # Disable XLA compilation to prevent CUDA graph errors
         )
         
         # Implement robust batch size fallback with memory clearing
@@ -1230,6 +1233,10 @@ class HybridModelTrainer:
                 
                 print(f"✅ Final models saved for {symbol}")
                 print(f"🔍 Top 5 features: {importance_df.head()['feature'].tolist()}")
+            
+            # Clear GPU memory between windows to prevent accumulation and CUDA graph errors
+            tf.keras.backend.clear_session()
+            print(f"🧹 Memory cleared after window {i+1}")
         
         return results
     
