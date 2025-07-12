@@ -1,14 +1,114 @@
-# Binance Data Collector Dependencies
-# Core data processing
-pandas>=1.5.0
-numpy>=1.21.0
+# Combined Requirements for Cryptocurrency Trading Bot
+# ==================================================
+# This file combines all dependencies from:
+# - requirements.txt (data collection)
+# - requirements_backtest.txt (backtesting)
+# - requirements_ml.txt (enhanced ML training)
 
-# HTTP requests
-requests>=2.28.0
+# ===== CORE DATA SCIENCE LIBRARIES =====
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+scikit-learn>=1.3.0
 
-# Database (SQLite is built-in with Python)
-# No additional SQLite dependencies needed
+# ===== MACHINE LEARNING FRAMEWORKS =====
+# Enhanced versions for advanced model features
+tensorflow>=2.15.0
+xgboost>=2.0.0
 
-# Optional: For better performance and data handling
-pytz>=2022.1
-dateutil>=2.8.2
+# ===== DATA VISUALIZATION =====
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.0.0
+
+# ===== TECHNICAL ANALYSIS =====
+# Using pandas-ta for better Windows compatibility
+pandas-ta>=0.3.14b
+# Alternative: TA-Lib>=0.4.24 (see installation notes below)
+
+# ===== HTTP REQUESTS & API =====
+requests>=2.31.0
+
+# ===== DATE/TIME HANDLING =====
+python-dateutil>=2.8.2
+pytz>=2023.3
+
+# ===== PROGRESS BARS & UTILITIES =====
+tqdm>=4.62.0
+
+# ===== EXCEL & REPORT GENERATION =====
+openpyxl>=3.0.9
+xlsxwriter>=3.0.2
+jinja2>=3.0.0
+
+# ===== STATISTICAL ANALYSIS =====
+statsmodels>=0.13.0
+
+# ===== CONFIGURATION & LOGGING =====
+pyyaml>=6.0
+
+# ===== SYSTEM MONITORING =====
+psutil>=5.8.0
+
+# ===== PARALLEL PROCESSING =====
+joblib>=1.1.0
+
+# ===== DATA VALIDATION =====
+cerberus>=1.3.4
+
+# ===== PERFORMANCE PROFILING (OPTIONAL) =====
+# Uncomment if needed for performance analysis
+# line_profiler>=3.5.0
+# memory_profiler>=0.60.0
+
+# ===== DEVELOPMENT & TESTING (OPTIONAL) =====
+# Uncomment for development environment
+# pytest>=6.2.0
+# pytest-cov>=3.0.0
+# black>=22.0.0
+# flake8>=4.0.0
+
+# ===== ADVANCED OPTIMIZATION (OPTIONAL) =====
+# Uncomment for hyperparameter optimization
+# optuna>=3.3.0
+# hyperopt>=0.2.7
+
+# =============================================================================
+# INSTALLATION NOTES:
+# =============================================================================
+#
+# 1. DATABASE SUPPORT:
+#    - SQLite3 is built-in with Python - no installation needed
+#
+# 2. TECHNICAL ANALYSIS ALTERNATIVES:
+#    If pandas-ta doesn't work, try TA-Lib:
+#    
+#    Option A: Download pre-compiled wheel
+#    1. Go to: https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib
+#    2. Download appropriate .whl file for your Python version
+#    3. Install: pip install path/to/downloaded/file.whl
+#    
+#    Option B: Install TA-Lib C library manually
+#    1. Download from: http://ta-lib.org/hdr_dw.html
+#    2. Extract to C:\ta-lib
+#    3. Then: pip install TA-Lib
+#
+# 3. TENSORFLOW GPU SUPPORT:
+#    For GPU acceleration, also install:
+#    pip install tensorflow[and-cuda]
+#
+# 4. INSTALLATION COMMAND:
+#    pip install -r requirements_combined.txt
+#
+# =============================================================================
+# ENHANCED MODEL FEATURES SUPPORTED:
+# =============================================================================
+#
+# - TensorFlow 2.15+ for attention mechanisms, AdamW optimizer
+# - XGBoost 2.0+ for improved focal loss and enhanced regularization
+# - SciPy 1.11+ for advanced statistical functions in feature engineering
+# - Enhanced technical analysis with pandas-ta
+# - Comprehensive backtesting and visualization capabilities
+# - Production-ready logging and monitoring
+#
+# =============================================================================
