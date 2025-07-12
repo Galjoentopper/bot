@@ -147,6 +147,12 @@ class OptimizedBacktester(ModelBacktester):
         else:
             window_num = 1
             
+        # For random start, automatically set a reasonable max_windows if not specified
+        if random_start and max_windows is None:
+            # Limit to 10 windows from the starting window to keep execution time reasonable
+            max_windows = window_num + 9
+            print(f"  Auto-setting max windows to {max_windows} for random start (starting from window {window_num})")
+        
         current_date = start_date
         
         while current_date < end_date:
@@ -310,8 +316,9 @@ def main():
         print(f"\nResults saved to: backtests/{args.symbol}/")
         print("\nOptimization suggestions:")
         print("1. If no trades were executed, try 'very_aggressive' or 'fast_test' config")
-        print("2. Use --max-windows 10 for quick testing")
-        print("3. Check equity_curve.csv for capital progression")
+        print("2. Use --max-windows 10 for quick testing (auto-limited for --random)")
+        print("3. Use --random for testing different market conditions")
+        print("4. Check equity_curve.csv for capital progression")
         
     except Exception as e:
         print(f"Error during backtesting: {e}")
