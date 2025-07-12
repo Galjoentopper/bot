@@ -122,7 +122,31 @@ class OptimizedBacktester(ModelBacktester):
         else:
             start_date = original_start_date
         
-        window_num = 1
+        # Calculate the correct window number for random start date
+        if random_start and start_date != original_start_date:
+            # Calculate how many months from original start to random start
+            months_diff = (start_date.year - original_start_date.year) * 12 + (start_date.month - original_start_date.month)
+            
+            # Calculate which window this corresponds to
+            # Windows start at train_months after original start, then advance by slide_months
+            # Window 1 starts at: original_start + train_months
+            # Window 2 starts at: original_start + train_months + slide_months
+            # Window N starts at: original_start + train_months + (N-1) * slide_months
+            
+            # Find the window that would be testing at our random start date
+            # Test period starts at: train_start + train_months
+            # So we need: original_start + train_months + (N-1) * slide_months + train_months = start_date
+            # Solving for N: N = 1 + (start_date - original_start - 2*train_months) / slide_months
+            
+            if months_diff >= 2 * self.config.train_months:
+                window_num = 1 + max(0, (months_diff - 2 * self.config.train_months) // self.config.slide_months)
+                print(f"  Calculated starting window: {window_num} (based on {months_diff} months offset)")
+            else:
+                window_num = 1
+                print(f"  Using window 1 (insufficient offset: {months_diff} months)")
+        else:
+            window_num = 1
+            
         current_date = start_date
         
         while current_date < end_date:
