@@ -66,7 +66,7 @@ try:
         
         # Disable CUDA graphs to prevent graph execution failures
         os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
-        os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_graph_level=0'
+        os.environ['XLA_FLAGS'] = '--xla_gpu_enable_cuda_graph=false'
         
         # Enable TF32 for better performance (if available)
         try:
