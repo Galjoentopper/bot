@@ -6,6 +6,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List
+import contextlib
 
 # Add paper_trader to path
 sys.path.append(str(Path(__file__).parent))
@@ -38,6 +39,10 @@ class PaperTrader:
         self.exit_manager = None
         self.portfolio_manager = None
         self.telegram_notifier = None
+
+        # Background tasks
+        self.data_feed_task = None
+        self.api_update_task = None
         
         # State tracking
         self.last_hourly_update = datetime.now()
@@ -210,8 +215,7 @@ class PaperTrader:
                 symbol=symbol,
                 prediction=prediction_result,
                 current_price=current_price,
-                available_capital=self.portfolio_manager.get_available_capital(),
-                current_positions=len(self.portfolio_manager.positions)
+                portfolio=self.portfolio_manager
             )
             
             if signal and signal['action'] == 'BUY':
@@ -354,9 +358,14 @@ class PaperTrader:
             self.logger.info("Initializing data buffers...")
             await self.data_collector.initialize_buffers(self.settings.symbols)
             
-            # Start WebSocket data feed
+            # Start WebSocket data feed and periodic API updates in background
             self.logger.info("Starting real-time data feed...")
-            await self.data_collector.start_websocket_feed(self.settings.symbols)
+            self.data_feed_task = asyncio.create_task(
+                self.data_collector.start_websocket_feed(self.settings.symbols)
+            )
+            self.api_update_task = asyncio.create_task(
+                self.data_collector.update_data_periodically(self.settings.symbols)
+            )
             
             self.logger.info("Paper Trader is now running...")
             
@@ -405,6 +414,14 @@ class PaperTrader:
         try:
             self.logger.info("Shutting down Paper Trader...")
             self.is_running = False
+
+            # Cancel background tasks
+            tasks = [t for t in [self.data_feed_task, self.api_update_task] if t]
+            for task in tasks:
+                task.cancel()
+            for task in tasks:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
             
             # Send final portfolio update
             await self.send_hourly_update()
