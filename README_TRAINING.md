@@ -73,7 +73,16 @@ python binance_data_collector.py
 ```bash
 # Train models for all cryptocurrency pairs
 python train_hybrid_models.py
+
+# Use custom data and model directories with warm start
+python train_hybrid_models.py --data-dir ./data --models-dir ./models --warm-start
 ```
+
+### Command Line Options
+
+- `--data-dir`: location of the SQLite files
+- `--models-dir`: where trained models are saved
+- `--warm-start`: load the previous window's model before training
 
 ### Walk-Forward Training Process
 

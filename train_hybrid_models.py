@@ -121,12 +121,13 @@ class HybridModelTrainer:
     Hybrid LSTM + XGBoost Model Trainer for Cryptocurrency Trading
     """
     
-    def __init__(self, data_dir: str = "data", models_dir: str = "models", 
+    def __init__(self, data_dir: str = "data", models_dir: str = "models",
                  train_months: int = 3, test_months: int = 1, step_months: int = 1,
-                 symbols: List[str] = None):
+                 symbols: List[str] = None, warm_start: bool = False):
         self.data_dir = data_dir
         self.models_dir = models_dir
         self.symbols = symbols or ['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR']
+        self.warm_start = warm_start
         
         # Walk-forward parameters
         self.train_months = train_months    # Training window size in months
@@ -184,6 +185,8 @@ class HybridModelTrainer:
         print(f"🤖 Models directory: {self.models_dir}")
         print(f"💰 Symbols: {', '.join(self.symbols)}")
         print(f"📊 Walk-Forward Config: Train {self.train_months}m → Test {self.test_months}m (Step: {self.step_months}m)")
+        if self.warm_start:
+            print("🔥 Warm start enabled - models will load previous window weights")
     
     def load_data(self, symbol: str) -> pd.DataFrame:
         """
@@ -503,68 +506,70 @@ class HybridModelTrainer:
         """
         return directional_loss
     
-    def train_lstm_model(self, X_train: np.ndarray, y_train: np.ndarray, 
-                        X_val: np.ndarray, y_val: np.ndarray) -> tf.keras.Model:
+    def train_lstm_model(self, X_train: np.ndarray, y_train: np.ndarray,
+                        X_val: np.ndarray, y_val: np.ndarray,
+                        prev_model_path: str = None) -> tf.keras.Model:
         """
         Train enhanced LSTM model with attention mechanism
         """
         print(f"🧠 Training Enhanced LSTM model with attention...")
-        
+
         from tensorflow.keras.layers import Input, LSTM, Dense, Dropout, BatchNormalization, Add
         from tensorflow.keras.models import Model
         try:
             from tensorflow.keras.optimizers import AdamW
         except ImportError:
-            # Fallback to Adam if AdamW is not available
             from tensorflow.keras.optimizers import Adam as AdamW
-        # CosineRestartScheduler is not available in standard TensorFlow
-        # Using LearningRateScheduler instead for cosine annealing
-        
-        # Input layer
-        inputs = Input(shape=(X_train.shape[1], X_train.shape[2]))
-        
-        # Multi-layer LSTM with residual connections
-        x = inputs
-        
-        # First LSTM layer
-        lstm1 = LSTM(self.lstm_units[0], return_sequences=True, dropout=self.dropout_rate, 
-                    recurrent_dropout=self.dropout_rate)(x)
-        lstm1 = BatchNormalization()(lstm1)
-        
-        # Second LSTM layer with residual connection
-        lstm2 = LSTM(self.lstm_units[1], return_sequences=True, dropout=self.dropout_rate,
-                    recurrent_dropout=self.dropout_rate)(lstm1)
-        lstm2 = BatchNormalization()(lstm2)
-        
-        # Third LSTM layer
-        lstm3 = LSTM(self.lstm_units[2], return_sequences=True, dropout=self.dropout_rate,
-                    recurrent_dropout=self.dropout_rate)(lstm2)
-        lstm3 = BatchNormalization()(lstm3)
-        
-        # Attention mechanism (if enabled)
-        if self.use_attention:
-            # Self-attention
-            attention_output = self.create_attention_layer(lstm3, self.attention_units)
-            x = attention_output
+
+        if prev_model_path and os.path.exists(prev_model_path):
+            print(f"🔄 Warm starting LSTM from {prev_model_path}")
+            model = tf.keras.models.load_model(prev_model_path, compile=False)
         else:
-            # Global average pooling
-            from tensorflow.keras.layers import GlobalAveragePooling1D
-            x = GlobalAveragePooling1D()(lstm3)
-        
-        # Dense layers with residual connections
-        dense1 = Dense(64, activation='relu')(x)
-        dense1 = Dropout(self.dropout_rate)(dense1)
-        dense1 = BatchNormalization()(dense1)
-        
-        dense2 = Dense(32, activation='relu')(dense1)
-        dense2 = Dropout(self.dropout_rate)(dense2)
-        dense2 = BatchNormalization()(dense2)
-        
-        # Output layer (using float32 for maximum performance)
-        outputs = Dense(1, activation='linear')(dense2)
-        
-        # Create model
-        model = Model(inputs=inputs, outputs=outputs)
+            # Input layer
+            inputs = Input(shape=(X_train.shape[1], X_train.shape[2]))
+
+            # Multi-layer LSTM with residual connections
+            x = inputs
+
+            # First LSTM layer
+            lstm1 = LSTM(self.lstm_units[0], return_sequences=True, dropout=self.dropout_rate,
+                        recurrent_dropout=self.dropout_rate)(x)
+            lstm1 = BatchNormalization()(lstm1)
+
+            # Second LSTM layer with residual connection
+            lstm2 = LSTM(self.lstm_units[1], return_sequences=True, dropout=self.dropout_rate,
+                        recurrent_dropout=self.dropout_rate)(lstm1)
+            lstm2 = BatchNormalization()(lstm2)
+
+            # Third LSTM layer
+            lstm3 = LSTM(self.lstm_units[2], return_sequences=True, dropout=self.dropout_rate,
+                        recurrent_dropout=self.dropout_rate)(lstm2)
+            lstm3 = BatchNormalization()(lstm3)
+
+            # Attention mechanism (if enabled)
+            if self.use_attention:
+                # Self-attention
+                attention_output = self.create_attention_layer(lstm3, self.attention_units)
+                x = attention_output
+            else:
+                # Global average pooling
+                from tensorflow.keras.layers import GlobalAveragePooling1D
+                x = GlobalAveragePooling1D()(lstm3)
+
+            # Dense layers with residual connections
+            dense1 = Dense(64, activation='relu')(x)
+            dense1 = Dropout(self.dropout_rate)(dense1)
+            dense1 = BatchNormalization()(dense1)
+
+            dense2 = Dense(32, activation='relu')(dense1)
+            dense2 = Dropout(self.dropout_rate)(dense2)
+            dense2 = BatchNormalization()(dense2)
+
+            # Output layer (using float32 for maximum performance)
+            outputs = Dense(1, activation='linear')(dense2)
+
+            # Create model
+            model = Model(inputs=inputs, outputs=outputs)
         
         # Enhanced optimizer with weight decay (if available)
         try:
@@ -858,7 +863,8 @@ class HybridModelTrainer:
         
         return grad, hess
     
-    def train_xgboost_model(self, train_df: pd.DataFrame, val_df: pd.DataFrame) -> xgb.XGBClassifier:
+    def train_xgboost_model(self, train_df: pd.DataFrame, val_df: pd.DataFrame,
+                            prev_model_path: str = None) -> xgb.XGBClassifier:
         """
         Train enhanced XGBoost model with advanced configuration
         """
@@ -889,12 +895,20 @@ class HybridModelTrainer:
             **self.xgb_params,
             scale_pos_weight=scale_pos_weight  # Dynamic class balancing
         )
-        
+
+        booster = None
+        if prev_model_path and os.path.exists(prev_model_path):
+            print(f"🔄 Warm starting XGBoost from {prev_model_path}")
+            with open(prev_model_path, 'rb') as f:
+                prev_model = pickle.load(f)
+            booster = prev_model.get_booster()
+
         # Fit with validation and enhanced monitoring
         model.fit(
             X_train, y_train,
             eval_set=[(X_train, y_train), (X_val, y_val)],
-            verbose=False
+            verbose=False,
+            xgb_model=booster
         )
         
         # Print training summary
@@ -1170,7 +1184,23 @@ class HybridModelTrainer:
             # Train LSTM with timing
             print(f"🧠 Starting LSTM training for window {i+1}...")
             lstm_start = time.time()
-            lstm_model = self.train_lstm_model(X_train_scaled, y_train_lstm, X_val_scaled, y_val_lstm)
+            prev_lstm = None
+            prev_xgb = None
+            if self.warm_start and i > 0:
+                prev_lstm = f"{self.models_dir}/lstm/{symbol.lower()}_window_{i}.keras"
+                if not os.path.exists(prev_lstm):
+                    prev_lstm = None
+                prev_xgb = f"{self.models_dir}/xgboost/{symbol.lower()}_window_{i}.pkl"
+                if not os.path.exists(prev_xgb):
+                    prev_xgb = None
+
+            lstm_model = self.train_lstm_model(
+                X_train_scaled,
+                y_train_lstm,
+                X_val_scaled,
+                y_val_lstm,
+                prev_model_path=prev_lstm
+            )
             lstm_time = (time.time() - lstm_start) / 60
             print(f"✅ LSTM training completed in {lstm_time:.1f} minutes")
             
@@ -1193,7 +1223,11 @@ class HybridModelTrainer:
             # Train XGBoost with timing
             print(f"🌳 Starting XGBoost training for window {i+1}...")
             xgb_start = time.time()
-            xgb_model = self.train_xgboost_model(train_df_xgb, val_df_xgb)
+            xgb_model = self.train_xgboost_model(
+                train_df_xgb,
+                val_df_xgb,
+                prev_model_path=prev_xgb
+            )
             xgb_time = (time.time() - xgb_start) / 60
             print(f"✅ XGBoost training completed in {xgb_time:.1f} minutes")
             
@@ -1465,6 +1499,26 @@ Examples:
         default=1,
         help='Step size for rolling window in months (default: 1)'
     )
+
+    parser.add_argument(
+        '--data-dir',
+        type=str,
+        default='data',
+        help='Directory containing training data (default: data)'
+    )
+
+    parser.add_argument(
+        '--models-dir',
+        type=str,
+        default='models',
+        help='Directory to save trained models (default: models)'
+    )
+
+    parser.add_argument(
+        '--warm-start',
+        action='store_true',
+        help='Warm start training by loading previous window models'
+    )
     
     return parser.parse_args()
 
@@ -1481,7 +1535,10 @@ def main():
         symbols=args.symbols,
         train_months=args.train_months,
         test_months=args.test_months,
-        step_months=args.step_months
+        step_months=args.step_months,
+        data_dir=args.data_dir,
+        models_dir=args.models_dir,
+        warm_start=args.warm_start
     )
     
     # Train all models
