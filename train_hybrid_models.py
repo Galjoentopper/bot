@@ -1675,7 +1675,7 @@ class HybridModelTrainer:
             # Train XGBoost with timing
             print(f"🌳 Starting XGBoost training for window {i+1}...")
             xgb_start = time.time()
-            prev_xgb_path = f"{self.models_dir}/xgboost/{symbol.lower()}_window_{i}.pkl"
+            prev_xgb_path = f"{self.models_dir}/xgboost/{symbol.lower()}_window_{i}.json"
             warm_start_path = (
                 prev_xgb_path
                 if (self.warm_start and i > 0 and os.path.exists(prev_xgb_path))
@@ -1771,10 +1771,9 @@ class HybridModelTrainer:
             lstm_model.save(
                 f"{self.models_dir}/lstm/{symbol.lower()}_window_{i+1}.keras"
             )
-            with open(
-                f"{self.models_dir}/xgboost/{symbol.lower()}_window_{i+1}.pkl", "wb"
-            ) as f:
-                pickle.dump(xgb_model, f)
+            xgb_model.save_model(
+                f"{self.models_dir}/xgboost/{symbol.lower()}_window_{i+1}.json"
+            )
             with open(
                 f"{self.models_dir}/scalers/{symbol.lower()}_window_{i+1}_scaler.pkl",
                 "wb",
@@ -1785,10 +1784,9 @@ class HybridModelTrainer:
             if i == len(windows) - 1:  # Last window
                 # Save final models
                 lstm_model.save(f"{self.models_dir}/lstm/{symbol.lower()}_lstm.h5")
-                with open(
-                    f"{self.models_dir}/xgboost/{symbol.lower()}_xgboost.pkl", "wb"
-                ) as f:
-                    pickle.dump(xgb_model, f)
+                xgb_model.save_model(
+                    f"{self.models_dir}/xgboost/{symbol.lower()}_xgboost.json"
+                )
                 with open(
                     f"{self.models_dir}/scalers/{symbol.lower()}_scaler.pkl", "wb"
                 ) as f:
