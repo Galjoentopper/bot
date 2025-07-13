@@ -1406,6 +1406,26 @@ class HybridModelTrainer:
         
         with open(results_file, 'w') as f:
             json.dump(summary, f, indent=2, default=str)
+
+        # Update consolidated training summary
+        summary_path = "results/training_summary.json"
+        existing_summary = {}
+        if os.path.exists(summary_path) and os.path.getsize(summary_path) > 0:
+            try:
+                with open(summary_path, "r") as f:
+                    existing_summary = json.load(f)
+            except Exception:
+                existing_summary = {}
+
+        if isinstance(existing_summary, dict):
+            existing_summary[summary["timestamp"]] = summary
+        elif isinstance(existing_summary, list):
+            existing_summary.append(summary)
+        else:
+            existing_summary = {summary["timestamp"]: summary}
+
+        with open(summary_path, "w") as f:
+            json.dump(existing_summary, f, indent=2, default=str)
         
         # Print final summary
         print(f"\n{'='*80}")
