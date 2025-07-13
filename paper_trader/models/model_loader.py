@@ -104,6 +104,20 @@ class WindowBasedModelLoader:
                         self.logger.debug(f"Loaded scaler for {symbol} window {window_num}")
                     except (ValueError, Exception) as e:
                         self.logger.warning(f"Failed to load scaler {scaler_file}: {e}")
+
+            # Scan feature column files
+            feature_dir = self.model_path / 'feature_columns'
+            if feature_dir.exists():
+                for feature_file in feature_dir.glob(f"{symbol_lower}_window_*.pkl"):
+                    try:
+                        window_num = int(feature_file.stem.split('_window_')[1])
+                        with open(feature_file, 'rb') as f:
+                            columns = pickle.load(f)
+                        self.feature_columns[symbol][window_num] = columns
+                        windows_found.add(window_num)
+                        self.logger.debug(f"Loaded feature columns for {symbol} window {window_num}")
+                    except (ValueError, Exception) as e:
+                        self.logger.warning(f"Failed to load feature columns {feature_file}: {e}")
             
             # Update available windows
             self.available_windows[symbol] = sorted(list(windows_found))

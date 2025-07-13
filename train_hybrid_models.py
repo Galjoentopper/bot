@@ -29,7 +29,7 @@ from datetime import datetime, timedelta
 import pickle
 import json
 import argparse
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 
 # ML Libraries
 from sklearn.preprocessing import StandardScaler, RobustScaler
@@ -139,6 +139,7 @@ class HybridModelTrainer:
         os.makedirs(f"{self.models_dir}/lstm", exist_ok=True)
         os.makedirs(f"{self.models_dir}/xgboost", exist_ok=True)
         os.makedirs(f"{self.models_dir}/scalers", exist_ok=True)
+        os.makedirs(f"{self.models_dir}/feature_columns", exist_ok=True)
         os.makedirs("results", exist_ok=True)
         os.makedirs("logs", exist_ok=True)
         os.makedirs("logs/feature_importance", exist_ok=True)
@@ -678,7 +679,7 @@ class HybridModelTrainer:
         return predictions.flatten()
     
     def prepare_xgboost_features(self, df: pd.DataFrame, lstm_delta: np.ndarray, 
-                                timestamps: np.ndarray) -> pd.DataFrame:
+                                timestamps: np.ndarray, symbol: Optional[str] = None, window: Optional[int] = None) -> pd.DataFrame:
         """
         Prepare feature matrix for XGBoost including lstm_delta
         """
@@ -759,6 +760,11 @@ class HybridModelTrainer:
         
         # Filter available columns
         available_features = [col for col in feature_columns if col in features_df.columns]
+
+        if symbol is not None and window is not None:
+            os.makedirs(f"{self.models_dir}/feature_columns", exist_ok=True)
+            with open(f"{self.models_dir}/feature_columns/{symbol.lower()}_window_{window}.pkl", "wb") as f:
+                pickle.dump(available_features, f)
         
         # Create target: binary classification
         features_df['target'] = (features_df['close'].pct_change(self.prediction_horizon).shift(-self.prediction_horizon) > self.price_change_threshold).astype(int)
@@ -1179,7 +1185,7 @@ class HybridModelTrainer:
             lstm_delta_full = self.generate_lstm_predictions(lstm_model, X_full_scaled)
             
             # Prepare XGBoost data for training
-            xgb_df = self.prepare_xgboost_features(train_data, lstm_delta_full, timestamps)
+            xgb_df = self.prepare_xgboost_features(train_data, lstm_delta_full, timestamps, symbol, i+1)
             
             if len(xgb_df) < 500:
                 print(f"⚠️  Skipping window {i+1}: insufficient XGBoost data ({len(xgb_df)} samples)")
