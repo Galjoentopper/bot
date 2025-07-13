@@ -35,7 +35,18 @@ from typing import Dict, Tuple, List, Optional
 # ML Libraries
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.model_selection import TimeSeriesSplit
-from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, mean_absolute_error, f1_score, precision_score, recall_score, classification_report
+from sklearn.metrics import (
+    accuracy_score,
+    roc_auc_score,
+    mean_squared_error,
+    mean_absolute_error,
+    f1_score,
+    precision_score,
+    recall_score,
+    classification_report,
+)
+from sklearn.ensemble import RandomForestClassifier
+from boruta import BorutaPy
 import xgboost as xgb
 
 # Deep Learning
@@ -97,6 +108,16 @@ import seaborn as sns
 
 warnings.filterwarnings('ignore')
 
+# Quantile loss for probabilistic forecasting
+from tensorflow.keras import backend as K
+
+def quantile_loss(q):
+    """Return a quantile loss function configured for quantile ``q``."""
+    def loss(y_true, y_pred):
+        e = y_true - y_pred
+        return K.mean(K.maximum(q * e, (q - 1) * e), axis=-1)
+    return loss
+
 # Standalone directional loss function for proper serialization
 @tf.keras.utils.register_keras_serializable()
 def directional_loss(y_true, y_pred):
@@ -122,10 +143,17 @@ class HybridModelTrainer:
     Hybrid LSTM + XGBoost Model Trainer for Cryptocurrency Trading
     """
     
-    def __init__(self, data_dir: str = "data", models_dir: str = "models",
-                 train_months: int = 3, test_months: int = 1, step_months: int = 1,
-                 symbols: List[str] = None, seed: int = 42,
-                 warm_start: bool = False):
+    def __init__(
+        self,
+        data_dir: str = "data",
+        models_dir: str = "models",
+        train_months: int = 12,
+        test_months: int = 1,
+        step_months: int = 1,
+        symbols: List[str] | None = None,
+        seed: int = 42,
+        warm_start: bool = False,
+    ):
         self.data_dir = data_dir
         self.models_dir = models_dir
         self.symbols = symbols or ['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR']
@@ -138,10 +166,17 @@ class HybridModelTrainer:
         tf.random.set_seed(seed)
         
         # Walk-forward parameters
-        self.train_months = train_months    # Training window size in months
-        self.test_months = test_months      # Test window size in months
-        self.step_months = step_months      # Step size for rolling window
+        self.train_months = train_months
+        self.test_months = test_months
+        self.step_months = step_months
         self.min_training_samples = 5000    # Minimum samples for training
+
+        # Purged walk-forward parameters
+        self.purge_candles = 200
+        self.embargo_candles = 96
+
+        # Quantile for quantile loss
+        self.quantile = 0.5
         
         # Create models directory
         os.makedirs(self.models_dir, exist_ok=True)
@@ -392,27 +427,32 @@ class HybridModelTrainer:
         
         return data
     
-    def generate_walk_forward_windows(self, df: pd.DataFrame) -> List[Tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp]]:
-        """
-        Generate walk-forward time windows for training and testing
-        Returns list of (train_start, train_end, test_end) tuples
-        """
+    def generate_walk_forward_windows(
+        self, df: pd.DataFrame
+    ) -> List[Tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp, pd.Timestamp]]:
+        """Generate purged walk-forward windows with embargo."""
+
         windows = []
-        start_date = df.index.min()
-        end_date = df.index.max()
-        
-        # Start from train_months after the beginning to have enough training data
-        current_date = start_date + pd.DateOffset(months=self.train_months)
-        
-        while current_date + pd.DateOffset(months=self.test_months) <= end_date:
-            train_start = current_date - pd.DateOffset(months=self.train_months)
-            train_end = current_date
-            test_end = current_date + pd.DateOffset(months=self.test_months)
-            
-            windows.append((train_start, train_end, test_end))
-            current_date += pd.DateOffset(months=self.step_months)
-        
-        print(f"📅 Generated {len(windows)} walk-forward windows")
+        start = df.index.min()
+        end = df.index.max()
+
+        current_start = start
+        purge = timedelta(minutes=15 * self.purge_candles)
+        embargo = timedelta(minutes=15 * self.embargo_candles)
+
+        while True:
+            train_start = current_start
+            train_end = train_start + pd.DateOffset(months=self.train_months)
+            test_start = train_end + purge
+            test_end = test_start + pd.DateOffset(months=self.test_months)
+
+            if test_end > end:
+                break
+
+            windows.append((train_start, train_end, test_start, test_end))
+            current_start = test_end + embargo
+
+        print(f"📅 Generated {len(windows)} walk-forward windows with purging and embargo")
         return windows
     
     def prepare_lstm_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -504,8 +544,19 @@ class HybridModelTrainer:
         
         # Apply attention weights
         context = Dot(axes=1)([attention, lstm_output])
-        
+
         return context
+
+    def boruta_feature_selection(self, df: pd.DataFrame) -> List[str]:
+        """Select important features using BorutaPy."""
+        X = df.drop("target", axis=1)
+        y = df["target"]
+        rf = RandomForestClassifier(n_estimators=200, n_jobs=-1, random_state=self.seed)
+        selector = BorutaPy(rf, n_estimators="auto", verbose=0, random_state=self.seed)
+        selector.fit(X.values, y.values)
+        selected = X.columns[selector.support_].tolist()
+        print(f"✅ Boruta selected {len(selected)}/{X.shape[1]} features")
+        return selected
     
     def get_directional_loss(self):
         """
@@ -520,7 +571,16 @@ class HybridModelTrainer:
         """
         print(f"🧠 Training Enhanced LSTM model with attention...")
         
-        from tensorflow.keras.layers import Input, LSTM, Dense, Dropout, BatchNormalization, Add
+        from tensorflow.keras.layers import (
+            Input,
+            LSTM,
+            Dense,
+            Dropout,
+            BatchNormalization,
+            Add,
+            Conv1D,
+            MaxPooling1D,
+        )
         from tensorflow.keras.models import Model
         try:
             from tensorflow.keras.optimizers import AdamW
@@ -539,23 +599,37 @@ class HybridModelTrainer:
         
         # Input layer
         inputs = Input(shape=(X_train.shape[1], X_train.shape[2]))
-        
+
+        # Convolutional feature extractor
+        x = Conv1D(64, kernel_size=3, activation="relu", padding="causal")(inputs)
+        x = BatchNormalization()(x)
+        x = MaxPooling1D(pool_size=2)(x)
+
         # Multi-layer LSTM with residual connections
-        x = inputs
-        
-        # First LSTM layer
-        lstm1 = LSTM(self.lstm_units[0], return_sequences=True, dropout=self.dropout_rate, 
-                    recurrent_dropout=self.dropout_rate)(x)
+        lstm1 = LSTM(
+            self.lstm_units[0],
+            return_sequences=True,
+            dropout=self.dropout_rate,
+            recurrent_dropout=self.dropout_rate,
+        )(x)
         lstm1 = BatchNormalization()(lstm1)
-        
+
         # Second LSTM layer with residual connection
-        lstm2 = LSTM(self.lstm_units[1], return_sequences=True, dropout=self.dropout_rate,
-                    recurrent_dropout=self.dropout_rate)(lstm1)
+        lstm2 = LSTM(
+            self.lstm_units[1],
+            return_sequences=True,
+            dropout=self.dropout_rate,
+            recurrent_dropout=self.dropout_rate,
+        )(lstm1)
         lstm2 = BatchNormalization()(lstm2)
-        
+
         # Third LSTM layer
-        lstm3 = LSTM(self.lstm_units[2], return_sequences=True, dropout=self.dropout_rate,
-                    recurrent_dropout=self.dropout_rate)(lstm2)
+        lstm3 = LSTM(
+            self.lstm_units[2],
+            return_sequences=True,
+            dropout=self.dropout_rate,
+            recurrent_dropout=self.dropout_rate,
+        )(lstm2)
         lstm3 = BatchNormalization()(lstm3)
         
         # Attention mechanism (if enabled)
@@ -599,11 +673,11 @@ class HybridModelTrainer:
                 beta_2=0.999,
             )
         
-        # Compile with custom loss
+        # Compile with quantile loss
         model.compile(
             optimizer=optimizer,
-            loss=directional_loss,
-            metrics=['mae', 'mse']
+            loss=quantile_loss(self.quantile),
+            metrics=["mae", "mse"],
         )
         
         # Optimized callbacks for faster training
@@ -619,9 +693,9 @@ class HybridModelTrainer:
         # Disable XLA compilation to prevent CUDA graph conflicts
         model.compile(
             optimizer=optimizer,
-            loss=directional_loss,
-            metrics=['mae', 'mse'],
-            jit_compile=False  # Disable XLA compilation to prevent CUDA graph errors
+            loss=quantile_loss(self.quantile),
+            metrics=["mae", "mse"],
+            jit_compile=False,
         )
         
         # Implement robust batch size fallback with memory clearing
@@ -796,6 +870,10 @@ class HybridModelTrainer:
         
         # Select final dataset
         final_df = features_df[available_features + ['target']].copy()
+
+        # Feature selection using Boruta
+        selected = self.boruta_feature_selection(final_df)
+        final_df = final_df[selected + ["target"]]
         
         # Data cleaning: handle NaN and infinite values intelligently
         print(f"🧹 Data cleaning: {len(final_df)} samples before cleaning")
@@ -1168,14 +1246,18 @@ class HybridModelTrainer:
         start_time = time.time()  # Initialize start_time for progress tracking
         
         # Start from the determined window index (resume functionality)
-        for i, (train_start, train_end, test_end) in enumerate(windows[start_window_idx:], start=start_window_idx):
+        for i, (train_start, train_end, test_start, test_end) in enumerate(
+            windows[start_window_idx:], start=start_window_idx
+        ):
             window_start_time = time.time()
-            print(f"\n🔄 Window {i+1}/{len(windows)}: {train_start.date()} to {test_end.date()}")
+            print(
+                f"\n🔄 Window {i+1}/{len(windows)}: {train_start.date()} - {train_end.date()} | Test {test_start.date()} to {test_end.date()}"
+            )
             print(f"⏰ Window started at: {datetime.now().strftime('%H:%M:%S')}")
             
             # Split data for this window
             train_data = df_features[train_start:train_end]
-            test_data = df_features[train_end:test_end]
+            test_data = df_features[test_start:test_end]
             
             if len(train_data) < self.min_training_samples:
                 print(f"⚠️  Skipping window {i+1}: insufficient training data ({len(train_data)} samples)")
@@ -1228,7 +1310,7 @@ class HybridModelTrainer:
                         )
                         lstm_model.compile(
                             optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
-                            loss=directional_loss,
+                            loss=quantile_loss(self.quantile),
                             metrics=["mae", "mse"],
                         )
                         lstm_model.fit(

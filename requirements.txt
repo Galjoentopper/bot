@@ -23,6 +23,7 @@ seaborn>=0.12.0
 
 # ===== TECHNICAL ANALYSIS =====
 pandas-ta>=0.3.14b
+Boruta>=0.4.3
 
 # ===== UTILITIES =====
 attrs>=17.3.0
