@@ -35,7 +35,7 @@ trade_bot_2.0/
 │   └── xrpeur_15m.db
 ├── 🤖 models/                        # Trained models (created by training)
 │   ├── lstm/                         # LSTM models (.h5 files)
-│   ├── xgboost/                      # XGBoost models (.pkl files)
+│   ├── xgboost/                      # XGBoost models (.json files)
 │   └── scalers/                      # Data scalers (.pkl files)
 ├── 📊 results/                       # Training results and analysis
 │   ├── training_summary.json
@@ -194,7 +194,7 @@ models/
 │   ├── btceur_history.pkl          # Training history
 │   └── ... (other symbols)
 ├── xgboost/
-│   ├── btceur_xgboost.pkl          # Trained XGBoost model
+│   ├── btceur_xgboost.json         # Trained XGBoost model
 │   └── ... (other symbols)
 └── scalers/
     ├── btceur_scaler.pkl           # Data scaler for LSTM
@@ -373,15 +373,15 @@ After training completes:
 ### Loading Trained Models
 
 ```python
-import pickle
+import xgboost as xgb
 import tensorflow as tf
 
 # Load LSTM model
 lstm_model = tf.keras.models.load_model('models/lstm/btceur_lstm.h5')
 
 # Load XGBoost model
-with open('models/xgboost/btceur_xgboost.pkl', 'rb') as f:
-    xgb_model = pickle.load(f)
+xgb_model = xgb.XGBClassifier()
+xgb_model.load_model('models/xgboost/btceur_xgboost.json')
 
 # Load scaler
 with open('models/scalers/btceur_scaler.pkl', 'rb') as f:

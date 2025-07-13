@@ -159,7 +159,7 @@ Inputs → LSTM(128) → BatchNorm → LSTM(64) → BatchNorm → LSTM(32) → A
 
 ### Model Files
 - `models/lstm/{symbol}_lstm_window_{i}.h5`: LSTM models
-- `models/xgboost/{symbol}_xgboost_window_{i}.pkl`: XGBoost models
+- `models/xgboost/{symbol}_xgboost_window_{i}.json`: XGBoost models
 - `models/scalers/{symbol}_scaler_window_{i}.pkl`: Feature scalers
 
 ### Results Files

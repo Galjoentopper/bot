@@ -89,12 +89,12 @@ class WindowBasedModelLoader:
             # Scan XGBoost models
             xgb_dir = self.model_path / 'xgboost'
             if xgb_dir.exists():
-                for xgb_file in xgb_dir.glob(f"{symbol_lower}_window_*.pkl"):
+                for xgb_file in xgb_dir.glob(f"{symbol_lower}_window_*.json"):
                     try:
                         window_num = int(xgb_file.stem.split('_window_')[1])
                         windows_found.add(window_num)
-                        with open(xgb_file, 'rb') as f:
-                            model = pickle.load(f)
+                        model = xgb.XGBClassifier()
+                        model.load_model(xgb_file)
                         self.xgb_models[symbol][window_num] = model
                         self.logger.debug(f"Loaded XGBoost model for {symbol} window {window_num}")
                     except (ValueError, Exception) as e:

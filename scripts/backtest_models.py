@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 import sqlite3
-import pickle
 import joblib
+import xgboost as xgb
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
 import matplotlib.pyplot as plt
@@ -169,15 +169,12 @@ class ModelBacktester:
                 print(f"    LSTM model file not found: {lstm_path}")
             
             # Load XGBoost model
-            xgb_path = f'models/xgboost/{symbol.lower()}_window_{window_num}.pkl'
+            xgb_path = f'models/xgboost/{symbol.lower()}_window_{window_num}.json'
             xgb_model = None
             if os.path.exists(xgb_path):
                 try:
-                    with open(xgb_path, 'rb') as f:
-                        import warnings
-                        with warnings.catch_warnings():
-                            warnings.simplefilter("ignore")
-                            xgb_model = pickle.load(f)
+                    xgb_model = xgb.XGBClassifier()
+                    xgb_model.load_model(xgb_path)
                     print(f"    XGBoost model loaded successfully for window {window_num}")
                 except Exception as e:
                     print(f"    XGBoost model loading failed for window {window_num}: {e}")
