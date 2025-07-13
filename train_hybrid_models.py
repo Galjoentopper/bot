@@ -174,7 +174,7 @@ class HybridModelTrainer:
         step_months: int = 1,
         symbols: List[str] | None = None,
         seed: int = 42,
-        warm_start: bool = False,
+        warm_start: bool = True,
     ):
         self.data_dir = data_dir
         self.models_dir = models_dir
@@ -2068,9 +2068,9 @@ Examples:
     )
 
     parser.add_argument(
-        "--warm-start",
+        "--no-warm-start",
         action="store_true",
-        help="Warm start models by fine-tuning from previous window",
+        help="Disable warm start; train each window from scratch",
     )
 
     parser.add_argument(
@@ -2099,7 +2099,7 @@ def main():
         seed=args.seed,
         data_dir=args.data_dir,
         models_dir=args.models_dir,
-        warm_start=args.warm_start,
+        warm_start=not args.no_warm_start,
     )
 
     # Train all models
