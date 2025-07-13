@@ -30,7 +30,7 @@ from datetime import datetime, timedelta
 import pickle
 import json
 import argparse
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 
 # ML Libraries
 from sklearn.preprocessing import StandardScaler, RobustScaler
@@ -124,11 +124,13 @@ class HybridModelTrainer:
     
     def __init__(self, data_dir: str = "data", models_dir: str = "models",
                  train_months: int = 3, test_months: int = 1, step_months: int = 1,
-                 symbols: List[str] = None, seed: int = 42):
+                 symbols: List[str] = None, seed: int = 42,
+                 warm_start: bool = False):
         self.data_dir = data_dir
         self.models_dir = models_dir
         self.symbols = symbols or ['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR']
         self.seed = seed
+        self.warm_start = warm_start
 
         # Ensure reproducibility
         random.seed(seed)
@@ -146,6 +148,7 @@ class HybridModelTrainer:
         os.makedirs(f"{self.models_dir}/lstm", exist_ok=True)
         os.makedirs(f"{self.models_dir}/xgboost", exist_ok=True)
         os.makedirs(f"{self.models_dir}/scalers", exist_ok=True)
+        os.makedirs(f"{self.models_dir}/feature_columns", exist_ok=True)
         os.makedirs("results", exist_ok=True)
         os.makedirs("logs", exist_ok=True)
         os.makedirs("logs/feature_importance", exist_ok=True)
@@ -692,7 +695,8 @@ class HybridModelTrainer:
         return predictions.flatten()
     
     def prepare_xgboost_features(self, df: pd.DataFrame, lstm_delta: np.ndarray,
-                                timestamps: np.ndarray, symbol: str) -> pd.DataFrame:
+                                timestamps: np.ndarray, symbol: str,
+                                window_idx: int) -> pd.DataFrame:
         """
         Prepare feature matrix for XGBoost including lstm_delta
         """
@@ -772,8 +776,12 @@ class HybridModelTrainer:
         ]
 
         # Persist feature column order for inference
-        columns_path = os.path.join(self.models_dir,
-                                   f"{symbol.lower()}_feature_columns.pkl")
+        feature_dir = os.path.join(self.models_dir, "feature_columns")
+        os.makedirs(feature_dir, exist_ok=True)
+        columns_path = os.path.join(
+            feature_dir,
+            f"{symbol.lower()}_window_{window_idx}.pkl"
+        )
         try:
             with open(columns_path, 'wb') as f:
                 pickle.dump(feature_columns, f)
@@ -881,7 +889,12 @@ class HybridModelTrainer:
         
         return grad, hess
     
-    def train_xgboost_model(self, train_df: pd.DataFrame, val_df: pd.DataFrame) -> xgb.XGBClassifier:
+    def train_xgboost_model(
+        self,
+        train_df: pd.DataFrame,
+        val_df: pd.DataFrame,
+        warm_start_model: Optional[str] = None,
+    ) -> xgb.XGBClassifier:
         """
         Train enhanced XGBoost model with advanced configuration
         """
@@ -912,6 +925,13 @@ class HybridModelTrainer:
             **self.xgb_params,
             scale_pos_weight=scale_pos_weight  # Dynamic class balancing
         )
+
+        if warm_start_model and os.path.exists(warm_start_model):
+            try:
+                model.load_model(warm_start_model)
+                print("♻️  Warm starting XGBoost from previous window")
+            except Exception as e:
+                print(f"⚠️  Failed to load previous XGBoost model: {e}")
         
         # Fit with validation and enhanced monitoring
         model.fit(
@@ -1193,7 +1213,44 @@ class HybridModelTrainer:
             # Train LSTM with timing
             print(f"🧠 Starting LSTM training for window {i+1}...")
             lstm_start = time.time()
-            lstm_model = self.train_lstm_model(X_train_scaled, y_train_lstm, X_val_scaled, y_val_lstm)
+            lstm_model = None
+            if self.warm_start and i > 0:
+                prev_path = f"{self.models_dir}/lstm/{symbol.lower()}_window_{i}.keras"
+                if os.path.exists(prev_path):
+                    try:
+                        lstm_model = tf.keras.models.load_model(
+                            prev_path,
+                            compile=False,
+                            custom_objects={"directional_loss": directional_loss},
+                        )
+                        lr = tf.keras.optimizers.schedules.ExponentialDecay(
+                            1e-4, 1000, 0.96
+                        )
+                        lstm_model.compile(
+                            optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
+                            loss=directional_loss,
+                            metrics=["mae", "mse"],
+                        )
+                        lstm_model.fit(
+                            X_train_scaled,
+                            y_train_lstm,
+                            validation_data=(X_val_scaled, y_val_lstm),
+                            epochs=50,
+                            callbacks=[EarlyStopping(patience=5, restore_best_weights=True)],
+                            verbose=0,
+                        )
+                        print("♻️ Warm started from previous window")
+                    except Exception as e:
+                        print(f"⚠️ Warm start failed: {e}. Training from scratch.")
+                        lstm_model = None
+
+            if lstm_model is None:
+                lstm_model = self.train_lstm_model(
+                    X_train_scaled,
+                    y_train_lstm,
+                    X_val_scaled,
+                    y_val_lstm,
+                )
             lstm_time = (time.time() - lstm_start) / 60
             print(f"✅ LSTM training completed in {lstm_time:.1f} minutes")
             
@@ -1202,7 +1259,13 @@ class HybridModelTrainer:
             lstm_delta_full = self.generate_lstm_predictions(lstm_model, X_full_scaled)
             
             # Prepare XGBoost data for training
-            xgb_df = self.prepare_xgboost_features(train_data, lstm_delta_full, timestamps, symbol)
+            xgb_df = self.prepare_xgboost_features(
+                train_data,
+                lstm_delta_full,
+                timestamps,
+                symbol,
+                i + 1,
+            )
             
             if len(xgb_df) < 500:
                 print(f"⚠️  Skipping window {i+1}: insufficient XGBoost data ({len(xgb_df)} samples)")
@@ -1216,7 +1279,13 @@ class HybridModelTrainer:
             # Train XGBoost with timing
             print(f"🌳 Starting XGBoost training for window {i+1}...")
             xgb_start = time.time()
-            xgb_model = self.train_xgboost_model(train_df_xgb, val_df_xgb)
+            prev_xgb_path = f"{self.models_dir}/xgboost/{symbol.lower()}_window_{i}.pkl"
+            warm_start_path = prev_xgb_path if (self.warm_start and i > 0 and os.path.exists(prev_xgb_path)) else None
+            xgb_model = self.train_xgboost_model(
+                train_df_xgb,
+                val_df_xgb,
+                warm_start_model=warm_start_path,
+            )
             xgb_time = (time.time() - xgb_start) / 60
             print(f"✅ XGBoost training completed in {xgb_time:.1f} minutes")
             
@@ -1236,7 +1305,13 @@ class HybridModelTrainer:
             X_test_scaled = scaler.transform(X_test_lstm.reshape(-1, X_test_lstm.shape[-1])).reshape(X_test_lstm.shape)
             lstm_delta_test = self.generate_lstm_predictions(lstm_model, X_test_scaled)
             
-            xgb_test_df = self.prepare_xgboost_features(test_data, lstm_delta_test, test_timestamps, symbol)
+            xgb_test_df = self.prepare_xgboost_features(
+                test_data,
+                lstm_delta_test,
+                test_timestamps,
+                symbol,
+                i + 1,
+            )
             
             if len(xgb_test_df) == 0:
                 print(f"⚠️  Skipping window {i+1}: no XGBoost test data")
@@ -1510,6 +1585,26 @@ Examples:
     )
 
     parser.add_argument(
+        '--data-dir',
+        type=str,
+        default='data',
+        help='Directory containing price data (default: data)'
+    )
+
+    parser.add_argument(
+        '--models-dir',
+        type=str,
+        default='models',
+        help='Directory to save models (default: models)'
+    )
+
+    parser.add_argument(
+        '--warm-start',
+        action='store_true',
+        help='Warm start models by fine-tuning from previous window'
+    )
+
+    parser.add_argument(
         '--seed',
         type=int,
         default=42,
@@ -1532,7 +1627,10 @@ def main():
         train_months=args.train_months,
         test_months=args.test_months,
         step_months=args.step_months,
-        seed=args.seed
+        seed=args.seed,
+        data_dir=args.data_dir,
+        models_dir=args.models_dir,
+        warm_start=args.warm_start
     )
     
     # Train all models

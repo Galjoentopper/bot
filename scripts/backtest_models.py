@@ -145,7 +145,10 @@ class ModelBacktester:
                     try:
                         # First try: standard loading
                         from train_hybrid_models import directional_loss
-lstm_model = load_model(lstm_path, custom_objects={"directional_loss": directional_loss})
+                        lstm_model = load_model(
+                            lstm_path,
+                            custom_objects={"directional_loss": directional_loss}
+                        )
                     except Exception as e1:
                         try:
                             # Second try: with compile=False for compatibility
