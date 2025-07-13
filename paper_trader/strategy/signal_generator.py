@@ -25,8 +25,21 @@ class SignalGenerator:
             'STRONG': 4,
             'VERY_STRONG': 5
         }
-        
+
         self.logger = logging.getLogger(__name__)
+
+    def calculate_position_size(self, confidence: float, signal_strength: str) -> float:
+        """Calculate dynamic position size based on confidence and signal strength."""
+        confidence_multiplier = min(1.0, max(0.5, confidence))
+        strength_multipliers = {
+            'VERY_STRONG': 1.0,
+            'STRONG': 0.8,
+            'MODERATE': 0.6,
+            'WEAK': 0.4,
+            'NEUTRAL': 0.0
+        }
+        strength_multiplier = strength_multipliers.get(signal_strength, 0.5)
+        return self.position_size_pct * confidence_multiplier * strength_multiplier
     
     def generate_signal(self, symbol: str, prediction: dict, current_price: float, 
                        portfolio) -> Optional[Dict]:
@@ -99,16 +112,12 @@ class SignalGenerator:
                            prediction: dict, portfolio) -> Dict:
         """Generate a buy signal with position sizing and risk management."""
         try:
-            # Calculate position size
+            # Calculate position size dynamically
+            size_pct = self.calculate_position_size(
+                prediction['confidence'], prediction['signal_strength']
+            )
             available_capital = portfolio.get_available_capital()
-            max_position_value = available_capital * self.position_size_pct
-            
-            # Adjust position size based on confidence and signal strength
-            confidence_multiplier = min(1.0, prediction['confidence'] / 0.7)  # Scale confidence
-            strength_multiplier = self.signal_hierarchy.get(prediction['signal_strength'], 3) / 5.0
-            
-            size_multiplier = (confidence_multiplier + strength_multiplier) / 2.0
-            adjusted_position_value = max_position_value * size_multiplier
+            adjusted_position_value = available_capital * size_pct
             
             # Calculate quantity (assuming we can buy fractional shares)
             quantity = adjusted_position_value / current_price
