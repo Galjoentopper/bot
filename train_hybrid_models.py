@@ -45,7 +45,7 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import LSTM, Dense, Dropout, Input, BatchNormalization, GlobalAveragePooling1D, Dot
 from tensorflow.keras.optimizers import Adam, AdamW
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, LearningRateScheduler
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 import traceback
 
 # Configure GPU for maximum utilization and performance
@@ -524,6 +524,15 @@ class HybridModelTrainer:
         except ImportError:
             from tensorflow.keras.optimizers import Adam as AdamW
 
+        # Use a cosine decay with restarts learning rate schedule
+        lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
+            initial_learning_rate=0.001,
+            first_decay_steps=10,
+            t_mul=2.0,
+            m_mul=0.9,
+            alpha=1e-4,
+        )
+
         if prev_model_path and os.path.exists(prev_model_path):
             print(f"🔄 Warm starting LSTM from {prev_model_path}")
             model = tf.keras.models.load_model(prev_model_path, compile=False)
@@ -577,7 +586,7 @@ class HybridModelTrainer:
         # Enhanced optimizer with weight decay (if available)
         try:
             optimizer = AdamW(
-                learning_rate=0.001,
+                learning_rate=lr_schedule,
                 weight_decay=0.01,
                 beta_1=0.9,
                 beta_2=0.999
@@ -585,7 +594,7 @@ class HybridModelTrainer:
         except TypeError:
             # Fallback to Adam without weight_decay if AdamW is not available
             optimizer = AdamW(
-                learning_rate=0.001,
+                learning_rate=lr_schedule,
                 beta_1=0.9,
                 beta_2=0.999
             )
