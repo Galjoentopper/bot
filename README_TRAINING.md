@@ -73,6 +73,8 @@ python binance_data_collector.py
 ```bash
 # Train models for all cryptocurrency pairs
 python train_hybrid_models.py
+# Train with a fixed random seed for reproducible results
+python train_hybrid_models.py --seed 123
 ```
 
 ### Walk-Forward Training Process
@@ -258,6 +260,7 @@ train_months = 6                    # 6 months training window
 test_months = 1                     # 1 month test window
 step_months = 1                     # 1 month step size (monthly retraining)
 min_training_samples = 10000        # Minimum samples for training
+seed = 42                           # Random seed for reproducibility
 
 # LSTM Configuration
 lstm_sequence_length = 60           # 15 hours of 15-min candles
