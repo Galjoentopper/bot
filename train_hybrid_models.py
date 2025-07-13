@@ -795,7 +795,8 @@ class HybridModelTrainer:
         ]
 
         # Only add ReduceLROnPlateau when the optimizer's learning rate is settable
-        if not isinstance(optimizer.learning_rate, tf.keras.optimizers.schedules.LearningRateSchedule):
+        lr_param = getattr(optimizer, "_learning_rate", optimizer.learning_rate)
+        if not isinstance(lr_param, tf.keras.optimizers.schedules.LearningRateSchedule):
             callbacks.append(
                 ReduceLROnPlateau(
                     monitor="val_loss", factor=0.5, patience=5, min_lr=1e-6, verbose=0
