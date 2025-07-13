@@ -39,7 +39,8 @@ class WindowBasedModelLoader:
         self.lstm_models: Dict[str, Dict[int, tf.keras.Model]] = {}
         self.xgb_models: Dict[str, Dict[int, xgb.XGBRegressor]] = {}
         self.scalers: Dict[str, Dict[int, StandardScaler]] = {}
-        self.feature_columns: Dict[str, Dict[int, list]] = {}
+        # Feature column order used during training
+        self.feature_columns: Dict[str, List[str]] = {}
         
         # Available windows for each symbol
         self.available_windows: Dict[str, List[int]] = {}
@@ -56,7 +57,7 @@ class WindowBasedModelLoader:
             self.lstm_models[symbol] = {}
             self.xgb_models[symbol] = {}
             self.scalers[symbol] = {}
-            self.feature_columns[symbol] = {}
+            self.feature_columns[symbol] = []
             self.available_windows[symbol] = []
             
             # Discover available windows by scanning directories
@@ -104,6 +105,16 @@ class WindowBasedModelLoader:
                         self.logger.debug(f"Loaded scaler for {symbol} window {window_num}")
                     except (ValueError, Exception) as e:
                         self.logger.warning(f"Failed to load scaler {scaler_file}: {e}")
+
+            # Load feature column order
+            feature_file = self.model_path / f"{symbol_lower}_feature_columns.pkl"
+            if feature_file.exists():
+                try:
+                    with open(feature_file, 'rb') as f:
+                        self.feature_columns[symbol] = pickle.load(f)
+                    self.logger.debug(f"Loaded feature columns for {symbol}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to load feature columns for {symbol}: {e}")
             
             # Update available windows
             self.available_windows[symbol] = sorted(list(windows_found))
@@ -210,6 +221,13 @@ class WindowBasedEnsemblePredictor:
             if len(features) < 10:  # Minimum features needed
                 self.logger.warning(f"Insufficient features for prediction: {len(features)}")
                 return None
+
+            required_cols = self.model_loader.feature_columns.get(symbol)
+            if required_cols:
+                missing = [c for c in required_cols if c not in features.columns]
+                if missing:
+                    self.logger.warning(f"Missing required feature columns for {symbol}: {missing}")
+                    return None
             
             # Select optimal window based on market conditions
             optimal_window = self.model_loader.get_optimal_window(symbol, market_volatility)
@@ -350,14 +368,14 @@ class WindowBasedEnsemblePredictor:
                 return None, 0.0
             
             model = self.model_loader.xgb_models[symbol][window]
-            feature_columns = self.model_loader.feature_columns[symbol].get(window) if symbol in self.model_loader.feature_columns else None
+            feature_columns = self.model_loader.feature_columns.get(symbol)
             
             # Prepare features
             if feature_columns:
-                # Use only the features the model was trained on
-                available_features = [col for col in feature_columns if col in features.columns]
-                if len(available_features) < len(feature_columns) * 0.8:  # Need at least 80% of features
-                    self.logger.warning(f"Missing features for XGBoost prediction: {symbol} window {window}")
+                available_features = [c for c in feature_columns if c in features.columns]
+                if len(available_features) < len(feature_columns) * 0.8:
+                    self.logger.warning(
+                        f"Missing features for XGBoost prediction: {symbol} window {window}")
                     return None, 0.0
                 feature_data = features[available_features].tail(1)
             else:

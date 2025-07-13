@@ -684,8 +684,8 @@ class HybridModelTrainer:
                 
         return predictions.flatten()
     
-    def prepare_xgboost_features(self, df: pd.DataFrame, lstm_delta: np.ndarray, 
-                                timestamps: np.ndarray) -> pd.DataFrame:
+    def prepare_xgboost_features(self, df: pd.DataFrame, lstm_delta: np.ndarray,
+                                timestamps: np.ndarray, symbol: str) -> pd.DataFrame:
         """
         Prepare feature matrix for XGBoost including lstm_delta
         """
@@ -763,7 +763,16 @@ class HybridModelTrainer:
             # LSTM prediction
             'lstm_delta'
         ]
-        
+
+        # Persist feature column order for inference
+        columns_path = os.path.join(self.models_dir,
+                                   f"{symbol.lower()}_feature_columns.pkl")
+        try:
+            with open(columns_path, 'wb') as f:
+                pickle.dump(feature_columns, f)
+        except Exception as e:
+            print(f"⚠️  Failed to save feature columns: {e}")
+
         # Filter available columns
         available_features = [col for col in feature_columns if col in features_df.columns]
         
@@ -1186,7 +1195,7 @@ class HybridModelTrainer:
             lstm_delta_full = self.generate_lstm_predictions(lstm_model, X_full_scaled)
             
             # Prepare XGBoost data for training
-            xgb_df = self.prepare_xgboost_features(train_data, lstm_delta_full, timestamps)
+            xgb_df = self.prepare_xgboost_features(train_data, lstm_delta_full, timestamps, symbol)
             
             if len(xgb_df) < 500:
                 print(f"⚠️  Skipping window {i+1}: insufficient XGBoost data ({len(xgb_df)} samples)")
@@ -1220,7 +1229,7 @@ class HybridModelTrainer:
             X_test_scaled = scaler.transform(X_test_lstm.reshape(-1, X_test_lstm.shape[-1])).reshape(X_test_lstm.shape)
             lstm_delta_test = self.generate_lstm_predictions(lstm_model, X_test_scaled)
             
-            xgb_test_df = self.prepare_xgboost_features(test_data, lstm_delta_test, test_timestamps)
+            xgb_test_df = self.prepare_xgboost_features(test_data, lstm_delta_test, test_timestamps, symbol)
             
             if len(xgb_test_df) == 0:
                 print(f"⚠️  Skipping window {i+1}: no XGBoost test data")
