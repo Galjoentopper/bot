@@ -23,6 +23,9 @@ import os
 import sqlite3
 import pandas as pd
 import numpy as np
+# Provide numpy.NaN for backward compatibility with pandas_ta
+if not hasattr(np, "NaN"):
+    np.NaN = np.nan
 import warnings
 import time
 from datetime import datetime, timedelta
