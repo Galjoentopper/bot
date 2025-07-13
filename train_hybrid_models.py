@@ -791,11 +791,16 @@ class HybridModelTrainer:
                 patience=10,
                 restore_best_weights=True,
                 min_delta=1e-5,
-            ),
-            ReduceLROnPlateau(
-                monitor="val_loss", factor=0.5, patience=5, min_lr=1e-6, verbose=0
-            ),
+            )
         ]
+
+        # Only add ReduceLROnPlateau when the optimizer's learning rate is settable
+        if not isinstance(optimizer.learning_rate, tf.keras.optimizers.schedules.LearningRateSchedule):
+            callbacks.append(
+                ReduceLROnPlateau(
+                    monitor="val_loss", factor=0.5, patience=5, min_lr=1e-6, verbose=0
+                )
+            )
 
         # Train model with conservative memory management to prevent crashes
         # Start with moderate batch size and implement robust fallback
