@@ -1309,7 +1309,8 @@ class HybridModelTrainer:
         print(f"{'='*80}")
         print(f"📊 Symbols: {', '.join(self.symbols)}")
         print(f"📅 Walk-Forward Config: {self.train_months}M train → {self.test_months}M test (step: {self.step_months}M)")
-        print(f"⏰ Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        run_start_dt = datetime.now()
+        print(f"⏰ Started at: {run_start_dt.strftime('%Y-%m-%d %H:%M:%S')}")
         
         all_results = {}
         start_time = time.time()
@@ -1363,12 +1364,15 @@ class HybridModelTrainer:
                 all_window_results.extend(symbol_results)
         
         # Save comprehensive results
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        run_end_dt = datetime.now()
+        timestamp = run_end_dt.strftime('%Y%m%d_%H%M%S')
         results_file = f"results/walkforward_results_{timestamp}.json"
         
         summary = {
             'timestamp': timestamp,
             'training_type': 'walk_forward',
+            'start_time': run_start_dt.strftime('%Y-%m-%d %H:%M:%S'),
+            'end_time': run_end_dt.strftime('%Y-%m-%d %H:%M:%S'),
             'config': {
                 'train_months': self.train_months,
                 'test_months': self.test_months,
@@ -1399,6 +1403,41 @@ class HybridModelTrainer:
         
         with open(results_file, 'w') as f:
             json.dump(summary, f, indent=2, default=str)
+
+        # ------------------------------------------------------------------
+        # Append run summary to results/training_summary.json
+        # ------------------------------------------------------------------
+        summary_entry = {
+            'timestamp': summary['timestamp'],
+            'start_time': summary['start_time'],
+            'end_time': summary['end_time'],
+            'total_windows': summary['total_windows'],
+        }
+
+        if 'aggregated_metrics' in summary:
+            metrics = summary['aggregated_metrics']
+            summary_entry.update({
+                'avg_lstm_mae': metrics['avg_lstm_mae'],
+                'avg_lstm_rmse': metrics['avg_lstm_rmse'],
+                'avg_xgb_accuracy': metrics['avg_xgb_accuracy'],
+                'avg_xgb_precision': metrics['avg_xgb_precision'],
+                'avg_xgb_recall': metrics['avg_xgb_recall'],
+                'avg_xgb_f1': metrics['avg_xgb_f1'],
+                'avg_xgb_auc': metrics['avg_xgb_auc'],
+            })
+
+        summary_file = "results/training_summary.json"
+        try:
+            with open(summary_file, 'r') as f:
+                existing = json.load(f)
+                if isinstance(existing, dict):
+                    existing = [] if not existing else [existing]
+        except (FileNotFoundError, json.JSONDecodeError):
+            existing = []
+
+        existing.append(summary_entry)
+        with open(summary_file, 'w') as f:
+            json.dump(existing, f, indent=2)
         
         # Print final summary
         print(f"\n{'='*80}")
