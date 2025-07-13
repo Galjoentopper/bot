@@ -41,7 +41,7 @@ class WindowBasedModelLoader:
         self.xgb_models: Dict[str, Dict[int, xgb.XGBRegressor]] = {}
         self.scalers: Dict[str, Dict[int, StandardScaler]] = {}
         # Feature column order used during training
-        self.feature_columns: Dict[str, List[str]] = {}
+        self.feature_columns: Dict[str, Dict[int, List[str]]] = {}
         
         # Available windows for each symbol
         self.available_windows: Dict[str, List[int]] = {}
@@ -58,7 +58,7 @@ class WindowBasedModelLoader:
             self.lstm_models[symbol] = {}
             self.xgb_models[symbol] = {}
             self.scalers[symbol] = {}
-            self.feature_columns[symbol] = []
+            self.feature_columns[symbol] = {}
             self.available_windows[symbol] = []
             
             # Discover available windows by scanning directories
@@ -107,15 +107,19 @@ class WindowBasedModelLoader:
                     except (ValueError, Exception) as e:
                         self.logger.warning(f"Failed to load scaler {scaler_file}: {e}")
 
-            # Load feature column order
-            feature_file = self.model_path / f"{symbol_lower}_feature_columns.pkl"
-            if feature_file.exists():
-                try:
-                    with open(feature_file, 'rb') as f:
-                        self.feature_columns[symbol] = pickle.load(f)
-                    self.logger.debug(f"Loaded feature columns for {symbol}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to load feature columns for {symbol}: {e}")
+            # Load feature column order per window
+            feature_dir = self.model_path / 'feature_columns'
+            if feature_dir.exists():
+                for fc_file in feature_dir.glob(f"{symbol_lower}_window_*.pkl"):
+                    try:
+                        window_num = int(fc_file.stem.split('_window_')[1])
+                        with open(fc_file, 'rb') as f:
+                            cols = pickle.load(f)
+                        self.feature_columns[symbol][window_num] = cols
+                        windows_found.add(window_num)
+                        self.logger.debug(f"Loaded feature columns for {symbol} window {window_num}")
+                    except (ValueError, Exception) as e:
+                        self.logger.warning(f"Failed to load feature columns {fc_file}: {e}")
             
             # Update available windows
             self.available_windows[symbol] = sorted(list(windows_found))
@@ -223,18 +227,18 @@ class WindowBasedEnsemblePredictor:
                 self.logger.warning(f"Insufficient features for prediction: {len(features)}")
                 return None
 
-            required_cols = self.model_loader.feature_columns.get(symbol)
-            if required_cols:
-                missing = [c for c in required_cols if c not in features.columns]
-                if missing:
-                    self.logger.warning(f"Missing required feature columns for {symbol}: {missing}")
-                    return None
-            
             # Select optimal window based on market conditions
             optimal_window = self.model_loader.get_optimal_window(symbol, market_volatility)
             if optimal_window is None:
                 self.logger.warning(f"No models available for {symbol}")
                 return None
+
+            required_cols = self.model_loader.feature_columns.get(symbol, {}).get(optimal_window)
+            if required_cols:
+                missing = [c for c in required_cols if c not in features.columns]
+                if missing:
+                    self.logger.warning(f"Missing required feature columns for {symbol}: {missing}")
+                    return None
             
             # Get available models for the selected window
             available_models = self.model_loader.get_available_models(symbol, optimal_window)
@@ -367,7 +371,7 @@ class WindowBasedEnsemblePredictor:
                 return None, 0.0
             
             model = self.model_loader.xgb_models[symbol][window]
-            feature_columns = self.model_loader.feature_columns.get(symbol)
+            feature_columns = self.model_loader.feature_columns.get(symbol, {}).get(window)
             
             # Prepare features
             if feature_columns:
