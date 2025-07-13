@@ -1104,6 +1104,12 @@ class HybridModelTrainer:
 
         # Ensure selected features exist in the dataframe
         selected = [c for c in selected if c in pre_clean_df.columns]
+
+        # Fallback: if no features were selected, use all available features
+        if len(selected) == 0:
+            print("⚠️ Boruta selected no features. Using all available features.")
+            selected = [c for c in pre_clean_df.columns if c != "target"]
+
         final_df = pre_clean_df[selected + ["target"]]
 
         # Data cleaning: handle NaN and infinite values intelligently
