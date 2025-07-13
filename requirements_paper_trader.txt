@@ -1,0 +1,37 @@
+# Paper Trader Dependencies (Windows Compatible)
+
+# Core dependencies
+pandas>=1.5.0
+numpy>=1.21.0
+scipy>=1.9.0
+scikit-learn>=1.1.0
+
+# Machine Learning
+tensorflow>=2.10.0
+xgboost>=1.6.0
+joblib>=1.2.0
+
+# Technical Analysis (TA-Lib removed - install separately if needed)
+# TA-Lib>=0.4.25  # Commented out - requires special Windows installation
+pandas-ta>=0.3.14b  # Alternative to TA-Lib for technical analysis
+
+# API and WebSocket
+requests>=2.28.0
+websockets>=10.4
+aiohttp>=3.8.0
+
+# Telegram Bot
+python-telegram-bot>=20.0
+
+# Environment and Configuration
+python-dotenv>=0.19.0
+
+# Async support
+aiofiles>=22.1.0
+
+# Logging and utilities
+coloredlogs>=15.0
+pytz>=2022.1
+
+# Data handling
+pyarrow>=10.0.0

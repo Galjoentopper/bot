@@ -96,6 +96,26 @@ import seaborn as sns
 
 warnings.filterwarnings('ignore')
 
+# Standalone directional loss function for proper serialization
+@tf.keras.utils.register_keras_serializable()
+def directional_loss(y_true, y_pred):
+    """
+    Custom loss function that penalizes wrong directional predictions more
+    """
+    # Standard MSE
+    mse = tf.keras.losses.MeanSquaredError()(y_true, y_pred)
+    
+    # Directional penalty
+    direction_true = tf.sign(y_true)
+    direction_pred = tf.sign(y_pred)
+    direction_penalty = tf.where(
+        tf.equal(direction_true, direction_pred),
+        0.0,
+        tf.abs(y_true - y_pred) * 2.0  # Double penalty for wrong direction
+    )
+    
+    return mse + tf.reduce_mean(direction_penalty)
+
 class HybridModelTrainer:
     """
     Hybrid LSTM + XGBoost Model Trainer for Cryptocurrency Trading
@@ -477,25 +497,11 @@ class HybridModelTrainer:
         
         return context
     
-    def directional_loss(self, y_true, y_pred):
+    def get_directional_loss(self):
         """
-        Custom loss function that penalizes wrong directional predictions more
+        Return the standalone directional loss function for model compilation
         """
-        import tensorflow as tf
-        
-        # Standard MSE
-        mse = tf.keras.losses.MeanSquaredError()(y_true, y_pred)
-        
-        # Directional penalty
-        direction_true = tf.sign(y_true)
-        direction_pred = tf.sign(y_pred)
-        direction_penalty = tf.where(
-            tf.equal(direction_true, direction_pred),
-            0.0,
-            tf.abs(y_true - y_pred) * 2.0  # Double penalty for wrong direction
-        )
-        
-        return mse + tf.reduce_mean(direction_penalty)
+        return directional_loss
     
     def train_lstm_model(self, X_train: np.ndarray, y_train: np.ndarray, 
                         X_val: np.ndarray, y_val: np.ndarray) -> tf.keras.Model:
@@ -579,7 +585,7 @@ class HybridModelTrainer:
         # Compile with custom loss
         model.compile(
             optimizer=optimizer,
-            loss=self.directional_loss,
+            loss=directional_loss,
             metrics=['mae', 'mse']
         )
         
@@ -596,7 +602,7 @@ class HybridModelTrainer:
         # Disable XLA compilation to prevent CUDA graph conflicts
         model.compile(
             optimizer=optimizer,
-            loss=self.directional_loss,
+            loss=directional_loss,
             metrics=['mae', 'mse'],
             jit_compile=False  # Disable XLA compilation to prevent CUDA graph errors
         )

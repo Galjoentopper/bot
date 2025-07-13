@@ -144,11 +144,12 @@ class ModelBacktester:
                     # Try different loading approaches for compatibility
                     try:
                         # First try: standard loading
-                        lstm_model = load_model(lstm_path)
+                        from train_hybrid_models import directional_loss
+lstm_model = load_model(lstm_path, custom_objects={"directional_loss": directional_loss})
                     except Exception as e1:
                         try:
                             # Second try: with compile=False for compatibility
-                            lstm_model = load_model(lstm_path, compile=False)
+                            lstm_model = load_model(lstm_path, compile=False, custom_objects={"directional_loss": directional_loss})
                             # Recompile with current TensorFlow version
                             lstm_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
                         except Exception as e2:
