@@ -119,7 +119,7 @@ def quantile_loss(q):
     return loss
 
 # Standalone directional loss function for proper serialization
-@tf.keras.utils.register_keras_serializable()
+@tf.keras.utils.register_keras_serializable(package="Custom", name="directional_loss")
 def directional_loss(y_true, y_pred):
     """
     Custom loss function that penalizes wrong directional predictions more

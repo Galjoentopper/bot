@@ -14,7 +14,7 @@ from sklearn.preprocessing import StandardScaler
 from .feature_engineer import LSTM_FEATURES
 
 # Standalone directional loss function for proper serialization
-@tf.keras.utils.register_keras_serializable()
+@tf.keras.utils.register_keras_serializable(package="Custom", name="directional_loss")
 def directional_loss(y_true, y_pred):
     """Custom loss function that penalizes wrong directional predictions more."""
     # Standard MSE
@@ -71,14 +71,20 @@ class WindowBasedModelLoader:
                     try:
                         window_num = int(lstm_file.stem.split('_window_')[1])
                         windows_found.add(window_num)
-                        # Load model with custom objects
                         if custom_objects is None:
                             custom_objects = {'directional_loss': directional_loss}
                         model = tf.keras.models.load_model(str(lstm_file), custom_objects=custom_objects)
                         self.lstm_models[symbol][window_num] = model
                         self.logger.debug(f"Loaded LSTM model for {symbol} window {window_num}")
-                    except (ValueError, Exception) as e:
+                    except Exception as e:
                         self.logger.warning(f"Failed to load LSTM model {lstm_file}: {e}")
+                        try:
+                            model = tf.keras.models.load_model(str(lstm_file), compile=False)
+                            model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+                            self.lstm_models[symbol][window_num] = model
+                            self.logger.info(f"Loaded {lstm_file} without custom objects")
+                        except Exception as e2:
+                            self.logger.warning(f"Fallback load failed for {lstm_file}: {e2}")
             
             # Scan XGBoost models
             xgb_dir = self.model_path / 'xgboost'
@@ -156,36 +162,10 @@ class WindowBasedModelLoader:
         return status
     
     def get_optimal_window(self, symbol: str, market_volatility: float = 0.5) -> Optional[int]:
-        """Select optimal window based on market conditions and prioritize XGBoost models."""
-        if symbol not in self.available_windows or not self.available_windows[symbol]:
-            return None
-        
-        available = self.available_windows[symbol]
-        
-        # Prioritize windows with XGBoost models available
-        xgb_windows = list(self.xgb_models.get(symbol, {}).keys())
-        scaler_windows = list(self.scalers.get(symbol, {}).keys())
-        
-        # Get windows that have both XGBoost and scaler models
-        complete_windows = list(set(xgb_windows) & set(scaler_windows))
-        
-        if not complete_windows:
-            # Fallback to any available windows
-            complete_windows = available
-        
-        # Dynamic window selection based on market volatility
-        if market_volatility < 0.3:  # Low volatility - use longer windows
-            preferred_windows = [w for w in complete_windows if w >= 20]
-        elif market_volatility > 0.7:  # High volatility - use shorter windows
-            preferred_windows = [w for w in complete_windows if w <= 15]
-        else:  # Medium volatility - use medium windows
-            preferred_windows = [w for w in complete_windows if 10 <= w <= 25]
-        
-        if not preferred_windows:
-            preferred_windows = complete_windows
-        
-        # Return the largest window from preferred range (latest/most data)
-        return max(preferred_windows)
+        """Return the most recent window number available for a symbol."""
+        if symbol in self.available_windows and self.available_windows[symbol]:
+            return max(self.available_windows[symbol])
+        return None
     
     def get_available_models(self, symbol: str, window: int) -> Dict[str, bool]:
         """Check which models are available for a specific symbol and window."""
