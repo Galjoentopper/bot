@@ -11,6 +11,7 @@ import pandas as pd
 import tensorflow as tf
 import xgboost as xgb
 from sklearn.preprocessing import StandardScaler
+from .feature_engineer import LSTM_FEATURES
 
 # Standalone directional loss function for proper serialization
 @tf.keras.utils.register_keras_serializable()
@@ -318,9 +319,8 @@ class WindowBasedEnsemblePredictor:
             
             # Prepare features
             feature_data = features.copy()
-            if scaler is not None:
-                feature_cols = [col for col in feature_data.columns 
-                              if feature_data[col].dtype in ['float64', 'int64']]
+            feature_cols = [col for col in LSTM_FEATURES if col in feature_data.columns]
+            if scaler is not None and feature_cols:
                 feature_data[feature_cols] = scaler.transform(feature_data[feature_cols])
             
             # Create sequence for LSTM (use window size)
@@ -329,8 +329,7 @@ class WindowBasedEnsemblePredictor:
                 sequence_length = len(feature_data)
             
             # Select numeric features
-            numeric_cols = [col for col in feature_data.columns 
-                          if feature_data[col].dtype in ['float64', 'int64']]
+            numeric_cols = feature_cols
             
             sequence = feature_data[numeric_cols].tail(sequence_length).values
             
