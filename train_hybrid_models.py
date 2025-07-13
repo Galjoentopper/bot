@@ -496,7 +496,13 @@ class HybridModelTrainer:
     def generate_walk_forward_windows(
         self, df: pd.DataFrame
     ) -> List[Tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp, pd.Timestamp]]:
-        """Generate purged walk-forward windows with embargo."""
+        """Generate sliding walk-forward windows with purge and embargo gaps.
+
+        Each window uses ``self.train_months`` of data for training and
+        ``self.test_months`` for testing. Windows advance by ``self.step_months``
+        to create a sliding sequence while the purge/embargo gaps between the
+        training and testing segments are preserved.
+        """
 
         windows = []
         start = df.index.min()
@@ -516,10 +522,10 @@ class HybridModelTrainer:
                 break
 
             windows.append((train_start, train_end, test_start, test_end))
-            current_start = test_end + embargo
+            current_start = current_start + pd.DateOffset(months=self.step_months)
 
         print(
-            f"📅 Generated {len(windows)} walk-forward windows with purging and embargo"
+            f"📅 Generated {len(windows)} sliding walk-forward windows with purging and embargo"
         )
         return windows
 

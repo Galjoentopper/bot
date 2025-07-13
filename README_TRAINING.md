@@ -145,7 +145,7 @@ For each time window:
 📊 Loaded 95,847 candles for BTCEUR
 📅 Date range: 2020-01-01 to 2025-01-11
 ✅ Created 32 technical features
-🔄 Generated 54 walk-forward windows
+🔄 Generated 54 sliding walk-forward windows
 
 🔄 Window 1/54: 2020-01-01 to 2020-08-01
 🧠 LSTM Training: 17,280 sequences
