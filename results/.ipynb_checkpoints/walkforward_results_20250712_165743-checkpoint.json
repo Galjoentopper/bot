@@ -1,0 +1,19 @@
+{
+  "timestamp": "20250712_165743",
+  "training_type": "walk_forward",
+  "config": {
+    "train_months": 3,
+    "test_months": 1,
+    "step_months": 1,
+    "min_training_samples": 5000
+  },
+  "total_time_minutes": 0.035996564229329425,
+  "symbols_trained": 0,
+  "symbols_failed": 1,
+  "total_windows": 0,
+  "results_by_symbol": {
+    "BTCEUR": {
+      "error": "cannot import name 'CosineRestartScheduler' from 'tensorflow.keras.callbacks' (/usr/local/lib/python3.11/dist-packages/keras/_tf_keras/keras/callbacks/__init__.py)"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "timestamp": "20250712_174428",
+  "training_type": "walk_forward",
+  "config": {
+    "train_months": 3,
+    "test_months": 1,
+    "step_months": 1,
+    "min_training_samples": 5000
+  },
+  "total_time_minutes": 1.9160361687342327,
+  "symbols_trained": 0,
+  "symbols_failed": 1,
+  "total_windows": 0,
+  "results_by_symbol": {
+    "BTCEUR": {
+      "error": "XGBClassifier.fit() got an unexpected keyword argument 'eval_names'"
+    }
+  }
+}

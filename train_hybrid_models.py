@@ -1058,12 +1058,39 @@ class HybridModelTrainer:
         
         print(f"📊 Feature importance plot saved: {plot_path}")
     
+    def get_last_completed_window(self, symbol: str) -> int:
+        """
+        Check the metrics CSV file to determine the last completed window for resume functionality
+        Returns the window number to start from (0-based indexing)
+        """
+        metrics_file = f"logs/{symbol.lower()}_metrics.csv"
+        
+        if not os.path.exists(metrics_file):
+            print(f"📄 No existing metrics file found for {symbol}, starting from window 1")
+            return 0
+        
+        try:
+            metrics_df = pd.read_csv(metrics_file)
+            if len(metrics_df) == 0:
+                print(f"📄 Empty metrics file for {symbol}, starting from window 1")
+                return 0
+            
+            last_window = metrics_df['window'].max()
+            print(f"📊 Found existing metrics for {symbol} up to window {last_window}")
+            print(f"🔄 Resuming training from window {last_window + 1}")
+            return last_window  # Return last completed window (will start from last_window + 1)
+            
+        except Exception as e:
+            print(f"⚠️  Error reading metrics file for {symbol}: {e}")
+            print(f"📄 Starting from window 1")
+            return 0
+    
     def train_symbol_walkforward(self, symbol: str) -> List[Dict]:
         """
-        Walk-forward training pipeline for a single symbol
+        Walk-forward training pipeline for a single symbol with resume capability
         """
         print(f"\n{'='*60}")
-        print(f"���0 Walk-Forward Training for {symbol}")
+        print(f"🚀 Walk-Forward Training for {symbol}")
         print(f"{'='*60}")
         
         # Load and prepare data
@@ -1078,10 +1105,21 @@ class HybridModelTrainer:
             print(f"⚠️  No valid windows found for {symbol}")
             return []
         
+        # Check for resume capability
+        last_completed_window = self.get_last_completed_window(symbol)
+        start_window_idx = last_completed_window  # 0-based index
+        
+        if start_window_idx > 0:
+            print(f"\n🔄 RESUME MODE: Skipping first {start_window_idx} completed windows")
+            print(f"📊 Total windows: {len(windows)}, Starting from window: {start_window_idx + 1}")
+        else:
+            print(f"\n🆕 FRESH START: Training all {len(windows)} windows")
+        
         results = []
         start_time = time.time()  # Initialize start_time for progress tracking
         
-        for i, (train_start, train_end, test_end) in enumerate(windows):
+        # Start from the determined window index (resume functionality)
+        for i, (train_start, train_end, test_end) in enumerate(windows[start_window_idx:], start=start_window_idx):
             window_start_time = time.time()
             print(f"\n🔄 Window {i+1}/{len(windows)}: {train_start.date()} to {test_end.date()}")
             print(f"⏰ Window started at: {datetime.now().strftime('%H:%M:%S')}")
@@ -1195,12 +1233,15 @@ class HybridModelTrainer:
             print(f"⏱️  Window {i+1} completed in {window_time:.1f} minutes")
             print(f"📊 Progress: {i+1}/{len(windows)} windows ({(i+1)/len(windows)*100:.1f}%)")
             
-            # Estimate remaining time
-            if i > 0:
-                avg_time_per_window = (time.time() - start_time) / (i + 1) / 60
+            # Estimate remaining time (account for resumed training)
+            windows_completed_this_session = (i - start_window_idx) + 1
+            if windows_completed_this_session > 0:
+                avg_time_per_window = (time.time() - start_time) / windows_completed_this_session / 60
                 remaining_windows = len(windows) - (i + 1)
                 estimated_remaining = avg_time_per_window * remaining_windows
                 print(f"🕐 Estimated remaining time: {estimated_remaining:.1f} minutes")
+                if start_window_idx > 0:
+                    print(f"📈 Session progress: {windows_completed_this_session}/{len(windows) - start_window_idx} windows in this session")
             
             # Log results to CSV
             self.log_window_results(symbol, window_results)
@@ -1239,6 +1280,17 @@ class HybridModelTrainer:
             # Clear GPU memory between windows to prevent accumulation and CUDA graph errors
             tf.keras.backend.clear_session()
             print(f"🧹 Memory cleared after window {i+1}")
+        
+        # Training completion summary
+        total_time = (time.time() - start_time) / 60
+        if start_window_idx > 0:
+            print(f"\n✅ RESUME TRAINING COMPLETED for {symbol}")
+            print(f"📊 Resumed from window {start_window_idx + 1}, completed {len(results)} additional windows")
+            print(f"⏱️  Session time: {total_time:.1f} minutes")
+        else:
+            print(f"\n✅ FULL TRAINING COMPLETED for {symbol}")
+            print(f"📊 Completed all {len(results)} windows")
+            print(f"⏱️  Total time: {total_time:.1f} minutes")
         
         return results
     
