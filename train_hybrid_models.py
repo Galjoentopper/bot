@@ -16,6 +16,7 @@ Supported pairs: BTCEUR, ETHEUR, ADAEUR, SOLEUR, XRPEUR
 """
 
 import os
+import random
 # Disable CUDA graphs to prevent CUDA_ERROR_GRAPH_EXEC_UPDATE_FAILURE
 # Commenting out XLA flag that causes 'Unknown flags' error
 # os.environ["XLA_FLAGS"] = "--xla_gpu_enable_cuda_graphs=false"
@@ -121,12 +122,18 @@ class HybridModelTrainer:
     Hybrid LSTM + XGBoost Model Trainer for Cryptocurrency Trading
     """
     
-    def __init__(self, data_dir: str = "data", models_dir: str = "models", 
+    def __init__(self, data_dir: str = "data", models_dir: str = "models",
                  train_months: int = 3, test_months: int = 1, step_months: int = 1,
-                 symbols: List[str] = None):
+                 symbols: List[str] = None, seed: int = 42):
         self.data_dir = data_dir
         self.models_dir = models_dir
         self.symbols = symbols or ['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR']
+        self.seed = seed
+
+        # Ensure reproducibility
+        random.seed(seed)
+        np.random.seed(seed)
+        tf.random.set_seed(seed)
         
         # Walk-forward parameters
         self.train_months = train_months    # Training window size in months
@@ -1465,6 +1472,13 @@ Examples:
         default=1,
         help='Step size for rolling window in months (default: 1)'
     )
+
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=42,
+        help='Random seed for reproducible results (default: 42)'
+    )
     
     return parser.parse_args()
 
@@ -1481,7 +1495,8 @@ def main():
         symbols=args.symbols,
         train_months=args.train_months,
         test_months=args.test_months,
-        step_months=args.step_months
+        step_months=args.step_months,
+        seed=args.seed
     )
     
     # Train all models
