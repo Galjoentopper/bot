@@ -910,9 +910,15 @@ class HybridModelTrainer:
         timestamps: np.ndarray,
         symbol: str,
         window_idx: int,
+        is_train: bool = True,
     ) -> pd.DataFrame:
         """
-        Prepare feature matrix for XGBoost including lstm_delta
+        Prepare feature matrix for XGBoost including lstm_delta.
+
+        When ``is_train`` is True the Boruta feature selection is performed and
+        the resulting feature list is persisted.  When ``is_train`` is False the
+        previously saved feature list for the given window is loaded so that the
+        test set uses exactly the same feature ordering as the training data.
         """
         # Align lstm_delta with dataframe
         lstm_df = pd.DataFrame({"lstm_delta": lstm_delta}, index=timestamps)
@@ -1038,6 +1044,10 @@ class HybridModelTrainer:
         columns_path = os.path.join(
             feature_dir, f"{symbol.lower()}_window_{window_idx}.pkl"
         )
+        selected_path = os.path.join(
+            feature_dir, f"{symbol.lower()}_window_{window_idx}_selected.pkl"
+        )
+
         try:
             with open(columns_path, "wb") as f:
                 pickle.dump(feature_columns, f)
@@ -1071,7 +1081,23 @@ class HybridModelTrainer:
             )
 
         # Feature selection using Boruta on cleaned data
-        selected = self.boruta_feature_selection(pre_clean_df)
+        if is_train:
+            selected = self.boruta_feature_selection(pre_clean_df)
+            try:
+                with open(selected_path, "wb") as f:
+                    pickle.dump(selected, f)
+            except Exception as e:
+                print(f"⚠️  Failed to save selected features: {e}")
+        else:
+            try:
+                with open(selected_path, "rb") as f:
+                    selected = pickle.load(f)
+            except Exception as e:
+                print(f"⚠️  Failed to load selected features: {e}")
+                selected = [c for c in pre_clean_df.columns if c != "target"]
+
+        # Ensure selected features exist in the dataframe
+        selected = [c for c in selected if c in pre_clean_df.columns]
         final_df = pre_clean_df[selected + ["target"]]
 
         # Data cleaning: handle NaN and infinite values intelligently
@@ -1620,6 +1646,7 @@ class HybridModelTrainer:
                 timestamps,
                 symbol,
                 i + 1,
+                is_train=True,
             )
 
             if len(xgb_df) < 500:
@@ -1676,6 +1703,7 @@ class HybridModelTrainer:
                 test_timestamps,
                 symbol,
                 i + 1,
+                is_train=False,
             )
 
             if len(xgb_test_df) == 0:
