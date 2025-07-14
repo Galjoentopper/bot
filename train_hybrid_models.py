@@ -66,54 +66,38 @@ from tensorflow.keras.optimizers import Adam, AdamW
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 import traceback
 
-# Configure GPU for maximum utilization and performance
-try:
-    # Disable CUDA graphs and set conservative memory allocator
-    os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
-    # Remove problematic XLA flag that causes 'Unknown flags' error
-    # os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_graph_level=0'
 
-    # Enable GPU memory growth to avoid allocating all GPU memory at once
+def configure_gpu() -> None:
+    """Enable GPU memory growth and TF32 for faster training."""
+    # Disable CUDA graphs and use the async allocator for stability
+    os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
+
     gpus = tf.config.experimental.list_physical_devices("GPU")
-    if gpus:
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-            # Remove memory limit for maximum GPU utilization
-            # tf.config.experimental.set_virtual_device_configuration(
-            #     gpu,
-            #     [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=15000)]  # 15GB limit removed
-            # )
+    if not gpus:
+        print("💻 No GPU detected, using CPU")
+        return
+
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+
+    print(
+        f"🚀 GPU Configuration: Found {len(gpus)} GPU(s), memory growth enabled"
+    )
+    print("⚡ Mixed precision DISABLED for maximum speed (using float32)")
+
+    try:
+        tf.config.experimental.enable_tensor_float_32()
+        print("🔥 Conservative GPU optimizations: TF32 enabled")
+    except Exception as tf32_error:
         print(
-            f"🚀 GPU Configuration: Found {len(gpus)} GPU(s), memory growth enabled with CUDA graphs DISABLED"
+            f"🔥 Conservative GPU optimizations: TF32 unavailable ({tf32_error})"
         )
 
-        # Disable mixed precision to reduce overhead and improve speed
-        # from tensorflow.keras import mixed_precision
-        # policy = mixed_precision.Policy('mixed_float16')
-        # mixed_precision.set_global_policy(policy)
-        print("⚡ Mixed precision DISABLED for maximum speed (using float32)")
 
-        # Conservative GPU optimizations (disable XLA to prevent graph errors)
-        # tf.config.optimizer.set_jit(True)  # Disable XLA compilation to prevent CUDA graph errors
-
-        # Enable TF32 for better performance (if available)
-        try:
-            tf.config.experimental.enable_tensor_float_32()
-            print(
-                "🔥 Conservative GPU optimizations: CUDA graphs disabled, TF32 enabled"
-            )
-        except AttributeError:
-            # TF32 not available in this TensorFlow version
-            print(
-                "🔥 Conservative GPU optimizations: CUDA graphs disabled (TF32 not available)"
-            )
-        except Exception as tf32_error:
-            print(
-                f"🔥 Conservative GPU optimizations: CUDA graphs disabled (TF32 error: {tf32_error})"
-            )
-    else:
-        print("💻 No GPU detected, using CPU")
-except Exception as e:
+# Configure GPU at import time
+try:
+    configure_gpu()
+except Exception as e:  # pragma: no cover - safe fallback
     print(f"⚠️ GPU configuration warning: {e}")
 
 # Technical Analysis
