@@ -1290,7 +1290,12 @@ class HybridModelTrainer:
         )
 
         # Preserve feature names for downstream analysis (e.g. importance plots)
-        model.feature_names_in_ = feature_names
+        # ``feature_names_in_`` is a read-only attribute in recent versions of
+        # XGBoost/Scikit-learn.  Attempting to assign to it raises an
+        # AttributeError, which previously caused training to fail.  Instead we
+        # store the names on a custom attribute that downstream utilities can
+        # reference when generating reports.
+        model._feature_names = feature_names
 
         # Print training summary
         best_iteration = (
@@ -1469,10 +1474,18 @@ class HybridModelTrainer:
         """
         Generate and save feature importance plot
         """
+        feature_names = getattr(model, "_feature_names", None)
+        if feature_names is None:
+            # Fall back to feature_names_in_ if available (e.g. when fitting with
+            # DataFrames) otherwise create generic indices
+            feature_names = getattr(model, "feature_names_in_", None)
+            if feature_names is None:
+                feature_names = [f"f{i}" for i in range(len(model.feature_importances_))]
+
         importance_df = (
             pd.DataFrame(
                 {
-                    "feature": model.feature_names_in_,
+                    "feature": feature_names,
                     "importance": model.feature_importances_,
                 }
             )
