@@ -811,7 +811,7 @@ class HybridModelTrainer:
 
         # Train model with conservative memory management to prevent crashes
         # Start with moderate batch size and implement robust fallback
-        batch_size = 1024  # Conservative starting point to prevent allocation failures
+        batch_size = 2048  # Start with larger batch size to better utilize GPU
 
         # Disable XLA compilation to prevent CUDA graph conflicts
         model.compile(
@@ -822,7 +822,7 @@ class HybridModelTrainer:
         )
 
         # Implement robust batch size fallback with memory clearing
-        batch_sizes = [1024, 512, 256, 128, 64]  # Conservative progression
+        batch_sizes = [2048, 1024, 512, 256, 128, 64]  # Try larger batches first
         history = None
 
         for batch_size in batch_sizes:
