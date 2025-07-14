@@ -12,6 +12,7 @@ import tensorflow as tf
 import xgboost as xgb
 from sklearn.preprocessing import StandardScaler
 from .feature_engineer import LSTM_FEATURES
+from tensorflow.keras import backend as K
 
 # Standalone directional loss function for proper serialization
 @tf.keras.utils.register_keras_serializable(package="Custom", name="directional_loss")
@@ -30,6 +31,17 @@ def directional_loss(y_true, y_pred):
     )
     
     return mse + tf.reduce_mean(direction_penalty)
+
+# Quantile loss used during training
+@tf.keras.utils.register_keras_serializable(package="Custom", name="quantile_loss")
+def quantile_loss(q):
+    """Return a quantile loss function configured for quantile ``q``."""
+
+    def loss(y_true, y_pred):
+        e = y_true - y_pred
+        return K.mean(K.maximum(q * e, (q - 1) * e), axis=-1)
+
+    return loss
 
 class WindowBasedModelLoader:
     """Loads and manages window-based pre-trained models for trading predictions."""
@@ -72,7 +84,12 @@ class WindowBasedModelLoader:
                         window_num = int(lstm_file.stem.split('_window_')[1])
                         windows_found.add(window_num)
                         if custom_objects is None:
-                            custom_objects = {'directional_loss': directional_loss}
+                            custom_objects = {
+                                'directional_loss': directional_loss,
+                                'quantile_loss': lambda q: (
+                                    lambda y_true, y_pred: quantile_loss(q)(y_true, y_pred)
+                                ),
+                            }
                         model = tf.keras.models.load_model(str(lstm_file), custom_objects=custom_objects)
                         self.lstm_models[symbol][window_num] = model
                         self.logger.debug(f"Loaded LSTM model for {symbol} window {window_num}")
@@ -161,11 +178,19 @@ class WindowBasedModelLoader:
         
         return status
     
-    def get_optimal_window(self, symbol: str, market_volatility: float = 0.5) -> Optional[int]:
-        """Return the most recent window number available for a symbol."""
-        if symbol in self.available_windows and self.available_windows[symbol]:
-            return max(self.available_windows[symbol])
-        return None
+    def get_optimal_window(self, symbol: str, market_volatility: float, trend_strength: float) -> Optional[int]:
+        """Select optimal window based on market conditions."""
+        if symbol not in self.available_windows or not self.available_windows[symbol]:
+            return None
+
+        windows = sorted(self.available_windows[symbol])
+
+        if market_volatility > 0.7:
+            return max(windows[-5:])
+        elif trend_strength > 0.6 and len(windows) >= 10:
+            return windows[-10]
+        else:
+            return windows[-15] if len(windows) >= 15 else windows[-1]
     
     def get_available_models(self, symbol: str, window: int) -> Dict[str, bool]:
         """Check which models are available for a specific symbol and window."""
@@ -199,7 +224,7 @@ class WindowBasedEnsemblePredictor:
             'VERY_STRONG': 5
         }
         
-    async def predict(self, symbol: str, features: pd.DataFrame, 
+    async def predict(self, symbol: str, features: pd.DataFrame,
                      market_volatility: float = 0.5) -> Optional[dict]:
         """Generate enhanced ensemble prediction with window-based model selection."""
         try:
@@ -207,8 +232,15 @@ class WindowBasedEnsemblePredictor:
                 self.logger.warning(f"Insufficient features for prediction: {len(features)}")
                 return None
 
+            # Determine trend strength from engineered features
+            if 'trend_strength' in features.columns:
+                trend_strength = features['trend_strength'].tail(20).mean()
+                trend_strength = float(np.abs(trend_strength)) if not np.isnan(trend_strength) else 0.0
+            else:
+                trend_strength = 0.0
+
             # Select optimal window based on market conditions
-            optimal_window = self.model_loader.get_optimal_window(symbol, market_volatility)
+            optimal_window = self.model_loader.get_optimal_window(symbol, market_volatility, trend_strength)
             if optimal_window is None:
                 self.logger.warning(f"No models available for {symbol}")
                 return None
@@ -252,8 +284,9 @@ class WindowBasedEnsemblePredictor:
             
             # Calculate ensemble prediction with enhanced weighting
             ensemble_pred = self._calculate_enhanced_ensemble(predictions, confidence_scores)
-            
-            # Calculate prediction confidence with volatility adjustment
+
+            # Calculate uncertainty and confidence
+            uncertainty = self.calculate_prediction_uncertainty(predictions, market_volatility)
             avg_confidence = self._calculate_adjusted_confidence(confidence_scores, market_volatility)
             
             # Determine signal strength
@@ -272,6 +305,7 @@ class WindowBasedEnsemblePredictor:
                 'predicted_price': ensemble_pred,
                 'price_change_pct': price_change_pct,
                 'confidence': avg_confidence,
+                'uncertainty': uncertainty,
                 'signal_strength': signal_strength,
                 'meets_threshold': meets_threshold,
                 'optimal_window': optimal_window,
@@ -282,9 +316,11 @@ class WindowBasedEnsemblePredictor:
                 'timestamp': pd.Timestamp.now()
             }
             
-            self.logger.debug(f"Enhanced prediction for {symbol}: {price_change_pct:.4f}% change, "
-                            f"confidence: {avg_confidence:.3f}, window: {optimal_window}, "
-                            f"meets_threshold: {meets_threshold}")
+            self.logger.debug(
+                f"Enhanced prediction for {symbol}: {price_change_pct:.4f}% change, "
+                f"confidence: {avg_confidence:.3f}, uncertainty: {uncertainty:.3f}, "
+                f"window: {optimal_window}, meets_threshold: {meets_threshold}"
+            )
             return result
             
         except Exception as e:
@@ -419,8 +455,21 @@ class WindowBasedEnsemblePredictor:
         
         if total_weight == 0:
             return np.mean(list(predictions.values()))
-        
+
         return weighted_sum / total_weight
+
+    def calculate_prediction_uncertainty(self, predictions: dict, market_volatility: float) -> float:
+        """Calculate uncertainty based on model disagreement and market conditions."""
+        if len(predictions) < 2:
+            return 1.0
+
+        pred_values = list(predictions.values())
+        pred_std = np.std(pred_values)
+        pred_mean = np.mean(pred_values)
+
+        cv = pred_std / pred_mean if pred_mean != 0 else 1.0
+        uncertainty = cv * (1 + market_volatility)
+        return min(1.0, uncertainty)
     
     def _calculate_adjusted_confidence(self, confidence_scores: dict, market_volatility: float) -> float:
         """Calculate confidence adjusted for market volatility."""

@@ -12,6 +12,16 @@ import requests
 import websockets
 from collections import deque
 
+
+class FeatureCache:
+    def __init__(self, max_size=1000):
+        self.cache = {}
+        self.timestamps = deque(maxlen=max_size)
+
+    def get_features(self, symbol, timestamp):
+        return self.cache.get(f"{symbol}_{timestamp}")
+
+
 class BitvavoDataCollector:
     """Collects real-time and historical data from Bitvavo API."""
     
@@ -26,6 +36,11 @@ class BitvavoDataCollector:
         self.last_update: Dict[str, datetime] = {}
         
         self.logger = logging.getLogger(__name__)
+
+    async def validate_candle_data(self, candle_data: dict) -> bool:
+        """Validate incoming candle data."""
+        required_fields = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+        return all(field in candle_data for field in required_fields)
         
     async def initialize_buffers(self, symbols: List[str]):
         """Initialize data buffers with historical data."""
@@ -172,12 +187,11 @@ class BitvavoDataCollector:
                         'close': float(candle_data[4]),
                         'volume': float(candle_data[5])
                     }
-                    
-                    # Add to buffer
-                    self.data_buffers[symbol].append(candle)
-                    self.last_update[symbol] = datetime.now()
-                    
-                    self.logger.debug(f"Updated {symbol} candle: {candle['close']}")
+                    if await self.validate_candle_data(candle):
+                        # Add to buffer
+                        self.data_buffers[symbol].append(candle)
+                        self.last_update[symbol] = datetime.now()
+                        self.logger.debug(f"Updated {symbol} candle: {candle['close']}")
                     
         except Exception as e:
             self.logger.error(f"Error processing WebSocket message: {e}")
@@ -207,17 +221,17 @@ class BitvavoDataCollector:
                             }
                             
                             # Add to buffer if it's newer than the last candle
-                            if (symbol not in self.data_buffers or 
+                            if (symbol not in self.data_buffers or
                                 len(self.data_buffers[symbol]) == 0 or
                                 candle['timestamp'] > self.data_buffers[symbol][-1]['timestamp']):
-                                
+
                                 if symbol not in self.data_buffers:
                                     self.data_buffers[symbol] = deque(maxlen=100)
-                                    
-                                self.data_buffers[symbol].append(candle)
-                                self.last_update[symbol] = datetime.now()
-                                
-                                self.logger.info(f"Updated {symbol} via API: {candle['close']}")
+
+                                if await self.validate_candle_data(candle):
+                                    self.data_buffers[symbol].append(candle)
+                                    self.last_update[symbol] = datetime.now()
+                                    self.logger.info(f"Updated {symbol} via API: {candle['close']}")
                 
                 # Wait for next update cycle
                 await asyncio.sleep(60)  # Check every minute

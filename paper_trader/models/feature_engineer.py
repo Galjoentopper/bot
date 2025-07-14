@@ -16,6 +16,14 @@ LSTM_FEATURES: List[str] = [
     'momentum_10', 'price_zscore_20'
 ]
 
+# Full feature list used during model training
+TRAINING_FEATURES: List[str] = [
+    'returns', 'log_returns', 'price_change_1h', 'price_change_4h',
+    'volatility_20', 'atr_ratio', 'rsi', 'macd', 'bb_position',
+    'volume_ratio', 'price_vs_ema9', 'price_vs_ema21', 'buying_pressure',
+    'selling_pressure', 'spread_ratio', 'momentum_10', 'price_zscore_20'
+]
+
 class FeatureEngineer:
     """Creates technical indicators and features for ML models."""
     
@@ -25,6 +33,14 @@ class FeatureEngineer:
     def get_lstm_feature_columns(self) -> List[str]:
         """Return LSTM feature column order used during training."""
         return LSTM_FEATURES
+
+    def validate_features(self, df: pd.DataFrame) -> bool:
+        """Validate that all required features are present."""
+        missing_features = set(TRAINING_FEATURES) - set(df.columns)
+        if missing_features:
+            self.logger.warning(f"Missing features: {missing_features}")
+            return False
+        return True
         
     def engineer_features(self, data: pd.DataFrame) -> Optional[pd.DataFrame]:
         """Create the same technical indicators used during model training."""
