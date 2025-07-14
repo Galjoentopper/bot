@@ -718,8 +718,8 @@ class HybridModelTrainer:
         lstm1 = LSTM(
             self.lstm_units[0],
             return_sequences=True,
-            dropout=self.dropout_rate,
-            recurrent_dropout=self.dropout_rate,
+            dropout=0.0,
+            recurrent_dropout=0.0,
         )(x)
         lstm1 = BatchNormalization()(lstm1)
 
@@ -727,8 +727,8 @@ class HybridModelTrainer:
         lstm2 = LSTM(
             self.lstm_units[1],
             return_sequences=True,
-            dropout=self.dropout_rate,
-            recurrent_dropout=self.dropout_rate,
+            dropout=0.0,
+            recurrent_dropout=0.0,
         )(lstm1)
         lstm2 = BatchNormalization()(lstm2)
 
@@ -736,8 +736,8 @@ class HybridModelTrainer:
         lstm3 = LSTM(
             self.lstm_units[2],
             return_sequences=True,
-            dropout=self.dropout_rate,
-            recurrent_dropout=self.dropout_rate,
+            dropout=0.0,
+            recurrent_dropout=0.0,
         )(lstm2)
         lstm3 = BatchNormalization()(lstm3)
 
