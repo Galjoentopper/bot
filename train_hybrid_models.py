@@ -1237,10 +1237,18 @@ class HybridModelTrainer:
         print(f"🌲 Training Enhanced XGBoost model...")
 
         # Prepare training data
-        X_train = train_df.drop("target", axis=1)
+        X_train_df = train_df.drop("target", axis=1)
         y_train = train_df["target"]
-        X_val = val_df.drop("target", axis=1)
+        X_val_df = val_df.drop("target", axis=1)
         y_val = val_df["target"]
+
+        # Convert to numpy arrays to avoid DataFrame dtype issues with
+        # newer XGBoost versions which expect ``feature_types`` to match
+        # the number of columns.  The original DataFrame column order is
+        # preserved separately for later use (e.g. feature importance).
+        feature_names = X_train_df.columns.tolist()
+        X_train = X_train_df.to_numpy()
+        X_val = X_val_df.to_numpy()
 
         # Calculate class distribution and balancing
         class_counts = y_train.value_counts()
@@ -1281,6 +1289,9 @@ class HybridModelTrainer:
             verbose=False,
         )
 
+        # Preserve feature names for downstream analysis (e.g. importance plots)
+        model.feature_names_in_ = feature_names
+
         # Print training summary
         best_iteration = (
             model.best_iteration
@@ -1307,8 +1318,11 @@ class HybridModelTrainer:
         lstm_rmse = np.sqrt(mean_squared_error(test_data["y_lstm"], lstm_pred))
 
         # XGBoost evaluation
-        X_test = test_data["xgb_df"].drop("target", axis=1)
+        X_test_df = test_data["xgb_df"].drop("target", axis=1)
         y_test = test_data["xgb_df"]["target"]
+
+        # Use numpy arrays to avoid feature type validation errors
+        X_test = X_test_df.to_numpy()
 
         xgb_pred = xgb_model.predict(X_test)
         xgb_pred_proba = xgb_model.predict_proba(X_test)[:, 1]
