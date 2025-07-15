@@ -1,19 +1,30 @@
-2025-07-16 01:18:16,837 - __main__ - INFO - Paper Trader initialized
-2025-07-16 01:18:16,837 - __main__ - INFO - Starting Paper Trader...
-2025-07-16 01:18:16,837 - __main__ - INFO - Initializing Paper Trader components...
-2025-07-16 01:18:19,409 - paper_trader.notifications.telegram_notifier - INFO - Telegram bot initialized successfully
-2025-07-16 01:18:20,295 - __main__ - INFO - All components initialized successfully
-2025-07-16 01:18:20,296 - __main__ - INFO - Loading ML models...
-2025-07-16 01:18:21,337 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_10.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
-2025-07-16 01:18:22,205 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_10.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
-2025-07-16 01:18:23,159 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_11.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
-2025-07-16 01:18:23,912 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_11.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
-2025-07-16 01:18:25,008 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_12.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
-2025-07-16 01:18:25,959 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_12.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
-2025-07-16 01:18:26,977 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_13.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
-2025-07-16 01:18:27,743 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_13.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
-2025-07-16 01:18:28,566 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_14.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
-2025-07-16 01:18:29,412 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_14.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
-2025-07-16 01:18:30,268 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_15.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
-2025-07-16 01:18:31,221 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_15.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
-2025-07-16 01:18:32,254 - __main__ - INFO - Shutting down Paper Trader...
+2025-07-16 01:30:32,114 - __main__ - INFO - Paper Trader initialized
+2025-07-16 01:30:32,115 - __main__ - INFO - Starting Paper Trader...
+2025-07-16 01:30:32,115 - __main__ - INFO - Initializing Paper Trader components...
+2025-07-16 01:30:36,703 - paper_trader.notifications.telegram_notifier - INFO - Telegram bot initialized successfully
+2025-07-16 01:30:37,724 - __main__ - INFO - All components initialized successfully
+2025-07-16 01:30:37,730 - __main__ - INFO - Loading ML models...
+2025-07-16 01:30:40,269 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_10.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:30:42,458 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_10.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:30:42,459 - paper_trader.models.model_loader - WARNING - Could not find separate architecture/weights files for models\lstm\btceur_window_10.keras
+2025-07-16 01:30:44,350 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_11.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:30:45,922 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_11.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:30:45,923 - paper_trader.models.model_loader - WARNING - Could not find separate architecture/weights files for models\lstm\btceur_window_11.keras
+2025-07-16 01:30:48,347 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_12.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:30:50,814 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_12.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:30:50,831 - paper_trader.models.model_loader - WARNING - Could not find separate architecture/weights files for models\lstm\btceur_window_12.keras
+2025-07-16 01:30:53,067 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_13.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:30:54,751 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_13.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:30:54,752 - paper_trader.models.model_loader - WARNING - Could not find separate architecture/weights files for models\lstm\btceur_window_13.keras
+2025-07-16 01:30:58,356 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_14.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:31:00,898 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_14.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:31:00,903 - paper_trader.models.model_loader - WARNING - Could not find separate architecture/weights files for models\lstm\btceur_window_14.keras
+2025-07-16 01:31:02,667 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_15.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:31:03,833 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_15.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:31:03,834 - paper_trader.models.model_loader - WARNING - Could not find separate architecture/weights files for models\lstm\btceur_window_15.keras
+2025-07-16 01:31:06,091 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_16.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:31:08,049 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_16.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:31:08,050 - paper_trader.models.model_loader - WARNING - Could not find separate architecture/weights files for models\lstm\btceur_window_16.keras
+2025-07-16 01:31:09,626 - paper_trader.models.model_loader - WARNING - Failed to load LSTM model models\lstm\btceur_window_17.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:31:11,054 - paper_trader.models.model_loader - WARNING - Fallback load failed for models\lstm\btceur_window_17.keras: Layer 'conv1d' expected 2 variables, but received 0 variables during loading. Expected: ['conv1d/kernel:0', 'conv1d/bias:0']
+2025-07-16 01:31:11,066 - paper_trader.models.model_loader - WARNING - Could not find separate architecture/weights files for models\lstm\btceur_window_17.keras

@@ -48,6 +48,11 @@ class FeatureEngineer:
             if len(data) < 50:
                 self.logger.warning("Insufficient data for feature engineering")
                 return None
+        except Exception as e:
+            self.logger.error(f"Error checking data length: {e}")
+            return None
+            
+        try:
 
             df = data.copy()
             
@@ -179,19 +184,24 @@ class FeatureEngineer:
             df['trend_strength'] = df['price_vs_ema9'] * df['price_vs_ema21']
             df['volatility_breakout'] = df['atr'] * df['bb_width']
 
-            df['momentum_vol_signal'] = df['momentum_10'] * df['volume_ratio'] * df['volatility_ratio']
-            df['trend_momentum_align'] = df['ma_alignment'] * df['momentum_10']
-            df['pressure_volume_signal'] = df['net_pressure'] * df['volume_zscore']
-            df['volatility_regime_signal'] = df['vol_regime'] * df['rsi']
-            df['multi_timeframe_signal'] = df['price_change_1h'] * df['price_change_4h'] * df['price_change_24h']
-            df['oscillator_consensus'] = (df['rsi_oversold'] + df['stoch_oversold']) - (df['rsi_overbought'] + df['stoch_overbought'])
-
-            df['trend_regime'] = ((df['ma_alignment'] == 1) & (df['price_vs_sma200'] > 0)).astype(int)
-            df['consolidation_regime'] = ((df['bb_width'] < df['bb_width'].rolling(50).quantile(0.3)) &
+            # Create all new features in a single operation to avoid fragmentation
+            new_features = {
+                'momentum_vol_signal': df['momentum_10'] * df['volume_ratio'] * df['volatility_ratio'],
+                'trend_momentum_align': df['ma_alignment'] * df['momentum_10'],
+                'pressure_volume_signal': df['net_pressure'] * df['volume_zscore'],
+                'volatility_regime_signal': df['vol_regime'] * df['rsi'],
+                'multi_timeframe_signal': df['price_change_1h'] * df['price_change_4h'] * df['price_change_24h'],
+                'oscillator_consensus': (df['rsi_oversold'] + df['stoch_oversold']) - (df['rsi_overbought'] + df['stoch_overbought']),
+                'trend_regime': ((df['ma_alignment'] == 1) & (df['price_vs_sma200'] > 0)).astype(int),
+                'consolidation_regime': ((df['bb_width'] < df['bb_width'].rolling(50).quantile(0.3)) &
                                           (df['atr_ratio'] < df['atr_ratio'].rolling(50).quantile(0.3))).astype(int)
-
+            }
+            
             # Drop rows with NaN values
             df = df.dropna()
+            
+            # Add all new features at once
+            df = pd.concat([df, pd.DataFrame(new_features)], axis=1)
             
             # Drop rows with NaN values
             df = df.dropna()

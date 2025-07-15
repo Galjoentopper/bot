@@ -16,6 +16,18 @@ def convert_models(symbol: str):
             try:
                 print(f"Converting model: {model_path}")
                 model = tf.keras.models.load_model(model_path, custom_objects={"directional_loss": directional_loss}, compile=False)
+                
+                # Save architecture separately as JSON
+                model_json = model.to_json()
+                arch_path = model_path.replace('.keras', '_architecture.json')
+                with open(arch_path, 'w') as json_file:
+                    json_file.write(model_json)
+                
+                # Save weights separately
+                weights_path = model_path.replace('.keras', '_weights.h5')
+                model.save_weights(weights_path)
+                
+                # Save full model with optimizer
                 model.compile(optimizer='adam', loss=directional_loss, metrics=['mae'])
                 new_model_path = model_path.replace('.keras', '_converted.keras')
                 model.save(new_model_path, include_optimizer=True)

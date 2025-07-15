@@ -102,6 +102,24 @@ class WindowBasedModelLoader:
                                 self.logger.info(f"Loaded {lstm_file} without custom objects")
                             except Exception as e2:
                                 self.logger.warning(f"Fallback load failed for {lstm_file}: {e2}")
+                                
+                                # Try loading from separate architecture and weights
+                                try:
+                                    arch_path = str(lstm_file).replace('.keras', '_architecture.json')
+                                    weights_path = str(lstm_file).replace('.keras', '_weights.h5')
+                                    
+                                    if os.path.exists(arch_path) and os.path.exists(weights_path):
+                                        with open(arch_path, 'r') as json_file:
+                                            model_json = json_file.read()
+                                        model = tf.keras.models.model_from_json(model_json, custom_objects=custom_objects)
+                                        model.load_weights(weights_path)
+                                        model.compile(optimizer='adam', loss=directional_loss, metrics=['mae'])
+                                        self.lstm_models[symbol][window_num] = model
+                                        self.logger.info(f"Loaded model from separate architecture and weights for {symbol} window {window_num}")
+                                    else:
+                                        self.logger.warning(f"Could not find separate architecture/weights files for {lstm_file}")
+                                except Exception as e3:
+                                    self.logger.warning(f"Failed to load from separate architecture/weights: {e3}")
                     except Exception as e:
                         self.logger.warning(f"Failed to process LSTM model file {lstm_file}: {e}")
             
