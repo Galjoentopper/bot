@@ -82,7 +82,6 @@ class WindowBasedModelLoader:
                 for lstm_file in lstm_dir.glob(f"{symbol_lower}_window_*.keras"):
                     try:
                         window_num = int(lstm_file.stem.split('_window_')[1])
-                        windows_found.add(window_num)
                         if custom_objects is None:
                             custom_objects = {
                                 'directional_loss': directional_loss,
@@ -90,18 +89,21 @@ class WindowBasedModelLoader:
                                     lambda y_true, y_pred: quantile_loss(q)(y_true, y_pred)
                                 ),
                             }
-                        model = tf.keras.models.load_model(str(lstm_file), custom_objects=custom_objects)
-                        self.lstm_models[symbol][window_num] = model
-                        self.logger.debug(f"Loaded LSTM model for {symbol} window {window_num}")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to load LSTM model {lstm_file}: {e}")
                         try:
-                            model = tf.keras.models.load_model(str(lstm_file), compile=False)
-                            model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+                            model = tf.keras.models.load_model(str(lstm_file), custom_objects=custom_objects)
                             self.lstm_models[symbol][window_num] = model
-                            self.logger.info(f"Loaded {lstm_file} without custom objects")
-                        except Exception as e2:
-                            self.logger.warning(f"Fallback load failed for {lstm_file}: {e2}")
+                            self.logger.debug(f"Loaded LSTM model for {symbol} window {window_num}")
+                        except Exception as e:
+                            self.logger.warning(f"Failed to load LSTM model {lstm_file}: {e}")
+                            try:
+                                model = tf.keras.models.load_model(str(lstm_file), compile=False)
+                                model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+                                self.lstm_models[symbol][window_num] = model
+                                self.logger.info(f"Loaded {lstm_file} without custom objects")
+                            except Exception as e2:
+                                self.logger.warning(f"Fallback load failed for {lstm_file}: {e2}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to process LSTM model file {lstm_file}: {e}")
             
             # Scan XGBoost models
             xgb_dir = self.model_path / 'xgboost'
@@ -135,7 +137,7 @@ class WindowBasedModelLoader:
             if feature_dir.exists():
                 for fc_file in feature_dir.glob(f"{symbol_lower}_window_*.pkl"):
                     try:
-                        window_num = int(fc_file.stem.split('_window_')[1])
+                        window_num = int(fc_file.stem.split('_window_')[1].split('_')[0])
                         with open(fc_file, 'rb') as f:
                             cols = pickle.load(f)
                         self.feature_columns[symbol][window_num] = cols

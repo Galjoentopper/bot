@@ -52,15 +52,23 @@ class PaperTrader:
     
     def _setup_logging(self):
         """Setup logging configuration."""
+        # Clear existing handlers
+        root_logger = logging.getLogger()
+        if root_logger.hasHandlers():
+            root_logger.handlers.clear()
+
         log_dir = Path('paper_trader/logs')
         log_dir.mkdir(parents=True, exist_ok=True)
         
+        # Use a dedicated debug log file
+        log_file_path = log_dir / 'debug.log'
+
         # Configure logging
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(log_dir / 'paper_trader.log'),
+                logging.FileHandler(log_file_path, mode='w'),  # Overwrite log file each run
                 logging.StreamHandler(sys.stdout)
             ]
         )
@@ -197,6 +205,9 @@ class PaperTrader:
             prediction_result = await self.predictor.predict(symbol, features_df, market_volatility)
             if prediction_result is None:
                 return False
+
+            # Log prediction result for debugging
+            self.logger.info(f"Prediction for {symbol}: {prediction_result}")
             
             # Check if prediction meets trading thresholds
             if not self.predictor._meets_trading_threshold(
@@ -391,7 +402,7 @@ class PaperTrader:
                     # Wait before next cycle (15 minutes to align with data intervals)
                     if self.is_running:
                         self.logger.debug("Waiting for next cycle...")
-                        await asyncio.sleep(900)  # 15 minutes
+                        await asyncio.sleep(60)  # 1 minute for debugging
                 
                 except KeyboardInterrupt:
                     self.logger.info("Received shutdown signal")
