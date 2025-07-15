@@ -44,170 +44,164 @@ class FeatureEngineer:
         
     def engineer_features(self, data: pd.DataFrame) -> Optional[pd.DataFrame]:
         """Create the same technical indicators used during model training."""
-        try:
-            if len(data) < 50:
-                self.logger.warning("Insufficient data for feature engineering")
-                return None
-        except Exception as e:
-            self.logger.error(f"Error checking data length: {e}")
+        if len(data) < 250:
+            self.logger.warning(f"Insufficient data for feature engineering. Need at least 250 rows, got {len(data)}.")
             return None
-            
-        try:
 
+        try:
             df = data.copy()
-            
-            # Ensure proper column names
             if 'timestamp' in df.columns:
                 df = df.set_index('timestamp')
-            
-            # Price based features
-            df['returns'] = df['close'].pct_change()
-            df['log_returns'] = np.log(df['close'] / df['close'].shift(1))
-            df['price_change_1h'] = df['close'].pct_change(4)
-            df['price_change_4h'] = df['close'].pct_change(16)
-            df['price_change_24h'] = df['close'].pct_change(96)
 
-            df['price_zscore_20'] = (df['close'] - df['close'].rolling(20).mean()) / df['close'].rolling(20).std()
-            df['price_zscore_50'] = (df['close'] - df['close'].rolling(50).mean()) / df['close'].rolling(50).std()
+            # Use a dictionary to store new features and assign them all at once
+            features = {}
+
+            # Price based features
+            features['returns'] = df['close'].pct_change()
+            features['log_returns'] = np.log(df['close'] / df['close'].shift(1))
+            features['price_change_1h'] = df['close'].pct_change(4)
+            features['price_change_4h'] = df['close'].pct_change(16)
+            features['price_change_24h'] = df['close'].pct_change(96)
+            features['price_zscore_20'] = (df['close'] - df['close'].rolling(20).mean()) / df['close'].rolling(20).std()
+            features['price_zscore_50'] = (df['close'] - df['close'].rolling(50).mean()) / df['close'].rolling(50).std()
 
             for lag in [1, 2, 3, 5, 10, 20]:
-                df[f'returns_lag_{lag}'] = df['returns'].shift(lag)
-                df[f'log_returns_lag_{lag}'] = df['log_returns'].shift(lag)
+                features[f'returns_lag_{lag}'] = features['returns'].shift(lag)
+                features[f'log_returns_lag_{lag}'] = features['log_returns'].shift(lag)
 
-            df['returns_mean_10'] = df['returns'].rolling(10).mean()
-            df['returns_std_10'] = df['returns'].rolling(10).std()
-            df['returns_skew_20'] = df['returns'].rolling(20).skew()
-            df['returns_kurt_20'] = df['returns'].rolling(20).kurt()
+            features['returns_mean_10'] = features['returns'].rolling(10).mean()
+            features['returns_std_10'] = features['returns'].rolling(10).std()
+            features['returns_skew_20'] = features['returns'].rolling(20).skew()
+            features['returns_kurt_20'] = features['returns'].rolling(20).kurt()
 
             # Volume features
-            df['volume_sma_20'] = df['volume'].rolling(20).mean()
-            df['volume_ratio'] = df['volume'] / df['volume_sma_20']
-            df['volume_change'] = df['volume'].pct_change()
-            df['volume_zscore'] = (df['volume'] - df['volume'].rolling(20).mean()) / df['volume'].rolling(20).std()
-
-            df['volume_price_trend'] = df['volume'] * df['returns']
-            df['volume_weighted_price'] = (df['volume'] * df['close']).rolling(20).sum() / df['volume'].rolling(20).sum()
+            volume_sma_20 = df['volume'].rolling(20).mean()
+            features['volume_sma_20'] = volume_sma_20
+            features['volume_ratio'] = df['volume'] / volume_sma_20
+            features['volume_change'] = df['volume'].pct_change()
+            features['volume_zscore'] = (df['volume'] - volume_sma_20) / df['volume'].rolling(20).std()
+            features['volume_price_trend'] = df['volume'] * features['returns']
+            features['volume_weighted_price'] = (df['volume'] * df['close']).rolling(20).sum() / df['volume'].rolling(20).sum()
 
             # Market microstructure
-            df['spread'] = (df['high'] - df['low']) / df['close']
-            df['spread_ma'] = df['spread'].rolling(20).mean()
-            df['spread_ratio'] = df['spread'] / df['spread_ma']
-
-            df['buying_pressure'] = (df['close'] - df['low']) / (df['high'] - df['low'])
-            df['selling_pressure'] = (df['high'] - df['close']) / (df['high'] - df['low'])
-            df['net_pressure'] = df['buying_pressure'] - df['selling_pressure']
+            spread = (df['high'] - df['low']) / df['close']
+            spread_ma = spread.rolling(20).mean()
+            features['spread'] = spread
+            features['spread_ma'] = spread_ma
+            features['spread_ratio'] = spread / spread_ma
+            features['buying_pressure'] = (df['close'] - df['low']) / (df['high'] - df['low'])
+            features['selling_pressure'] = (df['high'] - df['close']) / (df['high'] - df['low'])
+            features['net_pressure'] = features['buying_pressure'] - features['selling_pressure']
 
             # Volatility
-            df['volatility_20'] = df['returns'].rolling(20).std()
-            df['volatility_50'] = df['returns'].rolling(50).std()
-            df['volatility_ratio'] = df['volatility_20'] / df['volatility_50']
-            df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
-            df['atr_ratio'] = df['atr'] / df['close']
-
-            df['realized_vol_5'] = df['returns'].rolling(5).std() * np.sqrt(5)
-            df['realized_vol_20'] = df['returns'].rolling(20).std() * np.sqrt(20)
-
-            df['vol_regime'] = (df['volatility_20'] > df['volatility_20'].rolling(100).quantile(0.75)).astype(int)
+            volatility_20 = features['returns'].rolling(20).std()
+            volatility_50 = features['returns'].rolling(50).std()
+            features['volatility_20'] = volatility_20
+            features['volatility_50'] = volatility_50
+            features['volatility_ratio'] = volatility_20 / volatility_50
+            features['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
+            features['atr_ratio'] = features['atr'] / df['close']
+            features['realized_vol_5'] = features['returns'].rolling(5).std() * np.sqrt(5)
+            features['realized_vol_20'] = features['returns'].rolling(20).std() * np.sqrt(20)
+            features['vol_regime'] = (volatility_20 > volatility_20.rolling(100).quantile(0.75)).astype(int)
 
             # Moving averages
-            df['ema_9'] = ta.ema(df['close'], length=9)
-            df['ema_21'] = ta.ema(df['close'], length=21)
-            df['ema_50'] = ta.ema(df['close'], length=50)
-            df['ema_100'] = ta.ema(df['close'], length=100)
-            df['sma_200'] = ta.sma(df['close'], length=200)
-
-            df['price_vs_ema9'] = (df['close'] - df['ema_9']) / df['ema_9']
-            df['price_vs_ema21'] = (df['close'] - df['ema_21']) / df['ema_21']
-            df['price_vs_ema50'] = (df['close'] - df['ema_50']) / df['ema_50']
-            df['price_vs_sma200'] = (df['close'] - df['sma_200']) / df['sma_200']
-
-            df['ema9_vs_ema21'] = (df['ema_9'] - df['ema_21']) / df['ema_21']
-            df['ema21_vs_ema50'] = (df['ema_21'] - df['ema_50']) / df['ema_50']
-            df['ema50_vs_ema100'] = (df['ema_50'] - df['ema_100']) / df['ema_100']
-
-            df['ma_alignment'] = ((df['ema_9'] > df['ema_21']) & (df['ema_21'] > df['ema_50']) & (df['ema_50'] > df['ema_100'])).astype(int)
-            df['ma_slope_9'] = df['ema_9'].pct_change(5)
-            df['ma_slope_21'] = df['ema_21'].pct_change(5)
+            ema_9 = ta.ema(df['close'], length=9)
+            ema_21 = ta.ema(df['close'], length=21)
+            ema_50 = ta.ema(df['close'], length=50)
+            ema_100 = ta.ema(df['close'], length=100)
+            sma_200 = ta.sma(df['close'], length=200)
+            features['ema_9'] = ema_9
+            features['ema_21'] = ema_21
+            features['ema_50'] = ema_50
+            features['ema_100'] = ema_100
+            features['sma_200'] = sma_200
+            features['price_vs_ema9'] = (df['close'] - ema_9) / ema_9
+            features['price_vs_ema21'] = (df['close'] - ema_21) / ema_21
+            features['price_vs_ema50'] = (df['close'] - ema_50) / ema_50
+            features['price_vs_sma200'] = (df['close'] - sma_200) / sma_200
+            features['ema9_vs_ema21'] = (ema_9 - ema_21) / ema_21
+            features['ema21_vs_ema50'] = (ema_21 - ema_50) / ema_50
+            features['ema50_vs_ema100'] = (ema_50 - ema_100) / ema_100
+            features['ma_alignment'] = ((ema_9 > ema_21) & (ema_21 > ema_50) & (ema_50 > ema_100)).astype(int)
+            features['ma_slope_9'] = ema_9.pct_change(5)
+            features['ma_slope_21'] = ema_21.pct_change(5)
 
             # Oscillators
-            df['rsi'] = ta.rsi(df['close'], length=14)
-            df['rsi_9'] = ta.rsi(df['close'], length=9)
-            df['rsi_21'] = ta.rsi(df['close'], length=21)
-            df['rsi_oversold'] = (df['rsi'] < 30).astype(int)
-            df['rsi_overbought'] = (df['rsi'] > 70).astype(int)
-            df['rsi_divergence'] = df['rsi'].diff(5) * df['close'].pct_change(5)
+            rsi = ta.rsi(df['close'], length=14)
+            features['rsi'] = rsi
+            features['rsi_9'] = ta.rsi(df['close'], length=9)
+            features['rsi_21'] = ta.rsi(df['close'], length=21)
+            features['rsi_oversold'] = (rsi < 30).astype(int)
+            features['rsi_overbought'] = (rsi > 70).astype(int)
+            features['rsi_divergence'] = rsi.diff(5) * df['close'].pct_change(5)
 
             stoch = ta.stoch(df['high'], df['low'], df['close'])
-            df['stoch_k'] = stoch['STOCHk_14_3_3']
-            df['stoch_d'] = stoch['STOCHd_14_3_3']
-            df['stoch_oversold'] = (df['stoch_k'] < 20).astype(int)
-            df['stoch_overbought'] = (df['stoch_k'] > 80).astype(int)
+            features['stoch_k'] = stoch['STOCHk_14_3_3']
+            features['stoch_d'] = stoch['STOCHd_14_3_3']
+            features['stoch_oversold'] = (features['stoch_k'] < 20).astype(int)
+            features['stoch_overbought'] = (features['stoch_k'] > 80).astype(int)
 
-            df['williams_r'] = ta.willr(df['high'], df['low'], df['close'], length=14)
+            features['williams_r'] = ta.willr(df['high'], df['low'], df['close'], length=14)
 
             macd_data = ta.macd(df['close'])
-            df['macd'] = macd_data['MACD_12_26_9']
-            df['macd_signal'] = macd_data['MACDs_12_26_9']
-            df['macd_histogram'] = macd_data['MACDh_12_26_9']
-            df['macd_bullish'] = (df['macd'] > df['macd_signal']).astype(int)
+            features['macd'] = macd_data['MACD_12_26_9']
+            features['macd_signal'] = macd_data['MACDs_12_26_9']
+            features['macd_histogram'] = macd_data['MACDh_12_26_9']
+            features['macd_bullish'] = (features['macd'] > features['macd_signal']).astype(int)
 
             bb_data = ta.bbands(df['close'], length=20, std=2)
-            df['bb_upper'] = bb_data['BBU_20_2.0']
-            df['bb_lower'] = bb_data['BBL_20_2.0']
-            df['bb_middle'] = bb_data['BBM_20_2.0']
-            df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
-            df['bb_position'] = (df['close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+            features['bb_upper'] = bb_data['BBU_20_2.0']
+            features['bb_lower'] = bb_data['BBL_20_2.0']
+            features['bb_middle'] = bb_data['BBM_20_2.0']
+            features['bb_width'] = (features['bb_upper'] - features['bb_lower']) / features['bb_middle']
+            features['bb_position'] = (df['close'] - features['bb_lower']) / (features['bb_upper'] - features['bb_lower'])
 
-            df['vwap'] = (df['close'] * df['volume']).cumsum() / df['volume'].cumsum()
-            df['price_vs_vwap'] = (df['close'] - df['vwap']) / df['vwap']
+            features['vwap'] = (df['close'] * df['volume']).cumsum() / df['volume'].cumsum()
+            features['price_vs_vwap'] = (df['close'] - features['vwap']) / features['vwap']
 
-            df['candle_body'] = abs(df['close'] - df['open']) / df['open']
-            df['upper_wick'] = (df['high'] - np.maximum(df['open'], df['close'])) / df['open']
-            df['lower_wick'] = (np.minimum(df['open'], df['close']) - df['low']) / df['open']
+            features['candle_body'] = abs(df['close'] - df['open']) / df['open']
+            features['upper_wick'] = (df['high'] - np.maximum(df['open'], df['close'])) / df['open']
+            features['lower_wick'] = (np.minimum(df['open'], df['close']) - df['low']) / df['open']
 
-            df['hour'] = df.index.hour
-            df['day_of_week'] = df.index.dayofweek
-            df['is_weekend'] = (df.index.dayofweek >= 5).astype(int)
+            features['hour'] = df.index.hour
+            features['day_of_week'] = df.index.dayofweek
+            features['is_weekend'] = (df.index.dayofweek >= 5).astype(int)
 
-            df['momentum_10'] = ta.mom(df['close'], length=10)
-            df['roc_10'] = ta.roc(df['close'], length=10)
+            features['momentum_10'] = ta.mom(df['close'], length=10)
+            features['roc_10'] = ta.roc(df['close'], length=10)
 
-            df['high_20'] = df['high'].rolling(20).max()
-            df['low_20'] = df['low'].rolling(20).min()
-            df['near_resistance'] = (df['close'] / df['high_20'] > 0.98).astype(int)
-            df['near_support'] = (df['close'] / df['low_20'] < 1.02).astype(int)
+            high_20 = df['high'].rolling(20).max()
+            low_20 = df['low'].rolling(20).min()
+            features['high_20'] = high_20
+            features['low_20'] = low_20
+            features['near_resistance'] = (df['close'] / high_20 > 0.98).astype(int)
+            features['near_support'] = (df['close'] / low_20 < 1.02).astype(int)
 
-            df['rsi_macd_combo'] = df['rsi'] * df['macd_signal']
-            df['volatility_ema_ratio'] = df['volatility_20'] / df['ema_21']
-            df['volume_price_momentum'] = df['volume_ratio'] * df['momentum_10']
-            df['bb_rsi_signal'] = df['bb_position'] * df['rsi']
-            df['trend_strength'] = df['price_vs_ema9'] * df['price_vs_ema21']
-            df['volatility_breakout'] = df['atr'] * df['bb_width']
+            features['rsi_macd_combo'] = features['rsi'] * features['macd_signal']
+            features['volatility_ema_ratio'] = features['volatility_20'] / features['ema_21']
+            features['volume_price_momentum'] = features['volume_ratio'] * features['momentum_10']
+            features['bb_rsi_signal'] = features['bb_position'] * features['rsi']
+            features['trend_strength'] = features['price_vs_ema9'] * features['price_vs_ema21']
+            features['volatility_breakout'] = features['atr'] * features['bb_width']
 
-            # Create all new features in a single operation to avoid fragmentation
-            new_features = {
-                'momentum_vol_signal': df['momentum_10'] * df['volume_ratio'] * df['volatility_ratio'],
-                'trend_momentum_align': df['ma_alignment'] * df['momentum_10'],
-                'pressure_volume_signal': df['net_pressure'] * df['volume_zscore'],
-                'volatility_regime_signal': df['vol_regime'] * df['rsi'],
-                'multi_timeframe_signal': df['price_change_1h'] * df['price_change_4h'] * df['price_change_24h'],
-                'oscillator_consensus': (df['rsi_oversold'] + df['stoch_oversold']) - (df['rsi_overbought'] + df['stoch_overbought']),
-                'trend_regime': ((df['ma_alignment'] == 1) & (df['price_vs_sma200'] > 0)).astype(int),
-                'consolidation_regime': ((df['bb_width'] < df['bb_width'].rolling(50).quantile(0.3)) &
-                                          (df['atr_ratio'] < df['atr_ratio'].rolling(50).quantile(0.3))).astype(int)
-            }
-            
-            # Drop rows with NaN values
+            features['momentum_vol_signal'] = features['momentum_10'] * features['volume_ratio'] * features['volatility_ratio']
+            features['trend_momentum_align'] = features['ma_alignment'] * features['momentum_10']
+            features['pressure_volume_signal'] = features['net_pressure'] * features['volume_zscore']
+            features['volatility_regime_signal'] = features['vol_regime'] * features['rsi']
+            features['multi_timeframe_signal'] = features['price_change_1h'] * features['price_change_4h'] * features['price_change_24h']
+            features['oscillator_consensus'] = (features['rsi_oversold'] + features['stoch_oversold']) - (features['rsi_overbought'] + features['stoch_overbought'])
+            features['trend_regime'] = ((features['ma_alignment'] == 1) & (features['price_vs_sma200'] > 0)).astype(int)
+            features['consolidation_regime'] = ((features['bb_width'] < features['bb_width'].rolling(50).quantile(0.3)) & (features['atr_ratio'] < features['atr_ratio'].rolling(50).quantile(0.3))).astype(int)
+
+            # Assign all new features at once
+            df = df.assign(**features)
+
+            # Drop rows with NaN values only once at the end
             df = df.dropna()
-            
-            # Add all new features at once
-            df = pd.concat([df, pd.DataFrame(new_features)], axis=1)
-            
-            # Drop rows with NaN values
-            df = df.dropna()
-            
+
             if len(df) < 30:
-                self.logger.warning("Insufficient data after feature engineering")
+                self.logger.warning(f"Insufficient data after feature engineering and NaN removal. Remaining rows: {len(df)}")
                 return None
                 
             self.logger.debug(f"Created {len(df.columns)} features from {len(df)} samples")
