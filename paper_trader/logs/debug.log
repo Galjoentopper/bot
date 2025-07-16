@@ -1,316 +1,310 @@
-2025-07-16 15:03:17,009 - __main__ - INFO - Paper Trader initialized
-2025-07-16 15:03:17,010 - __main__ - INFO - Starting Paper Trader...
-2025-07-16 15:03:17,010 - __main__ - INFO - Initializing Paper Trader components...
-2025-07-16 15:03:17,114 - paper_trader.strategy.signal_generator - INFO - Updated min_confidence to 0.3
-2025-07-16 15:03:17,114 - paper_trader.strategy.signal_generator - INFO - Updated min_signal_strength to WEAK
-2025-07-16 15:03:17,242 - paper_trader.notifications.telegram_notifier - INFO - Telegram bot initialized successfully
-2025-07-16 15:03:17,603 - __main__ - INFO - All components initialized successfully
-2025-07-16 15:03:17,603 - __main__ - INFO - Loading ML models...
-2025-07-16 15:03:18,093 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:18,096 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:18,099 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:20,344 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_34.keras with compile=False and re-compiled.
-2025-07-16 15:03:20,435 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:20,438 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:20,442 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:21,825 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_37.keras with compile=False and re-compiled.
-2025-07-16 15:03:21,894 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:21,897 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:21,900 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:23,025 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_62.keras with compile=False and re-compiled.
-2025-07-16 15:03:23,091 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:23,094 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:23,096 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:24,235 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_13.keras with compile=False and re-compiled.
-2025-07-16 15:03:24,338 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:24,341 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:24,344 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:25,476 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_5.keras with compile=False and re-compiled.
-2025-07-16 15:03:25,542 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:25,546 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:25,550 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:26,651 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_58.keras with compile=False and re-compiled.
-2025-07-16 15:03:26,858 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:26,861 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:26,864 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:28,003 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_12.keras with compile=False and re-compiled.
-2025-07-16 15:03:28,127 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:28,130 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:28,133 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:29,254 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_61.keras with compile=False and re-compiled.
-2025-07-16 15:03:29,326 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:29,332 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:29,335 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:30,452 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_51.keras with compile=False and re-compiled.
-2025-07-16 15:03:30,530 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:30,533 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:30,536 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:31,652 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_49.keras with compile=False and re-compiled.
-2025-07-16 15:03:31,759 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:31,762 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:31,765 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:32,917 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_9.keras with compile=False and re-compiled.
-2025-07-16 15:03:33,002 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:33,005 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:33,008 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:34,144 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_60.keras with compile=False and re-compiled.
-2025-07-16 15:03:34,230 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:34,234 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:34,237 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:35,380 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_50.keras with compile=False and re-compiled.
-2025-07-16 15:03:35,449 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:35,452 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:35,456 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:36,604 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_40.keras with compile=False and re-compiled.
-2025-07-16 15:03:36,677 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:36,681 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:36,684 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:38,124 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_24.keras with compile=False and re-compiled.
-2025-07-16 15:03:38,194 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:38,198 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:38,202 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:39,329 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_43.keras with compile=False and re-compiled.
-2025-07-16 15:03:39,423 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:39,427 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:39,430 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:40,559 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_22.keras with compile=False and re-compiled.
-2025-07-16 15:03:40,622 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:40,625 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:40,628 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:41,740 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_21.keras with compile=False and re-compiled.
-2025-07-16 15:03:41,810 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:41,814 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:41,817 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:42,963 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_46.keras with compile=False and re-compiled.
-2025-07-16 15:03:43,034 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:43,037 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:43,041 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:44,165 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_63.keras with compile=False and re-compiled.
-2025-07-16 15:03:44,247 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:44,250 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:44,253 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:45,359 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_6.keras with compile=False and re-compiled.
-2025-07-16 15:03:45,425 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:45,428 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:45,432 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:46,546 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_26.keras with compile=False and re-compiled.
-2025-07-16 15:03:46,635 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:46,638 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:46,641 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:47,769 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_27.keras with compile=False and re-compiled.
-2025-07-16 15:03:47,860 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:47,863 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:47,867 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:48,991 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_20.keras with compile=False and re-compiled.
-2025-07-16 15:03:49,055 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:49,059 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:49,062 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:50,222 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_19.keras with compile=False and re-compiled.
-2025-07-16 15:03:50,317 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:50,320 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:50,322 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:51,454 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_29.keras with compile=False and re-compiled.
-2025-07-16 15:03:51,536 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:51,539 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:51,542 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:52,677 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_39.keras with compile=False and re-compiled.
-2025-07-16 15:03:52,777 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:52,780 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:52,785 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:53,884 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_15.keras with compile=False and re-compiled.
-2025-07-16 15:03:53,951 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:53,954 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:53,957 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:55,080 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_42.keras with compile=False and re-compiled.
-2025-07-16 15:03:55,150 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:55,153 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:55,156 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:56,289 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_57.keras with compile=False and re-compiled.
-2025-07-16 15:03:56,354 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:56,357 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:56,361 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:57,858 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_32.keras with compile=False and re-compiled.
-2025-07-16 15:03:57,924 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:57,927 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:57,930 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:59,074 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_3.keras with compile=False and re-compiled.
-2025-07-16 15:03:59,139 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:59,142 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:03:59,145 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:00,288 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_16.keras with compile=False and re-compiled.
-2025-07-16 15:04:00,365 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:00,368 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:00,371 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:01,478 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_38.keras with compile=False and re-compiled.
-2025-07-16 15:04:01,543 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:01,546 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:01,549 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:02,691 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_44.keras with compile=False and re-compiled.
-2025-07-16 15:04:02,769 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:02,772 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:02,774 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:03,891 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_11.keras with compile=False and re-compiled.
-2025-07-16 15:04:03,980 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:03,984 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:03,987 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:05,118 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_55.keras with compile=False and re-compiled.
-2025-07-16 15:04:05,217 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:05,220 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:05,223 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:06,364 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_8.keras with compile=False and re-compiled.
-2025-07-16 15:04:06,435 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:06,438 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:06,440 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:07,534 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_56.keras with compile=False and re-compiled.
-2025-07-16 15:04:07,630 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:07,633 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:07,636 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:08,743 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_35.keras with compile=False and re-compiled.
-2025-07-16 15:04:08,830 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:08,833 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:08,836 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:09,975 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_10.keras with compile=False and re-compiled.
-2025-07-16 15:04:10,044 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:10,049 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:10,052 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:11,201 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_31.keras with compile=False and re-compiled.
-2025-07-16 15:04:11,287 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:11,290 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:11,294 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:12,429 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_41.keras with compile=False and re-compiled.
-2025-07-16 15:04:12,506 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:12,509 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:12,512 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:13,633 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_36.keras with compile=False and re-compiled.
-2025-07-16 15:04:13,728 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:13,731 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:13,733 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:14,849 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_18.keras with compile=False and re-compiled.
-2025-07-16 15:04:14,929 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:14,933 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:14,936 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:16,070 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_30.keras with compile=False and re-compiled.
-2025-07-16 15:04:16,132 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:16,135 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:16,138 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:17,276 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_47.keras with compile=False and re-compiled.
-2025-07-16 15:04:17,343 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:17,348 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:17,351 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:18,496 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_48.keras with compile=False and re-compiled.
-2025-07-16 15:04:18,576 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:18,579 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:18,582 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:19,694 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_45.keras with compile=False and re-compiled.
-2025-07-16 15:04:19,790 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:19,793 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:19,797 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:20,929 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_33.keras with compile=False and re-compiled.
-2025-07-16 15:04:20,995 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:20,998 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:21,001 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:22,628 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_14.keras with compile=False and re-compiled.
-2025-07-16 15:04:22,697 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:22,700 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:22,703 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:23,851 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_7.keras with compile=False and re-compiled.
-2025-07-16 15:04:23,919 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:23,923 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:23,925 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:25,052 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_25.keras with compile=False and re-compiled.
-2025-07-16 15:04:25,118 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:25,121 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:25,124 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:26,219 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_17.keras with compile=False and re-compiled.
-2025-07-16 15:04:26,279 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:26,282 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:26,284 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:27,386 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_23.keras with compile=False and re-compiled.
-2025-07-16 15:04:27,454 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:27,457 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:27,460 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:28,554 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_52.keras with compile=False and re-compiled.
-2025-07-16 15:04:28,625 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:28,628 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:28,630 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:29,728 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_54.keras with compile=False and re-compiled.
-2025-07-16 15:04:29,800 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:29,804 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:29,808 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:30,933 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_53.keras with compile=False and re-compiled.
-2025-07-16 15:04:31,011 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:31,014 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:31,016 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:32,141 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_59.keras with compile=False and re-compiled.
-2025-07-16 15:04:32,225 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:32,228 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:32,231 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:33,355 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_4.keras with compile=False and re-compiled.
-2025-07-16 15:04:33,419 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:33,422 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:33,425 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
-2025-07-16 15:04:34,509 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_28.keras with compile=False and re-compiled.
-2025-07-16 15:04:36,239 - paper_trader.models.model_loader - INFO - Successfully loaded models for BTC-EUR: 61 windows found
-2025-07-16 15:04:36,239 - paper_trader.models.model_loader - INFO - Available windows for BTC-EUR: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-2025-07-16 15:04:36,239 - __main__ - INFO - Models loaded for BTC-EUR
-2025-07-16 15:04:36,239 - __main__ - INFO - Models loaded for 1 symbols
-2025-07-16 15:04:36,239 - __main__ - INFO - === Debugging data pipeline for BTC-EUR ===
-2025-07-16 15:04:39,018 - paper_trader.data.bitvavo_collector - INFO - Successfully fetched 300 candles for BTC-EUR
-2025-07-16 15:04:39,019 - __main__ - INFO - Raw data shape: (300, 5)
-2025-07-16 15:04:39,019 - __main__ - INFO - Null counts in raw data: {'open': 0, 'high': 0, 'low': 0, 'close': 0, 'volume': 0}
-2025-07-16 15:04:39,019 - __main__ - INFO - Testing feature engineering...
-2025-07-16 15:04:39,077 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 101 samples
-2025-07-16 15:04:39,078 - __main__ - INFO - Features shape: (101, 117)
-2025-07-16 15:04:39,078 - __main__ - INFO - Features columns: 117
-2025-07-16 15:04:39,079 - __main__ - INFO - ✅ Data pipeline check passed for BTC-EUR
-2025-07-16 15:04:39,416 - __main__ - INFO - Initializing data buffers...
-2025-07-16 15:04:42,128 - paper_trader.data.bitvavo_collector - INFO - Successfully fetched 100 candles for BTC-EUR
-2025-07-16 15:04:42,128 - paper_trader.data.bitvavo_collector - INFO - Initialized buffer for BTC-EUR with 100 candles
-2025-07-16 15:04:42,128 - __main__ - INFO - Starting real-time data feed...
-2025-07-16 15:04:42,128 - __main__ - INFO - Paper Trader is now running...
-2025-07-16 15:04:42,128 - paper_trader.data.bitvavo_collector - INFO - Fetching more data for BTC-EUR: current=100, needed=500
-2025-07-16 15:04:42,579 - paper_trader.data.bitvavo_collector - INFO - Subscribed to WebSocket feed for 1 symbols
-2025-07-16 15:04:44,580 - paper_trader.data.bitvavo_collector - INFO - Successfully fetched 1 candles for BTC-EUR
-2025-07-16 15:04:44,582 - paper_trader.data.bitvavo_collector - INFO - Updated BTC-EUR buffer: latest price 102700.00
-2025-07-16 15:04:45,026 - paper_trader.data.bitvavo_collector - INFO - Successfully fetched 1000 candles for BTC-EUR
-2025-07-16 15:04:45,027 - paper_trader.data.bitvavo_collector - INFO - Updated buffer for BTC-EUR with 1000 candles
-2025-07-16 15:04:45,074 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:04:52,278 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:04:52.278407')}
-2025-07-16 15:05:53,335 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:05:53,706 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:05:53.705933')}
-2025-07-16 15:06:54,761 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:06:55,127 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:06:55.127280')}
-2025-07-16 15:07:56,181 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:07:56,548 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:07:56.548875')}
-2025-07-16 15:08:57,600 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:08:57,987 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:08:57.987545')}
-2025-07-16 15:09:59,045 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:09:59,802 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:09:59.802194')}
-2025-07-16 15:11:00,859 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:11:01,654 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:11:01.654054')}
-2025-07-16 15:12:02,698 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:12:03,068 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:12:03.068291')}
-2025-07-16 15:13:04,115 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:13:04,488 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:13:04.488406')}
-2025-07-16 15:14:05,533 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:14:05,935 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:14:05.935028')}
-2025-07-16 15:15:06,981 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:15:07,361 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:15:07.361672')}
-2025-07-16 15:16:08,408 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:16:08,763 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:16:08.763644')}
-2025-07-16 15:17:09,809 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:17:10,191 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:17:10.191379')}
-2025-07-16 15:18:11,244 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:18:11,613 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:18:11.613748')}
-2025-07-16 15:19:12,664 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:19:13,034 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:19:13.034503')}
-2025-07-16 15:20:14,085 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:20:14,459 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91781.0, 'predicted_price': 91818.28809655289, 'price_change_pct': 0.0004062725025102072, 'confidence': 0.95, 'uncertainty': 0.0004107020359837248, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0006898810124176742, 'individual_predictions': {'lstm': 91788.62598001957, 'xgb': 91864.00048818182}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:20:14.459741')}
-2025-07-16 15:20:46,929 - paper_trader.data.bitvavo_collector - INFO - Successfully fetched 1 candles for BTC-EUR
-2025-07-16 15:20:46,931 - paper_trader.data.bitvavo_collector - INFO - Updated BTC-EUR buffer: latest price 102030.00
-2025-07-16 15:21:15,514 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:21:15,875 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 102030.0, 'predicted_price': 102076.42888069343, 'price_change_pct': 0.00045505126622987966, 'confidence': 0.95, 'uncertainty': 0.0004734085176396627, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.001630838575267355, 'individual_predictions': {'lstm': 102038.45323204994, 'xgb': 102134.95328576087}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:21:15.875044')}
-2025-07-16 15:22:16,916 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:22:17,319 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 102030.0, 'predicted_price': 102076.42888069343, 'price_change_pct': 0.00045505126622987966, 'confidence': 0.95, 'uncertainty': 0.0004734085176396627, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.001630838575267355, 'individual_predictions': {'lstm': 102038.45323204994, 'xgb': 102134.95328576087}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:22:17.319666')}
-2025-07-16 15:23:18,375 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
-2025-07-16 15:23:19,050 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 102030.0, 'predicted_price': 102076.42888069343, 'price_change_pct': 0.00045505126622987966, 'confidence': 0.95, 'uncertainty': 0.0004734085176396627, 'signal_strength': 'NEUTRAL', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.001630838575267355, 'individual_predictions': {'lstm': 102038.45323204994, 'xgb': 102134.95328576087}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:23:19.050292')}
+2025-07-16 15:45:15,834 - __main__ - INFO - Paper Trader initialized
+2025-07-16 15:45:15,834 - __main__ - INFO - Starting Paper Trader...
+2025-07-16 15:45:15,834 - __main__ - INFO - Initializing Paper Trader components...
+2025-07-16 15:45:15,934 - paper_trader.strategy.signal_generator - INFO - Updated min_confidence to 0.3
+2025-07-16 15:45:15,935 - paper_trader.strategy.signal_generator - INFO - Updated min_signal_strength to WEAK
+2025-07-16 15:45:15,935 - paper_trader.strategy.signal_generator - INFO - Updated min_expected_gain_pct to 0.0003
+2025-07-16 15:45:16,065 - paper_trader.notifications.telegram_notifier - INFO - Telegram bot initialized successfully
+2025-07-16 15:45:16,579 - __main__ - INFO - All components initialized successfully
+2025-07-16 15:45:16,579 - __main__ - INFO - Loading ML models...
+2025-07-16 15:45:16,896 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:16,900 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:16,903 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:18,309 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_34.keras with compile=False and re-compiled.
+2025-07-16 15:45:18,315 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:18,318 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:18,322 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:19,620 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_37.keras with compile=False and re-compiled.
+2025-07-16 15:45:19,628 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:19,632 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:19,635 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:20,743 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_62.keras with compile=False and re-compiled.
+2025-07-16 15:45:20,750 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:20,753 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:20,756 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:21,849 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_13.keras with compile=False and re-compiled.
+2025-07-16 15:45:21,856 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:21,859 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:21,861 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:22,980 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_5.keras with compile=False and re-compiled.
+2025-07-16 15:45:22,986 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:22,989 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:22,991 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:24,104 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_58.keras with compile=False and re-compiled.
+2025-07-16 15:45:24,111 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:24,113 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:24,116 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:25,210 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_12.keras with compile=False and re-compiled.
+2025-07-16 15:45:25,216 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:25,219 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:25,222 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:26,347 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_61.keras with compile=False and re-compiled.
+2025-07-16 15:45:26,354 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:26,357 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:26,359 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:27,460 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_51.keras with compile=False and re-compiled.
+2025-07-16 15:45:27,466 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:27,469 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:27,472 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:28,578 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_49.keras with compile=False and re-compiled.
+2025-07-16 15:45:28,584 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:28,587 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:28,590 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:29,712 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_9.keras with compile=False and re-compiled.
+2025-07-16 15:45:29,718 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:29,722 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:29,725 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:30,829 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_60.keras with compile=False and re-compiled.
+2025-07-16 15:45:30,835 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:30,838 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:30,841 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:31,969 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_50.keras with compile=False and re-compiled.
+2025-07-16 15:45:31,976 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:31,980 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:31,983 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:33,092 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_40.keras with compile=False and re-compiled.
+2025-07-16 15:45:33,098 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:33,102 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:33,105 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:34,507 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_24.keras with compile=False and re-compiled.
+2025-07-16 15:45:34,513 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:34,516 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:34,519 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:35,640 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_43.keras with compile=False and re-compiled.
+2025-07-16 15:45:35,646 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:35,649 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:35,652 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:36,747 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_22.keras with compile=False and re-compiled.
+2025-07-16 15:45:36,753 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:36,757 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:36,759 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:37,877 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_21.keras with compile=False and re-compiled.
+2025-07-16 15:45:37,884 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:37,888 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:37,891 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:38,976 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_46.keras with compile=False and re-compiled.
+2025-07-16 15:45:38,983 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:38,985 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:38,988 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:40,089 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_63.keras with compile=False and re-compiled.
+2025-07-16 15:45:40,096 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:40,099 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:40,103 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:41,187 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_6.keras with compile=False and re-compiled.
+2025-07-16 15:45:41,194 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:41,196 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:41,199 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:42,318 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_26.keras with compile=False and re-compiled.
+2025-07-16 15:45:42,325 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:42,328 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:42,331 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:43,423 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_27.keras with compile=False and re-compiled.
+2025-07-16 15:45:43,430 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:43,433 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:43,436 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:44,542 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_20.keras with compile=False and re-compiled.
+2025-07-16 15:45:44,548 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:44,551 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:44,555 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:45,651 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_19.keras with compile=False and re-compiled.
+2025-07-16 15:45:45,657 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:45,660 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:45,663 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:46,759 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_29.keras with compile=False and re-compiled.
+2025-07-16 15:45:46,765 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:46,768 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:46,770 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:47,843 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_39.keras with compile=False and re-compiled.
+2025-07-16 15:45:47,850 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:47,853 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:47,856 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:48,956 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_15.keras with compile=False and re-compiled.
+2025-07-16 15:45:48,963 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:48,965 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:48,968 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:50,087 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_42.keras with compile=False and re-compiled.
+2025-07-16 15:45:50,093 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:50,096 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:50,098 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:51,205 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_57.keras with compile=False and re-compiled.
+2025-07-16 15:45:51,211 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:51,214 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:51,216 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:52,677 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_32.keras with compile=False and re-compiled.
+2025-07-16 15:45:52,683 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:52,686 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:52,689 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:53,791 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_3.keras with compile=False and re-compiled.
+2025-07-16 15:45:53,797 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:53,800 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:53,803 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:54,898 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_16.keras with compile=False and re-compiled.
+2025-07-16 15:45:54,904 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:54,907 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:54,910 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:56,014 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_38.keras with compile=False and re-compiled.
+2025-07-16 15:45:56,020 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:56,023 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:56,025 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:57,126 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_44.keras with compile=False and re-compiled.
+2025-07-16 15:45:57,133 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:57,136 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:57,139 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:58,265 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_11.keras with compile=False and re-compiled.
+2025-07-16 15:45:58,272 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:58,275 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:58,278 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:59,388 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_55.keras with compile=False and re-compiled.
+2025-07-16 15:45:59,395 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:59,398 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:45:59,400 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:00,503 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_8.keras with compile=False and re-compiled.
+2025-07-16 15:46:00,509 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:00,512 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:00,515 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:01,602 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_56.keras with compile=False and re-compiled.
+2025-07-16 15:46:01,609 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:01,612 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:01,615 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:02,716 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_35.keras with compile=False and re-compiled.
+2025-07-16 15:46:02,722 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:02,725 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:02,728 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:03,828 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_10.keras with compile=False and re-compiled.
+2025-07-16 15:46:03,834 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:03,837 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:03,840 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:04,968 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_31.keras with compile=False and re-compiled.
+2025-07-16 15:46:04,975 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:04,978 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:04,981 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:06,112 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_41.keras with compile=False and re-compiled.
+2025-07-16 15:46:06,118 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:06,121 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:06,124 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:07,196 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_36.keras with compile=False and re-compiled.
+2025-07-16 15:46:07,202 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:07,204 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:07,207 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:08,296 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_18.keras with compile=False and re-compiled.
+2025-07-16 15:46:08,302 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:08,305 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:08,308 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:09,410 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_30.keras with compile=False and re-compiled.
+2025-07-16 15:46:09,417 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:09,421 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:09,423 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:10,512 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_47.keras with compile=False and re-compiled.
+2025-07-16 15:46:10,519 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:10,522 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:10,525 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:11,641 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_48.keras with compile=False and re-compiled.
+2025-07-16 15:46:11,647 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:11,650 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:11,653 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:12,766 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_45.keras with compile=False and re-compiled.
+2025-07-16 15:46:12,773 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:12,775 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:12,778 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:13,879 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_33.keras with compile=False and re-compiled.
+2025-07-16 15:46:13,886 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:13,889 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:13,892 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:15,465 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_14.keras with compile=False and re-compiled.
+2025-07-16 15:46:15,471 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:15,474 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:15,477 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:16,583 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_7.keras with compile=False and re-compiled.
+2025-07-16 15:46:16,589 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:16,592 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:16,595 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:17,687 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_25.keras with compile=False and re-compiled.
+2025-07-16 15:46:17,695 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:17,698 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:17,701 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:18,824 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_17.keras with compile=False and re-compiled.
+2025-07-16 15:46:18,832 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:18,835 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:18,838 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:19,953 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_23.keras with compile=False and re-compiled.
+2025-07-16 15:46:19,959 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:19,962 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:19,964 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:21,076 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_52.keras with compile=False and re-compiled.
+2025-07-16 15:46:21,083 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:21,086 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:21,089 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:22,195 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_54.keras with compile=False and re-compiled.
+2025-07-16 15:46:22,201 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:22,204 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:22,207 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:23,321 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_53.keras with compile=False and re-compiled.
+2025-07-16 15:46:23,327 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:23,331 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:23,335 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:24,433 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_59.keras with compile=False and re-compiled.
+2025-07-16 15:46:24,441 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:24,445 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:24,449 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:25,575 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_4.keras with compile=False and re-compiled.
+2025-07-16 15:46:25,581 - tensorflow - WARNING - Layer lstm will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:25,584 - tensorflow - WARNING - Layer lstm_1 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:25,587 - tensorflow - WARNING - Layer lstm_2 will not use cuDNN kernels since it doesn't meet the criteria. It will use a generic GPU kernel as fallback when running on GPU.
+2025-07-16 15:46:26,713 - paper_trader.models.model_loader - INFO - Loaded LSTM model models/lstm/btceur_window_28.keras with compile=False and re-compiled.
+2025-07-16 15:46:27,499 - paper_trader.models.model_loader - INFO - Successfully loaded models for BTC-EUR: 61 windows found
+2025-07-16 15:46:27,499 - paper_trader.models.model_loader - INFO - Available windows for BTC-EUR: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+2025-07-16 15:46:27,499 - __main__ - INFO - Models loaded for BTC-EUR
+2025-07-16 15:46:27,499 - __main__ - INFO - Models loaded for 1 symbols
+2025-07-16 15:46:27,499 - __main__ - INFO - === Debugging data pipeline for BTC-EUR ===
+2025-07-16 15:46:30,031 - paper_trader.data.bitvavo_collector - INFO - Successfully fetched 300 candles for BTC-EUR
+2025-07-16 15:46:30,031 - __main__ - INFO - Raw data shape: (300, 5)
+2025-07-16 15:46:30,032 - __main__ - INFO - Null counts in raw data: {'open': 0, 'high': 0, 'low': 0, 'close': 0, 'volume': 0}
+2025-07-16 15:46:30,032 - __main__ - INFO - Testing feature engineering...
+2025-07-16 15:46:30,079 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 101 samples
+2025-07-16 15:46:30,080 - __main__ - INFO - Features shape: (101, 117)
+2025-07-16 15:46:30,080 - __main__ - INFO - Features columns: 117
+2025-07-16 15:46:30,081 - __main__ - INFO - ✅ Data pipeline check passed for BTC-EUR
+2025-07-16 15:46:30,399 - __main__ - INFO - Initializing data buffers...
+2025-07-16 15:46:33,168 - paper_trader.data.bitvavo_collector - INFO - Successfully fetched 100 candles for BTC-EUR
+2025-07-16 15:46:33,168 - paper_trader.data.bitvavo_collector - INFO - Initialized buffer for BTC-EUR with 100 candles
+2025-07-16 15:46:33,168 - __main__ - INFO - Starting real-time data feed...
+2025-07-16 15:46:33,168 - __main__ - INFO - Paper Trader is now running...
+2025-07-16 15:46:33,168 - paper_trader.data.bitvavo_collector - INFO - Fetching more data for BTC-EUR: current=100, needed=500
+2025-07-16 15:46:33,708 - paper_trader.data.bitvavo_collector - INFO - Subscribed to WebSocket feed for 1 symbols
+2025-07-16 15:46:35,738 - paper_trader.data.bitvavo_collector - INFO - Successfully fetched 1 candles for BTC-EUR
+2025-07-16 15:46:35,740 - paper_trader.data.bitvavo_collector - INFO - Updated BTC-EUR buffer: latest price 101900.00
+2025-07-16 15:46:35,828 - paper_trader.data.bitvavo_collector - INFO - Successfully fetched 1000 candles for BTC-EUR
+2025-07-16 15:46:35,829 - paper_trader.data.bitvavo_collector - INFO - Updated buffer for BTC-EUR with 1000 candles
+2025-07-16 15:46:35,872 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:46:39,503 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:46:39.503162')}
+2025-07-16 15:46:39,503 - paper_trader.strategy.signal_generator - INFO - Generated BUY signal for BTC-EUR: qty=0.003730, price=101890.0000, confidence=0.950, strength=WEAK
+2025-07-16 15:46:39,503 - paper_trader.portfolio.portfolio_manager - INFO - Opened position: BTC-EUR qty=0.003730 @ 101890.0000 (value: 380.00)
+2025-07-16 15:46:39,815 - __main__ - INFO - Opened position for BTC-EUR
+2025-07-16 15:47:41,071 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:47:41,468 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:47:41.468853')}
+2025-07-16 15:48:42,753 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:48:43,134 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:48:43.134123')}
+2025-07-16 15:49:44,415 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:49:44,761 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:49:44.761264')}
+2025-07-16 15:50:46,036 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:50:46,418 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:50:46.418000')}
+2025-07-16 15:51:47,706 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:51:48,068 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:51:48.067972')}
+2025-07-16 15:52:49,348 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:52:49,740 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:52:49.740099')}
+2025-07-16 15:53:51,029 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:53:51,659 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:53:51.659841')}
+2025-07-16 15:54:52,960 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:54:53,387 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:54:53.386957')}
+2025-07-16 15:55:54,939 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:55:55,299 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:55:55.299270')}
+2025-07-16 15:56:56,556 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:56:56,907 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:56:56.907141')}
+2025-07-16 15:57:58,185 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:57:58,564 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:57:58.564061')}
+2025-07-16 15:58:59,820 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 15:59:00,179 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 15:59:00.179792')}
+2025-07-16 16:00:01,458 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 16:00:02,191 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 16:00:02.191630')}
+2025-07-16 16:01:03,469 - paper_trader.models.feature_engineer - INFO - Successfully created 117 features from 301 samples
+2025-07-16 16:01:03,834 - __main__ - INFO - Prediction for BTC-EUR: {'symbol': 'BTC-EUR', 'current_price': 91793.0, 'predicted_price': 91830.29297182291, 'price_change_pct': 0.00040627250251014114, 'confidence': 0.95, 'uncertainty': 0.00041072826139662685, 'signal_strength': 'WEAK', 'meets_threshold': True, 'optimal_window': 49, 'market_volatility': 0.0007537801486004566, 'individual_predictions': {'lstm': 91800.62697708607, 'xgb': 91876.01134016489}, 'individual_confidences': {'lstm': 0.95, 'xgb': 0.9}, 'model_details': {'lstm_window': 49, 'xgb_window': 49}, 'timestamp': Timestamp('2025-07-16 16:01:03.834555')}
