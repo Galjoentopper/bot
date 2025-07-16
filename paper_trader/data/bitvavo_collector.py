@@ -456,6 +456,23 @@ class BitvavoDataCollector:
             except Exception as e:
                 self.logger.error(f"WebSocket connection error: {e}")
                 await asyncio.sleep(5)  # Wait before reconnecting
+
+    async def validate_candle_data(self, candle: dict) -> bool:
+        """Validate incoming candle data from the WebSocket."""
+        try:
+            required = ["timestamp", "open", "high", "low", "close", "volume"]
+            if not all(k in candle for k in required):
+                return False
+
+            numeric_fields = ["open", "high", "low", "close", "volume"]
+            for field in numeric_fields:
+                if candle.get(field) is None:
+                    return False
+
+            return True
+        except Exception as e:
+            self.logger.warning(f"Invalid candle data: {e}")
+            return False
     
     async def _process_websocket_message(self, data: dict):
         """Process incoming WebSocket messages."""
@@ -475,10 +492,23 @@ class BitvavoDataCollector:
                         'volume': float(candle_data[5])
                     }
                     if await self.validate_candle_data(candle):
-                        # Add to buffer
-                        self.data_buffers[symbol].append(candle)
+                        # Add to buffer using DataFrame concatenation
+                        new_row = (
+                            pd.DataFrame([candle])
+                            .set_index("timestamp")
+                        )
+                        self.data_buffers[symbol] = pd.concat(
+                            [self.data_buffers[symbol], new_row]
+                        )
+
+                        # Trim buffer to last 500 candles
+                        if len(self.data_buffers[symbol]) > 500:
+                            self.data_buffers[symbol] = self.data_buffers[symbol].tail(500)
+
                         self.last_update[symbol] = datetime.now()
-                        self.logger.debug(f"Updated {symbol} candle: {candle['close']}")
+                        self.logger.debug(
+                            f"Updated {symbol} candle: {candle['close']}"
+                        )
                     
         except Exception as e:
             self.logger.error(f"Error processing WebSocket message: {e}")
