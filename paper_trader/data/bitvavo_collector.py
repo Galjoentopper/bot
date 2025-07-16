@@ -115,7 +115,7 @@ class FeatureCache:
             current_length = len(self.data_buffers[symbol])
             if current_length < min_length:
                 self.logger.info(f"Fetching more data for {symbol}: current={current_length}, needed={min_length}")
-                new_data = self._get_historical_data_sync(symbol, '15m', max(500, min_length * 2))
+                new_data = self._get_historical_data_sync(symbol, self.interval, max(500, min_length * 2))
                 if new_data is not None and len(new_data) >= min_length:
                     self.data_buffers[symbol] = new_data
                     self.logger.info(f"Updated buffer for {symbol} with {len(new_data)} candles")
@@ -131,7 +131,7 @@ class FeatureCache:
     async def _initialize_single_buffer(self, symbol: str, limit: int = 300):
         """Helper method to initialize a single buffer."""
         try:
-            historical_data = await self.get_historical_data(symbol, '15m', limit)
+            historical_data = await self.get_historical_data(symbol, self.interval, limit)
             if historical_data is not None and len(historical_data) >= 100:
                 self.data_buffers[symbol] = historical_data.copy()
                 self.last_update[symbol] = datetime.now()
@@ -170,7 +170,7 @@ class FeatureCache:
                     last_update = self.last_update.get(symbol)
                     if (last_update is None or 
                         datetime.now() - last_update > timedelta(minutes=interval_minutes + 1)):
-                        latest_data = await self.get_historical_data(symbol, '15m', 1)
+                        latest_data = await self.get_historical_data(symbol, self.interval, 1)
                         if latest_data is not None and len(latest_data) > 0:
                             latest_candle = latest_data.iloc[-1]
                             new_timestamp = latest_candle.name
@@ -231,7 +231,7 @@ class FeatureCache:
     async def _ensure_data_async(self, symbol: str, min_length: int):
         """Helper method to ensure data asynchronously."""
         try:
-            historical_data = await self.get_historical_data(symbol, '15m', min_length * 2)
+            historical_data = await self.get_historical_data(symbol, self.interval, min_length * 2)
             if historical_data is not None and len(historical_data) >= min_length:
                 self.data_buffers[symbol] = historical_data.copy()
                 self.last_update[symbol] = datetime.now()
@@ -288,12 +288,15 @@ class FeatureCache:
 
 class BitvavoDataCollector:
     """Collects real-time and historical data from Bitvavo API."""
-    
-    def __init__(self, api_key: str, api_secret: str):
+
+    def __init__(self, api_key: str, api_secret: str, interval: str = "15m"):
         self.api_key = api_key
         self.api_secret = api_secret
         self.base_url = "https://api.bitvavo.com/v2"
         self.ws_url = "wss://ws.bitvavo.com/v2"
+
+        # Candle interval used for both REST and WebSocket calls
+        self.interval = interval
         
         # Add headers to avoid Cloudflare detection
         headers = {
@@ -331,8 +334,9 @@ class BitvavoDataCollector:
             return pd.DataFrame()
         return self.data_buffers[symbol].tail(min_length).copy()
 
-    async def get_historical_data(self, symbol: str, interval: str = "15m", limit: int = 100) -> Optional[pd.DataFrame]:
-        # unchanged
+    async def get_historical_data(self, symbol: str, interval: str | None = None, limit: int = 100) -> Optional[pd.DataFrame]:
+        """Fetch historical candle data for a symbol."""
+        interval = interval or self.interval
         endpoints_to_try = [
             f"{self.base_url}/candles",
             f"{self.base_url}/{symbol}/candles",
@@ -404,7 +408,7 @@ class BitvavoDataCollector:
                     return df.tail(limit)
             
             # Fallback to API call
-            return await self.get_historical_data(symbol, '15m', limit)
+            return await self.get_historical_data(symbol, self.interval, limit)
             
         except Exception as e:
             self.logger.error(f"Error getting latest data for {symbol}: {e}")
@@ -469,7 +473,7 @@ class BitvavoDataCollector:
                             "channels": [{
                                 "name": "candles",
                                 "markets": [symbol],
-                                "interval": "15m"
+                                "interval": self.interval
                             }]
                         }
                         await websocket.send(json.dumps(subscribe_msg))
@@ -555,7 +559,7 @@ class BitvavoDataCollector:
             current_length = len(self.data_buffers[symbol])
             if current_length < min_length:
                 self.logger.info(f"Fetching more data for {symbol}: current={current_length}, needed={min_length}")
-                new_data = await self.get_historical_data(symbol, '15m', max(500, min_length * 2))
+                new_data = await self.get_historical_data(symbol, self.interval, max(500, min_length * 2))
 
                 if new_data is not None and len(new_data) >= min_length:
                     self.data_buffers[symbol] = new_data
@@ -582,7 +586,7 @@ class BitvavoDataCollector:
                         datetime.now() - last_update > timedelta(minutes=interval_minutes + 1)): 
                         
                         # Fetch latest candle 
-                        latest_data = await self.get_historical_data(symbol, '15m', 1) 
+                        latest_data = await self.get_historical_data(symbol, self.interval, 1)
                         if latest_data is not None and len(latest_data) > 0: 
                             latest_timestamp = latest_data.index[-1] 
                             

@@ -308,7 +308,8 @@ class PaperTrader:
             # Initialize data collector
             self.data_collector = BitvavoDataCollector(
                 api_key=self.settings.bitvavo_api_key,
-                api_secret=self.settings.bitvavo_api_secret
+                api_secret=self.settings.bitvavo_api_secret,
+                interval=self.settings.candle_interval
             )
             
             # Initialize feature engineer
@@ -639,7 +640,10 @@ class PaperTrader:
                 self.data_collector.start_websocket_feed(self.settings.symbols)
             )
             self.api_update_task = asyncio.create_task(
-                self.data_collector.update_data_periodically(self.settings.symbols)
+                self.data_collector.update_data_periodically(
+                    self.settings.symbols,
+                    interval_minutes=1
+                )
             )
 
             # Initialize last prediction timestamps

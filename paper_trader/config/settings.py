@@ -30,6 +30,9 @@ class TradingSettings:
     stop_loss_pct: float = float(os.getenv('STOP_LOSS_PCT', '0.01'))
     trailing_stop_pct: float = float(os.getenv('TRAILING_STOP_PCT', '0.005'))
     max_hold_hours: int = int(os.getenv('MAX_HOLD_HOURS', '2'))
+
+    # Data interval for candles
+    candle_interval: str = os.getenv('CANDLE_INTERVAL', '15m')
     
     # Symbols
     symbols: List[str] = None
