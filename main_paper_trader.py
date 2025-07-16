@@ -124,6 +124,145 @@ class PaperTrader:
         except Exception as e:
             self.logger.error(f"Error running debug: {e}")
             return False
+
+    async def run_full_diagnostics(self):
+        """Run comprehensive diagnostics on the trading system."""
+        self.logger.info("=== RUNNING FULL SYSTEM DIAGNOSTICS ===")
+        
+        try:
+            # Test data collector
+            self.logger.info("1. Testing Data Collector...")
+            buffer_status = self.data_collector.get_detailed_buffer_status()
+            
+            for symbol, status in buffer_status.items():
+                self.logger.info(f"  {symbol}: {status}")
+            
+            # Test each symbol individually
+            self.logger.info("2. Testing individual symbols...")
+            for symbol in self.settings.symbols:
+                self.logger.info(f"  Testing {symbol}...")
+                
+                # Test historical data fetch
+                try:
+                    test_data = await self.data_collector.get_historical_data(symbol, '15m', 10)
+                    if test_data is not None and len(test_data) > 0:
+                        self.logger.info(f"    ✅ Can fetch historical data: {len(test_data)} candles")
+                    else:
+                        self.logger.error(f"    ❌ Cannot fetch historical data")
+                except Exception as e:
+                    self.logger.error(f"    ❌ Error fetching data: {e}")
+                
+                # Test ensure_sufficient_data
+                try:
+                    has_sufficient = self.data_collector.ensure_sufficient_data(symbol, 100)
+                    self.logger.info(f"    ✅ Sufficient data check: {has_sufficient}")
+                except Exception as e:
+                    self.logger.error(f"    ❌ Error checking sufficient data: {e}")
+                
+                # Test feature engineering
+                try:
+                    buffer_data = self.data_collector.get_buffer_data(symbol, 100)
+                    if buffer_data is not None and len(buffer_data) >= 100:
+                        features = self.feature_engineer.engineer_features(buffer_data)
+                        if features is not None:
+                            self.logger.info(f"    ✅ Feature engineering: {features.shape}")
+                        else:
+                        self.logger.error(f"    ❌ Feature engineering returned None")
+                    else:
+                        self.logger.error(f"    ❌ Insufficient buffer data for features")
+                except Exception as e:
+                    self.logger.error(f"    ❌ Error in feature engineering: {e}")
+            
+            self.logger.info("=== DIAGNOSTICS COMPLETE ===")
+            
+        except Exception as e:
+            self.logger.error(f"Error running diagnostics: {e}")
+
+    async def health_check(self) -> Dict[str, bool]:
+        """Quick health check of all system components."""
+        health = {}
+        
+        try:
+            # Check data collector
+            health['data_collector'] = self.data_collector is not None
+            
+            # Check buffers
+            buffer_status = self.data_collector.get_detailed_buffer_status()
+            health['buffers_healthy'] = all(
+                status.get('status') == 'healthy' 
+                for status in buffer_status.values()
+            )
+            
+            # Check models
+            health['models_loaded'] = (
+                len(getattr(self.model_loader, 'lstm_models', {})) > 0 or
+                len(getattr(self.model_loader, 'xgb_models', {})) > 0
+            )
+            
+            # Check WebSocket connection
+            health['websocket_connected'] = (
+                hasattr(self, 'data_feed_task') and 
+                self.data_feed_task is not None and 
+                not self.data_feed_task.done()
+            )
+            
+            # Check periodic updates
+            health['periodic_updates'] = (
+                hasattr(self, 'api_update_task') and 
+                self.api_update_task is not None and 
+                not self.api_update_task.done()
+            )
+            
+            # Overall health
+            health['overall'] = all(health.values())
+            
+        except Exception as e:
+            self.logger.error(f"Error in health check: {e}")
+            health['error'] = str(e)
+            health['overall'] = False
+        
+        return health
+
+    async def process_symbol_with_debugging(self, symbol: str) -> bool:
+        """Enhanced version of process_symbol with detailed debugging."""
+        try:
+            self.logger.debug(f"Processing {symbol}...")
+            
+            # Check if models are available
+            if (symbol not in getattr(self.model_loader, 'lstm_models', {}) and 
+                symbol not in getattr(self.model_loader, 'xgb_models', {})):
+                self.logger.debug(f"No models available for {symbol}")
+                return False
+            
+            # Check data availability with detailed logging
+            self.logger.debug(f"Checking data availability for {symbol}...")
+            
+            if not self.data_collector.ensure_sufficient_data(symbol, min_length=300):
+                self.logger.warning(f"Could not ensure sufficient data for {symbol}")
+                
+                # Get detailed buffer status for debugging
+                buffer_status = self.data_collector.get_detailed_buffer_status()
+                symbol_status = buffer_status.get(symbol, {})
+                self.logger.debug(f"Buffer status for {symbol}: {symbol_status}")
+                return False
+
+            # Get buffer data with validation
+            self.logger.debug(f"Getting buffer data for {symbol}...")
+            data = self.data_collector.get_buffer_data(symbol, min_length=250)
+            
+            if data is None or len(data) < 250:
+                actual_length = len(data) if data is not None else 0
+                self.logger.warning(f"Insufficient buffer data for {symbol}: {actual_length}/250")
+                return False
+            
+            self.logger.debug(f"Got {len(data)} candles for {symbol}, proceeding with analysis...")
+            
+            # Continue with the rest of your processing logic here...
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error processing {symbol}: {e}", exc_info=True)
+            return False
     
     def _setup_logging(self):
         """Setup logging configuration."""
