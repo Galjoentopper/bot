@@ -611,14 +611,14 @@ class WindowBasedEnsemblePredictor:
         # Adjust thresholds based on market volatility
         volatility_multiplier = 1.0 + (market_volatility - 0.5) * 0.5
         
-        # Enhanced signal classification logic
-        if confidence >= 0.8 and abs_change >= (2.5 * volatility_multiplier):
+        # Enhanced signal classification logic with lower thresholds
+        if confidence >= 0.8 and abs_change >= (1.5 * volatility_multiplier):
             return "VERY_STRONG"
-        elif confidence >= 0.7 and abs_change >= (2.0 * volatility_multiplier):
+        elif confidence >= 0.7 and abs_change >= (1.0 * volatility_multiplier):
             return "STRONG"
-        elif confidence >= 0.6 and abs_change >= (1.5 * volatility_multiplier):
+        elif confidence >= 0.6 and abs_change >= (0.5 * volatility_multiplier):
             return "MODERATE"
-        elif confidence >= 0.4 and abs_change >= (1.0 * volatility_multiplier):
+        elif confidence >= 0.3 and abs_change >= (0.05 * volatility_multiplier):
             return "WEAK"
         else:
             return "NEUTRAL"

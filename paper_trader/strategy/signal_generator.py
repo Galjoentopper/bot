@@ -10,7 +10,7 @@ class SignalGenerator:
     def __init__(self, max_positions: int = 10, position_size_pct: float = 0.10,
                  take_profit_pct: float = 0.01, stop_loss_pct: float = 0.01,
                  min_confidence: float = 0.5, min_signal_strength: str = 'MODERATE',
-                 min_expected_gain_pct: float = 0.005):
+                 min_expected_gain_pct: float = 0.0003):
         self.max_positions = max_positions
         self.position_size_pct = position_size_pct
         self.take_profit_pct = take_profit_pct
