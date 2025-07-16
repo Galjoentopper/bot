@@ -22,6 +22,82 @@ class FeatureCache:
         self.last_update = {}
         self.logger = logging.getLogger(__name__)
 
+    def get_buffer_data(self, symbol: str, min_length: int = None) -> Optional[pd.DataFrame]:
+        """
+        Retrieves validated buffer data for a symbol, ensuring minimum length requirements.
+        
+        Args:
+            symbol: Trading pair symbol (e.g., 'BTC-EUR')
+            min_length: Minimum required data points (default: class MIN_DATA_LENGTH)
+        
+        Returns:
+            Copy of validated DataFrame or None if requirements can't be met
+        """
+        try:
+            min_length = min_length or self.MIN_DATA_LENGTH
+            
+            # Validate buffer existence and structure
+            if not self._validate_buffer(symbol):
+                self.logger.warning(f"Initializing new buffer for {symbol}")
+                if not self.ensure_sufficient_data(symbol, min_length):
+                    return None
+            
+            buffer = self.data_buffers[symbol]
+            
+            # Check data sufficiency
+            if len(buffer) < min_length:
+                self.logger.warning(f"Insufficient data for {symbol} ({len(buffer)}/{min_length})")
+                if not self.ensure_sufficient_data(symbol, min_length):
+                    return None
+            
+            # Return safe copy with latest validation
+            return self._validate_buffer(symbol, update=True).copy()
+            
+        except Exception as e:
+            self.logger.error(f"Buffer retrieval failed for {symbol}: {str(e)}", exc_info=True)
+            return None
+
+    def get_detailed_buffer_status(self) -> Dict[str, dict]:
+        """Get detailed status of all data buffers for debugging."""
+        status = {}
+        for symbol, buffer in self.data_buffers.items():
+            try:
+                if isinstance(buffer, pd.DataFrame) and not buffer.empty:
+                    last_update = self.last_update.get(symbol)
+                    latest_timestamp = buffer.index[-1] if len(buffer) > 0 else None
+                    oldest_timestamp = buffer.index[0] if len(buffer) > 0 else None
+                    
+                    status[symbol] = {
+                        "buffer_size": len(buffer),
+                        "last_update": last_update.isoformat() if last_update else None,
+                        "last_update_ago_minutes": (
+                            (datetime.now() - last_update).total_seconds() / 60
+                        ) if last_update else None,
+                        "latest_price": float(buffer['close'].iloc[-1]) if 'close' in buffer.columns else None,
+                        "latest_timestamp": latest_timestamp.isoformat() if latest_timestamp else None,
+                        "oldest_timestamp": oldest_timestamp.isoformat() if oldest_timestamp else None,
+                        "data_span_hours": (
+                            (latest_timestamp - oldest_timestamp).total_seconds() / 3600
+                        ) if latest_timestamp and oldest_timestamp else None,
+                        "columns": list(buffer.columns),
+                        "null_counts": buffer.isnull().sum().to_dict() if len(buffer) > 0 else {},
+                        "status": "healthy" if len(buffer) >= 100 else "insufficient_data"
+                    }
+                else:
+                    status[symbol] = {
+                        "buffer_size": 0,
+                        "status": "empty",
+                        "last_update": None,
+                        "error": "No data in buffer"
+                    }
+            except Exception as e:
+                status[symbol] = {
+                    "buffer_size": 0,
+                    "status": "error",
+                    "error": str(e)
+                }
+        return status
+
     def ensure_sufficient_data(self, symbol: str, min_length: int = 250) -> bool:
         """Ensure buffer has sufficient data for feature engineering."""
         try:
@@ -406,55 +482,88 @@ class BitvavoDataCollector:
         except Exception as e:
             self.logger.error(f"Error processing WebSocket message: {e}")
     
+    def ensure_sufficient_data(self, symbol: str, min_length: int = 250) -> bool:
+        """Ensure buffer has sufficient data for the symbol."""
+        try:
+            if symbol not in self.data_buffers:
+                self.logger.info(f"No buffer for {symbol}, initializing...")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self.initialize_buffers([symbol], min_length * 2))
+                loop.close()
+                return len(self.data_buffers.get(symbol, pd.DataFrame())) >= min_length
+
+            current_length = len(self.data_buffers[symbol])
+            if current_length < min_length:
+                self.logger.info(f"Fetching more data for {symbol}: current={current_length}, needed={min_length}")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                new_data = loop.run_until_complete(
+                    self.get_historical_data(symbol, '15m', max(500, min_length * 2))
+                )
+                loop.close()
+
+                if new_data is not None and len(new_data) >= min_length:
+                    self.data_buffers[symbol] = new_data
+                    self.logger.info(f"Updated buffer for {symbol} with {len(new_data)} candles")
+                    return True
+                else:
+                    self.logger.warning(f"Could not fetch sufficient data for {symbol}")
+                    return False
+
+            return current_length >= min_length
+
+        except Exception as e:
+            self.logger.error(f"Error ensuring sufficient data for {symbol}: {e}")
+            return False
+
     async def update_data_periodically(self, symbols: List[str], interval_minutes: int = 15):
-        """Periodically update data buffers via API calls."""
-        while True:
-            try:
-                for symbol in symbols:
-                    # Check if we need to update
-                    last_update = self.last_update.get(symbol)
+        """Periodically update data buffers via API calls.""" 
+        while True: 
+            try: 
+                for symbol in symbols: 
+                    # Check if we need to update 
+                    last_update = self.last_update.get(symbol) 
                     if (last_update is None or 
-                        datetime.now() - last_update > timedelta(minutes=interval_minutes + 1)):
+                        datetime.now() - last_update > timedelta(minutes=interval_minutes + 1)): 
                         
-                        # Fetch latest candle
-                        latest_data = await self.get_historical_data(symbol, '15m', 1)
-                        if latest_data is not None and len(latest_data) > 0:
-                            latest_candle = latest_data.iloc[-1]
+                        # Fetch latest candle 
+                        latest_data = await self.get_historical_data(symbol, '15m', 1) 
+                        if latest_data is not None and len(latest_data) > 0: 
+                            latest_timestamp = latest_data.index[-1] 
                             
-                            required_keys = ['open', 'high', 'low', 'close', 'volume']
-                            if not all(key in latest_candle for key in required_keys):
-                                self.logger.error(f"Missing required keys in latest_candle for {symbol}: {latest_candle.keys()}")
-                                continue
-
-                            candle = {
-                                'timestamp': latest_candle.name,
-                                'open': latest_candle['open'],
-                                'high': latest_candle['high'],
-                                'low': latest_candle['low'],
-                                'close': latest_candle['close'],
-                                'volume': latest_candle['volume']
-                            }
+                            # Check if this is a new candle 
+                            if symbol in self.data_buffers and not self.data_buffers[symbol].empty: 
+                                current_latest = self.data_buffers[symbol].index[-1] 
+                                if latest_timestamp <= current_latest: 
+                                    self.logger.debug(f"No new candle for {symbol}, skipping update") 
+                                    continue 
                             
-                            # Add to buffer if it's newer than the last candle
-                            if (symbol not in self.data_buffers or
-                                len(self.data_buffers[symbol]) == 0 or
-                                candle['timestamp'] > self.data_buffers[symbol][-1]['timestamp'] if self.data_buffers[symbol] else False):
-
-                                if symbol not in self.data_buffers:
-                                    self.data_buffers[symbol] = deque(maxlen=100)
-
-                                if await self.validate_candle_data(candle):
-                                    self.data_buffers[symbol].append(candle)
-                                    self.last_update[symbol] = datetime.now()
-                                    self.logger.info(f"Successfully fetched and appended 1 candle for {symbol}")
-                                else:
-                                    self.logger.warning(f"Invalid candle data for {symbol}: {candle}")
-                            else:
-                                self.logger.debug(f"No new candle to append for {symbol} or candle is not newer.")
-                        else:
-                            self.logger.warning(f"Failed to fetch latest candle for {symbol} or data is empty.")
-                    else:
-                        self.logger.debug(f"Skipping periodic update for {symbol}. Last update was recent.")
-            except Exception as e:
-                self.logger.error(f"Error in periodic data update for {symbol}: {e}")
-            await asyncio.sleep(60) # Wait for 60 seconds before next check
+                            # Append new data to buffer 
+                            if symbol in self.data_buffers and not self.data_buffers[symbol].empty: 
+                                # Concatenate the new data 
+                                self.data_buffers[symbol] = pd.concat([ 
+                                    self.data_buffers[symbol], 
+                                    latest_data 
+                                ]) 
+                                # Remove duplicates and sort by index 
+                                self.data_buffers[symbol] = self.data_buffers[symbol][ 
+                                    ~self.data_buffers[symbol].index.duplicated(keep='last') 
+                                ].sort_index() 
+                            else: 
+                                # Initialize buffer with the latest data 
+                                self.data_buffers[symbol] = latest_data 
+                            
+                            # Trim buffer to max size 
+                            if len(self.data_buffers[symbol]) > 500: 
+                                self.data_buffers[symbol] = self.data_buffers[symbol].tail(500) 
+                            
+                            self.last_update[symbol] = datetime.now() 
+                            self.logger.info(f"Updated {symbol} buffer: latest price {latest_data['close'].iloc[-1]:.2f}") 
+                        else: 
+                            self.logger.warning(f"Failed to fetch latest candle for {symbol}") 
+                            
+            except Exception as e: 
+                self.logger.error(f"Error in periodic data update: {e}") 
+                
+            await asyncio.sleep(60)  # Wait for 60 seconds before next check
