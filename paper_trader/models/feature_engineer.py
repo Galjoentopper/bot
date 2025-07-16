@@ -335,7 +335,9 @@ class FeatureEngineer:
             if scaler is not None:
                 feature_cols = self.get_feature_names(data)
                 data_scaled = data.copy()
-                data_scaled[feature_cols] = scaler.transform(data[feature_cols])
+                data_scaled[feature_cols] = scaler.transform(
+                    data[feature_cols].to_numpy()
+                )
                 return data_scaled, scaler
             else:
                 return data, None

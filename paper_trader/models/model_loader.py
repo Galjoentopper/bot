@@ -408,7 +408,9 @@ class WindowBasedEnsemblePredictor:
             feature_data = features.copy()
             feature_cols = [col for col in LSTM_FEATURES if col in feature_data.columns]
             if scaler is not None and feature_cols:
-                feature_data[feature_cols] = scaler.transform(feature_data[feature_cols])
+                feature_data[feature_cols] = scaler.transform(
+                    feature_data[feature_cols].to_numpy()
+                )
             
             # Create sequence for LSTM using fixed training length
             sequence_length = min(LSTM_SEQUENCE_LENGTH, len(feature_data))

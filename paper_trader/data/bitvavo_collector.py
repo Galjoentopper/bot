@@ -421,10 +421,25 @@ class BitvavoDataCollector:
             
             data = response.json()
             return float(data['price'])
-            
+
         except Exception as e:
             self.logger.error(f"Error fetching current price for {symbol}: {e}")
             return None
+
+    async def refresh_latest_price(self, symbol: str) -> None:
+        """Update the latest candle close with the most recent price."""
+        try:
+            price = await self.get_current_price(symbol)
+            if (
+                price is not None
+                and symbol in self.data_buffers
+                and not self.data_buffers[symbol].empty
+            ):
+                self.data_buffers[symbol].iloc[-1, self.data_buffers[symbol].columns.get_loc('close')] = price
+                self.last_update[symbol] = datetime.now()
+                self.logger.debug(f"Refreshed {symbol} price to {price}")
+        except Exception as e:
+            self.logger.warning(f"Failed to refresh price for {symbol}: {e}")
     
     async def start_websocket_feed(self, symbols: List[str]):
         """Start WebSocket feed for real-time data updates."""
