@@ -284,7 +284,9 @@ class ModelBacktester:
         lstm_features = ['close', 'volume']
         
         # Scale the data (use transform only, scaler is already fitted)
-        scaled_data = scaler.transform(data[lstm_features].fillna(method='ffill'))
+        scaled_data = scaler.transform(
+            data[lstm_features].fillna(method='ffill').to_numpy()
+        )
         
         sequences = []
         for i in range(self.config.sequence_length, len(scaled_data)):
