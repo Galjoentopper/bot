@@ -43,8 +43,8 @@ class FeatureEngineer:
         return True
         
     def engineer_features(self, data: pd.DataFrame) -> Optional[pd.DataFrame]:
-    """Create the same technical indicators used during model training."""
-    if len(data) < 250:
+        """Create the same technical indicators used during model training."""
+        if len(data) < 250:
         self.logger.warning(f"Insufficient data for feature engineering. Need at least 250 rows, got {len(data)}.")
         return None
 

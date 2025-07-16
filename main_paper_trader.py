@@ -19,6 +19,7 @@ from paper_trader.strategy.signal_generator import SignalGenerator
 from paper_trader.strategy.exit_manager import ExitManager
 from paper_trader.portfolio.portfolio_manager import PortfolioManager
 from paper_trader.notifications.telegram_notifier import TelegramNotifier
+from paper_trader.models.feature_engineer import TRAINING_FEATURES
 
 class PaperTrader:
     """Main paper trading orchestrator."""
@@ -49,6 +50,68 @@ class PaperTrader:
         self.is_running = False
         
         self.logger.info("Paper Trader initialized")
+
+    def debug_data_pipeline(self, symbol: str): 
+        """Debug the data pipeline to identify issues.""" 
+        self.logger.info(f"=== Debugging data pipeline for {symbol} ===") 
+        
+        try: 
+            # 1. Check raw data availability 
+            raw_data = self.data_collector.get_historical_data(symbol, limit=300) 
+            self.logger.info(f"Raw data shape: {raw_data.shape if raw_data is not None else 'None'}") 
+            
+            if raw_data is None or raw_data.empty: 
+                self.logger.error(f"No raw data available for {symbol}") 
+                return False 
+                
+            if len(raw_data) < 250: 
+                self.logger.warning(f"Insufficient raw data: {len(raw_data)} rows (need 250+)") 
+                return False 
+                
+            # 2. Check for data quality issues 
+            null_counts = raw_data.isnull().sum() 
+            self.logger.info(f"Null counts in raw data: {null_counts.to_dict()}") 
+            
+            # 3. Check for required columns 
+            required_cols = ['open', 'high', 'low', 'close', 'volume'] 
+            missing_cols = [col for col in required_cols if col not in raw_data.columns] 
+            if missing_cols: 
+                self.logger.error(f"Missing required columns: {missing_cols}") 
+                return False 
+                
+            # 4. Test feature engineering 
+            self.logger.info("Testing feature engineering...") 
+            features_df = self.feature_engineer.engineer_features(raw_data) 
+            
+            if features_df is None: 
+                self.logger.error("Feature engineering returned None") 
+                return False 
+                
+            self.logger.info(f"Features shape: {features_df.shape}") 
+            self.logger.info(f"Features columns: {len(features_df.columns)}") 
+            
+            # 5. Check for training features 
+            missing_training_features = [] 
+            for feature in TRAINING_FEATURES: 
+                if feature not in features_df.columns: 
+                    missing_training_features.append(feature) 
+                    
+            if missing_training_features: 
+                self.logger.error(f"Missing training features: {missing_training_features}") 
+                return False 
+                
+            # 6. Check for excessive NaN values 
+            nan_counts = features_df.isnull().sum() 
+            high_nan_features = nan_counts[nan_counts > len(features_df) * 0.1] 
+            if not high_nan_features.empty: 
+                self.logger.warning(f"Features with >10% NaN values: {high_nan_features.to_dict()}") 
+                
+            self.logger.info(f"✅ Data pipeline check passed for {symbol}") 
+            return True 
+            
+        except Exception as e: 
+            self.logger.error(f"Error in data pipeline debug: {e}", exc_info=True) 
+            return False
     
     def _setup_logging(self):
         """Setup logging configuration."""
@@ -166,6 +229,10 @@ class PaperTrader:
                     self.logger.error(f"Error loading models for {symbol}: {e}")
             
             self.logger.info(f"Models loaded for {loaded_count} symbols")
+
+            # Debug data pipeline for all symbols
+            for symbol in self.settings.symbols:
+                self.debug_data_pipeline(symbol)
             
         except Exception as e:
             self.logger.error(f"Error loading models: {e}")
