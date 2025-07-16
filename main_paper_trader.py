@@ -330,6 +330,14 @@ class PaperTrader:
                 take_profit_pct=self.settings.take_profit_pct,
                 stop_loss_pct=self.settings.stop_loss_pct
             )
+
+            # Relax signal thresholds to generate more trades
+            self.predictor.min_confidence_threshold = 0.3
+            self.predictor.min_signal_strength = "WEAK"
+            self.signal_generator.update_signal_parameters(
+                min_confidence=0.3,
+                min_signal_strength="WEAK"
+            )
             
             # Initialize exit manager
             self.exit_manager = ExitManager(
