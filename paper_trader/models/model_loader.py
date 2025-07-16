@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import xgboost as xgb
+import catboost as cb
 from sklearn.preprocessing import StandardScaler
 from .feature_engineer import LSTM_FEATURES, LSTM_SEQUENCE_LENGTH
 from tensorflow.keras import backend as K
@@ -51,6 +52,7 @@ class WindowBasedModelLoader:
         # Window-based model storage: {symbol: {window: model}}
         self.lstm_models: Dict[str, Dict[int, tf.keras.Model]] = {}
         self.xgb_models: Dict[str, Dict[int, xgb.XGBRegressor]] = {}
+        self.caboose_models: Dict[str, Dict[int, cb.CatBoostRegressor]] = {}
         self.scalers: Dict[str, Dict[int, StandardScaler]] = {}
         # Feature column order used during training
         self.feature_columns: Dict[str, Dict[int, List[str]]] = {}
@@ -69,6 +71,7 @@ class WindowBasedModelLoader:
             # Initialize storage for this symbol
             self.lstm_models[symbol] = {}
             self.xgb_models[symbol] = {}
+            self.caboose_models[symbol] = {}
             self.scalers[symbol] = {}
             self.feature_columns[symbol] = {}
             self.available_windows[symbol] = []
@@ -134,6 +137,22 @@ class WindowBasedModelLoader:
                         
                     except Exception as e:
                         self.logger.warning(f"Failed to load XGBoost model {xgb_file}: {e}")
+
+            # Scan Caboose (CatBoost) models if available
+            caboose_dir = self.model_path / 'caboose'
+            if caboose_dir.exists():
+                for cb_file in caboose_dir.glob(f"{symbol_lower}_window_*.cbm"):
+                    try:
+                        window_num = int(cb_file.stem.split('_window_')[1])
+                        windows_found.add(window_num)
+
+                        model = cb.CatBoostRegressor()
+                        model.load_model(cb_file)
+                        self.caboose_models[symbol][window_num] = model
+                        self.logger.debug(
+                            f"Loaded Caboose model for {symbol} window {window_num}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to load Caboose model {cb_file}: {e}")
             
             # Scan scalers
             scalers_dir = self.model_path / 'scalers'
@@ -170,7 +189,11 @@ class WindowBasedModelLoader:
             self.available_windows[symbol] = sorted(list(windows_found))
             
             # Check if we have at least one model
-            has_models = len(self.lstm_models[symbol]) > 0 or len(self.xgb_models[symbol]) > 0
+            has_models = (
+                len(self.lstm_models[symbol]) > 0
+                or len(self.xgb_models[symbol]) > 0
+                or len(self.caboose_models[symbol]) > 0
+            )
             
             if has_models:
                 self.logger.info(f"Successfully loaded models for {symbol}: {len(windows_found)} windows found")
@@ -193,6 +216,7 @@ class WindowBasedModelLoader:
             status[symbol] = {
                 'lstm_windows': list(self.lstm_models.get(symbol, {}).keys()),
                 'xgb_windows': list(self.xgb_models.get(symbol, {}).keys()),
+                'caboose_windows': list(self.caboose_models.get(symbol, {}).keys()),
                 'scaler_windows': list(self.scalers.get(symbol, {}).keys()),
                 'available_windows': self.available_windows.get(symbol, []),
                 'total_windows': len(self.available_windows.get(symbol, []))
@@ -219,6 +243,7 @@ class WindowBasedModelLoader:
         return {
             'lstm': window in self.lstm_models.get(symbol, {}),
             'xgb': window in self.xgb_models.get(symbol, {}),
+            'caboose': window in self.caboose_models.get(symbol, {}),
             'scaler': window in self.scalers.get(symbol, {})
         }
 
@@ -234,6 +259,7 @@ class WindowBasedEnsemblePredictor:
         # Enhanced prediction weights and thresholds (prioritize XGBoost when LSTM fails)
         self.lstm_weight = 0.6
         self.xgb_weight = 0.4
+        self.caboose_weight = 0.3
         self.min_confidence_threshold = min_confidence_threshold
         self.min_signal_strength = min_signal_strength
         
@@ -310,6 +336,14 @@ class WindowBasedEnsemblePredictor:
                     predictions['xgb'] = xgb_pred
                     confidence_scores['xgb'] = xgb_conf
                     model_details['xgb_window'] = optimal_window
+
+            # Caboose (CatBoost) Prediction with selected window
+            if available_models.get('caboose'):
+                caboose_pred, caboose_conf = await self._predict_caboose_window(symbol, features, optimal_window)
+                if caboose_pred is not None:
+                    predictions['caboose'] = caboose_pred
+                    confidence_scores['caboose'] = caboose_conf
+                    model_details['caboose_window'] = optimal_window
             
             if not predictions:
                 self.logger.warning(f"No valid predictions for {symbol} with window {optimal_window}")
@@ -425,12 +459,16 @@ class WindowBasedEnsemblePredictor:
                 return None, 0.0
 
             available_features = [c for c in feature_columns if c in features.columns]
-            if len(available_features) < len(feature_columns) * 0.8:
-                self.logger.warning(
-                    f"Missing features for XGBoost prediction: {symbol} window {window}")
-                return None, 0.0
+            missing_features = [c for c in feature_columns if c not in features.columns]
 
-            feature_data = features[available_features].tail(1)
+            if missing_features:
+                self.logger.warning(
+                    f"Missing features for XGBoost prediction: {symbol} window {window}"
+                    f" -> {missing_features}. Filling with zeros.")
+
+            feature_data = (features.reindex(columns=feature_columns)
+                             .fillna(0)
+                             .tail(1))
             
             # Make prediction
             prediction = model.predict(feature_data)[0]
@@ -452,6 +490,47 @@ class WindowBasedEnsemblePredictor:
         except Exception as e:
             self.logger.error(f"Error in XGBoost prediction for {symbol} window {window}: {e}")
             return None, 0.0
+
+    async def _predict_caboose_window(self, symbol: str, features: pd.DataFrame, window: int) -> Tuple[Optional[float], float]:
+        """Generate Caboose (CatBoost) prediction using specific window model."""
+        try:
+            if (
+                symbol not in self.model_loader.caboose_models
+                or window not in self.model_loader.caboose_models[symbol]
+            ):
+                return None, 0.0
+
+            model = self.model_loader.caboose_models[symbol][window]
+            feature_columns = self.model_loader.feature_columns.get(symbol, {}).get(window)
+
+            if not feature_columns:
+                self.logger.warning(
+                    f"No feature column list for {symbol} window {window}")
+                return None, 0.0
+
+            feature_data = (
+                features.reindex(columns=feature_columns)
+                .fillna(0)
+                .tail(1)
+            )
+
+            prediction = model.predict(feature_data)[0]
+
+            current_price = features['close'].iloc[-1]
+            price_volatility = features['close'].tail(10).std() / features['close'].tail(10).mean()
+            prediction_error = abs(prediction - current_price) / current_price
+
+            base_confidence = 0.7
+            error_penalty = min(prediction_error * 1.2, 0.4)
+            volatility_bonus = max(0, 0.25 - price_volatility)
+
+            confidence = min(0.9, max(0.2, base_confidence - error_penalty + volatility_bonus))
+
+            return float(prediction), confidence
+
+        except Exception as e:
+            self.logger.error(f"Error in Caboose prediction for {symbol} window {window}: {e}")
+            return None, 0.0
     
     def _calculate_enhanced_ensemble(self, predictions: dict, confidence_scores: dict) -> float:
         """Calculate enhanced weighted ensemble prediction with adaptive weighting."""
@@ -472,6 +551,8 @@ class WindowBasedEnsemblePredictor:
                 base_weight = self.lstm_weight
             elif model_name == 'xgb':
                 base_weight = self.xgb_weight
+            elif model_name == 'caboose':
+                base_weight = self.caboose_weight
             else:
                 base_weight = 0.5
             

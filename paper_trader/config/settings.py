@@ -48,6 +48,7 @@ class TradingSettings:
     # Ensemble Model Weights
     lstm_weight: float = float(os.getenv('LSTM_WEIGHT', '0.6'))
     xgb_weight: float = float(os.getenv('XGB_WEIGHT', '0.4'))
+    caboose_weight: float = float(os.getenv('CABOOSE_WEIGHT', '0.3'))
     
     # Risk Management
     max_daily_loss_pct: float = float(os.getenv('MAX_DAILY_LOSS_PCT', '0.05'))

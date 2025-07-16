@@ -16,6 +16,7 @@ tensorflow[and-cuda]>=2.15.0  # Alternative: use this for automatic CUDA setup
 # nvidia-cudnn-cu12>=8.9.0
 # nvidia-cuda-runtime-cu12>=12.0
 xgboost>=2.0.0
+catboost>=1.2.0
 
 # ===== VISUALIZATION =====
 matplotlib>=3.7.0
