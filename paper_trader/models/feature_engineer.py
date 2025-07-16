@@ -91,11 +91,20 @@ class FeatureEngineer:
             features['volume_change'] = df['volume'].pct_change()
             features['volume_zscore'] = (df['volume'] - volume_sma_20) / volume_std_20
             features['volume_price_trend'] = df['volume'] * features['returns']
+            features['volume_weighted_price'] = (
+                (df['volume'] * df['close']).rolling(20).sum() / df['volume'].rolling(20).sum()
+            )
+
+            # Market microstructure
+            features['spread'] = (df['high'] - df['low']) / df['close']
 
             # Volatility features
             features['volatility_20'] = features['returns'].rolling(20).std()
             features['volatility_5'] = features['returns'].rolling(5).std()
+            features['volatility_50'] = features['returns'].rolling(50).std()
             features['volatility_ratio'] = features['volatility_5'] / features['volatility_20']
+            features['realized_vol_5'] = features['returns'].rolling(5).std() * np.sqrt(5)
+            features['realized_vol_20'] = features['returns'].rolling(20).std() * np.sqrt(20)
 
             # Technical indicators using pandas_ta
             df_temp = pd.concat([df, pd.DataFrame(features)], axis=1)
@@ -103,19 +112,26 @@ class FeatureEngineer:
             # RSI
             rsi_values = ta.rsi(df['close'], length=14)
             features['rsi'] = rsi_values
+            features['rsi_9'] = ta.rsi(df['close'], length=9)
+            features['rsi_21'] = ta.rsi(df['close'], length=21)
             features['rsi_oversold'] = (rsi_values < 30).astype(int)
             features['rsi_overbought'] = (rsi_values > 70).astype(int)
+            features['rsi_divergence'] = features['rsi'].diff(5) * df['close'].pct_change(5)
 
             # MACD
             macd_result = ta.macd(df['close'], fast=12, slow=26, signal=9)
             if macd_result is not None and not macd_result.empty:
                 features['macd'] = macd_result.iloc[:, 0]  # MACD line
                 features['macd_signal'] = macd_result.iloc[:, 1]  # Signal line
-                features['macd_hist'] = macd_result.iloc[:, 2]  # Histogram
+                macd_hist = macd_result.iloc[:, 2]
+                features['macd_hist'] = macd_hist
+                features['macd_histogram'] = macd_hist
             else:
                 features['macd'] = pd.Series(0, index=df.index)
                 features['macd_signal'] = pd.Series(0, index=df.index)
                 features['macd_hist'] = pd.Series(0, index=df.index)
+                features['macd_histogram'] = pd.Series(0, index=df.index)
+            features['macd_bullish'] = (features['macd'] > features['macd_signal']).astype(int)
 
             # Bollinger Bands
             bb_result = ta.bbands(df['close'], length=20, std=2)
@@ -140,12 +156,19 @@ class FeatureEngineer:
             features['atr'] = atr_values if atr_values is not None else pd.Series(0, index=df.index)
             features['atr_ratio'] = features['atr'] / df['close']
 
+            # VWAP
+            vwap = (df['close'] * df['volume']).cumsum() / df['volume'].cumsum()
+            features['vwap'] = vwap
+            features['price_vs_vwap'] = (df['close'] - vwap) / vwap
+
             # Moving averages
             features['sma_20'] = df['close'].rolling(20).mean()
             features['sma_50'] = df['close'].rolling(50).mean()
             features['sma_200'] = df['close'].rolling(200).mean()
             features['ema_9'] = df['close'].ewm(span=9).mean()
             features['ema_21'] = df['close'].ewm(span=21).mean()
+            features['ema_50'] = df['close'].ewm(span=50).mean()
+            features['ema_100'] = df['close'].ewm(span=100).mean()
 
             # Price vs MA features
             features['price_vs_sma20'] = (df['close'] - features['sma_20']) / features['sma_20']
@@ -153,11 +176,17 @@ class FeatureEngineer:
             features['price_vs_sma200'] = (df['close'] - features['sma_200']) / features['sma_200']
             features['price_vs_ema9'] = (df['close'] - features['ema_9']) / features['ema_9']
             features['price_vs_ema21'] = (df['close'] - features['ema_21']) / features['ema_21']
+            features['price_vs_ema50'] = (df['close'] - features['ema_50']) / features['ema_50']
 
-            # MA alignment
+            # MA alignment and crossovers
             ma_9_vs_21 = (features['ema_9'] > features['ema_21']).astype(int)
-            ma_21_vs_50 = (features['ema_21'] > features['sma_50']).astype(int)
+            ma_21_vs_50 = (features['ema_21'] > features['ema_50']).astype(int)
             features['ma_alignment'] = ma_9_vs_21 + ma_21_vs_50 - 1  # -1, 0, or 1
+            features['ema9_vs_ema21'] = (features['ema_9'] - features['ema_21']) / features['ema_21']
+            features['ema21_vs_ema50'] = (features['ema_21'] - features['ema_50']) / features['ema_50']
+            features['ema50_vs_ema100'] = (features['ema_50'] - features['ema_100']) / features['ema_100']
+            features['ma_slope_9'] = features['ema_9'].pct_change(5)
+            features['ma_slope_21'] = features['ema_21'].pct_change(5)
 
             # Order flow features
             features['buying_pressure'] = ((df['close'] - df['low']) / (df['high'] - df['low'])).fillna(0.5)
@@ -167,18 +196,41 @@ class FeatureEngineer:
 
             # Momentum
             features['momentum_10'] = df['close'] / df['close'].shift(10) - 1
+            features['roc_10'] = ta.roc(df['close'], length=10)
+
+            # Candle patterns
+            features['candle_body'] = abs(df['close'] - df['open']) / df['open']
+            features['upper_wick'] = (df['high'] - np.maximum(df['open'], df['close'])) / df['open']
+            features['lower_wick'] = (np.minimum(df['open'], df['close']) - df['low']) / df['open']
+
+            # Time features
+            features['hour'] = df.index.hour
+            features['day_of_week'] = df.index.dayofweek
+            features['is_weekend'] = (df.index.dayofweek >= 5).astype(int)
+
+            # Support/Resistance
+            features['high_20'] = df['high'].rolling(20).max()
+            features['low_20'] = df['low'].rolling(20).min()
+            features['near_resistance'] = (df['close'] / features['high_20'] > 0.98).astype(int)
+            features['near_support'] = (df['close'] / features['low_20'] < 1.02).astype(int)
 
             # Stochastic
             stoch_result = ta.stoch(df['high'], df['low'], df['close'], k=14, d=3)
             if stoch_result is not None and not stoch_result.empty:
                 stoch_k = stoch_result.iloc[:, 0]
+                stoch_d = stoch_result.iloc[:, 1]
                 features['stoch_k'] = stoch_k
+                features['stoch_d'] = stoch_d
                 features['stoch_oversold'] = (stoch_k < 20).astype(int)
                 features['stoch_overbought'] = (stoch_k > 80).astype(int)
             else:
                 features['stoch_k'] = pd.Series(50, index=df.index)
+                features['stoch_d'] = pd.Series(50, index=df.index)
                 features['stoch_oversold'] = pd.Series(0, index=df.index)
                 features['stoch_overbought'] = pd.Series(0, index=df.index)
+
+            # Williams %R
+            features['williams_r'] = ta.willr(df['high'], df['low'], df['close'], length=14)
 
             # Volume regime
             volume_percentile = df['volume'].rolling(100).rank(pct=True)
@@ -191,6 +243,7 @@ class FeatureEngineer:
             # Now calculate complex features using the updated dataframe
             complex_features = {}
             complex_features['rsi_macd_signal'] = features['rsi'] * features['macd_signal']
+            complex_features['rsi_macd_combo'] = features['rsi'] * features['macd_signal']
             complex_features['volatility_ema_ratio'] = features['volatility_20'] / features['ema_21']
             complex_features['volume_price_momentum'] = features['volume_ratio'] * features['momentum_10']
             complex_features['bb_rsi_signal'] = features['bb_position'] * features['rsi']
