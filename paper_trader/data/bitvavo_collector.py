@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+import random
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -30,7 +31,18 @@ class BitvavoDataCollector:
         self.api_secret = api_secret
         self.base_url = "https://api.bitvavo.com/v2"
         self.ws_url = "wss://ws.bitvavo.com/v2"
-        self.session = httpx.AsyncClient()
+        
+        # Add headers to avoid Cloudflare detection
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        self.session = httpx.AsyncClient(headers=headers, follow_redirects=True)
         
         # Data buffers for each symbol (store last 100 candles)
         self.data_buffers: Dict[str, deque] = {}
@@ -69,50 +81,59 @@ class BitvavoDataCollector:
                 self.logger.error(f"Error initializing buffer for {symbol}: {e}")
                 self.data_buffers[symbol] = deque(maxlen=100)
     
-    async def get_historical_data(self, symbol: str, interval: str = "15m", limit: int = 100) -> Optional[pd.DataFrame]: 
-        """Fetch historical candle data with better error handling.""" 
-        try: 
-            # Fix the API endpoint - use proper symbol format 
-            market_symbol = symbol.replace('-', '')  # Convert BTC-EUR to BTCEUR for some endpoints 
-            
-            # Try primary endpoint first 
-            url = f"https://api.bitvavo.com/v2/candles" 
-            params = { 
-                'market': symbol,  # Keep original format first 
-                'interval': interval, 
-                'limit': limit 
-            } 
-            
-            response = await self.session.get(url, params=params, timeout=10) 
-            
-            if response.status_code == 404: 
-                # Try alternative symbol format 
-                params['market'] = market_symbol 
-                response = await self.session.get(url, params=params, timeout=10) 
-                
-            if response.status_code == 200: 
-                data = response.json() 
-                if data: 
-                    df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']) 
-                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms') 
-                    df = df.set_index('timestamp') 
+    async def get_historical_data(self, symbol: str, interval: str = "15m", limit: int = 100) -> Optional[pd.DataFrame]:
+        """Fetch historical candle data with anti-Cloudflare measures and robust error handling."""
+        endpoints_to_try = [
+            f"{self.base_url}/candles",
+            f"{self.base_url}/{symbol}/candles",
+        ]
+        
+        alt_symbols = [
+            symbol,
+            symbol.replace('-', ''),
+            symbol.lower(),
+        ]
+
+        for endpoint in endpoints_to_try:
+            for s in alt_symbols:
+                try:
+                    await asyncio.sleep(random.uniform(0.2, 0.6))  # Random delay
+                    params = {'market': s, 'interval': interval, 'limit': limit}
+                    self.logger.debug(f"Trying endpoint: {endpoint} with symbol: {s}")
                     
-                    # Convert to numeric 
-                    numeric_cols = ['open', 'high', 'low', 'close', 'volume'] 
-                    df[numeric_cols] = df[numeric_cols].astype(float) 
+                    response = await self.session.get(endpoint, params=params, timeout=20)
                     
-                    self.logger.info(f"Fetched {len(df)} candles for {symbol}") 
-                    return df 
-                else: 
-                    self.logger.warning(f"Empty response for {symbol}") 
-                    return None 
-            else: 
-                self.logger.error(f"API error for {symbol}: {response.status_code} - {response.text}") 
-                return None 
-                
-        except Exception as e: 
-            self.logger.error(f"Error fetching historical data for {symbol}: {e}") 
-            return None
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data and isinstance(data, list) and len(data) > 0:
+                            df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                            df = df.set_index('timestamp')
+                            
+                            numeric_cols = ['open', 'high', 'low', 'close', 'volume']
+                            for col in numeric_cols:
+                                df[col] = pd.to_numeric(df[col], errors='coerce')
+                            
+                            df = df.dropna()
+                            if not df.empty:
+                                self.logger.info(f"Successfully fetched {len(df)} candles for {symbol}")
+                                return df
+                        else:
+                            self.logger.debug(f"Empty or invalid data from {endpoint} for {s}")
+                    elif response.status_code == 404:
+                        self.logger.debug(f"Endpoint {endpoint} not found for symbol {s}")
+                    else:
+                        self.logger.warning(f"HTTP {response.status_code} from {endpoint} for {s}: {response.text[:150]}")
+
+                except httpx.RequestError as e:
+                    self.logger.warning(f"Request failed for {endpoint} with symbol {s}: {e}")
+                except (ValueError, KeyError) as e:
+                    self.logger.warning(f"Error parsing JSON for {s}: {e}")
+                except Exception as e:
+                    self.logger.error(f"An unexpected error occurred for {s}: {e}")
+
+        self.logger.error(f"Failed to fetch historical data for {symbol} after all attempts.")
+        return None
     
     async def get_latest_data(self, symbol: str, limit: int = 100) -> Optional[pd.DataFrame]:
         """Get latest data from buffer or fetch from API."""

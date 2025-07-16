@@ -90,36 +90,31 @@ class WindowBasedModelLoader:
                                 ),
                             }
                         try:
-                            model = tf.keras.models.load_model(str(lstm_file), custom_objects=custom_objects)
+                            # Attempt to load with compile=False first, as it's more robust
+                            model = tf.keras.models.load_model(str(lstm_file), compile=False, custom_objects=custom_objects)
+                            # Then, compile the model with the custom loss function
+                            model.compile(optimizer='adam', loss=directional_loss, metrics=['mae'])
                             self.lstm_models[symbol][window_num] = model
-                            self.logger.debug(f"Loaded LSTM model for {symbol} window {window_num}")
+                            self.logger.info(f"Loaded LSTM model {lstm_file} with compile=False and re-compiled.")
                         except Exception as e:
-                            self.logger.warning(f"Failed to load LSTM model {lstm_file}: {e}")
+                            self.logger.warning(f"Failed to load LSTM model {lstm_file}. Error: {e}")
+                            # If that fails, try loading from separate files as a last resort
                             try:
-                                model = tf.keras.models.load_model(str(lstm_file), compile=False)
-                                model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-                                self.lstm_models[symbol][window_num] = model
-                                self.logger.info(f"Loaded {lstm_file} without custom objects")
-                            except Exception as e2:
-                                self.logger.warning(f"Fallback load failed for {lstm_file}: {e2}")
+                                arch_path = str(lstm_file).replace('.keras', '_architecture.json')
+                                weights_path = str(lstm_file).replace('.keras', '_weights.h5')
                                 
-                                # Try loading from separate architecture and weights
-                                try:
-                                    arch_path = str(lstm_file).replace('.keras', '_architecture.json')
-                                    weights_path = str(lstm_file).replace('.keras', '_weights.h5')
-                                    
-                                    if os.path.exists(arch_path) and os.path.exists(weights_path):
-                                        with open(arch_path, 'r') as json_file:
-                                            model_json = json_file.read()
-                                        model = tf.keras.models.model_from_json(model_json, custom_objects=custom_objects)
-                                        model.load_weights(weights_path)
-                                        model.compile(optimizer='adam', loss=directional_loss, metrics=['mae'])
-                                        self.lstm_models[symbol][window_num] = model
-                                        self.logger.info(f"Loaded model from separate architecture and weights for {symbol} window {window_num}")
-                                    else:
-                                        self.logger.warning(f"Could not find separate architecture/weights files for {lstm_file}")
-                                except Exception as e3:
-                                    self.logger.warning(f"Failed to load from separate architecture/weights: {e3}")
+                                if os.path.exists(arch_path) and os.path.exists(weights_path):
+                                    with open(arch_path, 'r') as json_file:
+                                        model_json = json_file.read()
+                                    model = tf.keras.models.model_from_json(model_json, custom_objects=custom_objects)
+                                    model.load_weights(weights_path)
+                                    model.compile(optimizer='adam', loss=directional_loss, metrics=['mae'])
+                                    self.lstm_models[symbol][window_num] = model
+                                    self.logger.info(f"Loaded model from separate architecture and weights for {symbol} window {window_num}")
+                                else:
+                                    self.logger.warning(f"Could not find separate architecture/weights files for {lstm_file}")
+                            except Exception as e2:
+                                self.logger.error(f"All attempts to load {lstm_file} failed. Final error: {e2}")
                     except Exception as e:
                         self.logger.warning(f"Failed to process LSTM model file {lstm_file}: {e}")
             
@@ -130,7 +125,7 @@ class WindowBasedModelLoader:
                     try:
                         window_num = int(xgb_file.stem.split('_window_')[1])
                         windows_found.add(window_num)
-                        model = xgb.XGBClassifier()
+                        model = xgb.XGBRegressor()
                         model.load_model(xgb_file)
                         self.xgb_models[symbol][window_num] = model
                         self.logger.debug(f"Loaded XGBoost model for {symbol} window {window_num}")

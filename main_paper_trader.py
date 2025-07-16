@@ -51,13 +51,13 @@ class PaperTrader:
         
         self.logger.info("Paper Trader initialized")
 
-    def debug_data_pipeline(self, symbol: str): 
+    async def debug_data_pipeline(self, symbol: str): 
         """Debug the data pipeline to identify issues.""" 
         self.logger.info(f"=== Debugging data pipeline for {symbol} ===") 
         
         try: 
             # 1. Check raw data availability 
-            raw_data = self.data_collector.get_historical_data(symbol, limit=300) 
+            raw_data = await self.data_collector.get_historical_data(symbol, limit=300) 
             self.logger.info(f"Raw data shape: {raw_data.shape if raw_data is not None else 'None'}") 
             
             if raw_data is None or raw_data.empty: 
@@ -111,6 +111,18 @@ class PaperTrader:
             
         except Exception as e: 
             self.logger.error(f"Error in data pipeline debug: {e}", exc_info=True) 
+            return False
+
+    def run_debug_sync(self, symbol: str):
+        """Synchronous wrapper for async debug function."""
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(self.debug_data_pipeline(symbol))
+            loop.close()
+            return result
+        except Exception as e:
+            self.logger.error(f"Error running debug: {e}")
             return False
     
     def _setup_logging(self):
@@ -232,7 +244,7 @@ class PaperTrader:
 
             # Debug data pipeline for all symbols
             for symbol in self.settings.symbols:
-                self.debug_data_pipeline(symbol)
+                await self.debug_data_pipeline(symbol)
             
         except Exception as e:
             self.logger.error(f"Error loading models: {e}")
@@ -523,10 +535,14 @@ async def main():
         await trader.run()
     except KeyboardInterrupt:
         print("\nShutdown requested by user")
-    except Exception as e:
-        print(f"Fatal error: {e}")
-        sys.exit(1)
 
 if __name__ == "__main__":
     # Run the paper trader
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        # The logger may not be initialized, so we print to stderr
+        logging.basicConfig()
+        log = logging.getLogger(__name__)
+        log.error("A fatal error occurred.", exc_info=True)
+        sys.exit(1)
