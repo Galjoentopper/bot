@@ -263,13 +263,13 @@ class PaperTrader:
                 self.logger.warning(f"Could not get sufficient data for {symbol}, skipping")
                 return False
 
-            # Get buffer data for feature engineering
-            data = self.data_collector.get_buffer_data(symbol, min_length=300)
-            if data is None or data.empty or len(data) < 250:
-                self.logger.warning(f"Insufficient data for {symbol} after ensuring")
+            # Fetch latest data from buffer for feature engineering
+            data = self.data_collector.get_buffer_data(symbol, min_length=250)
+            if data is None or len(data) < 250:
+                self.logger.warning(f"Insufficient buffer data for {symbol}, skipping.")
                 return False
             
-            # Engineer features
+            # Feature engineering
             features_df = self.feature_engineer.engineer_features(data)
             if features_df is None or len(features_df) < self.settings.sequence_length:
                 self.logger.warning(f"Insufficient features for {symbol}")
