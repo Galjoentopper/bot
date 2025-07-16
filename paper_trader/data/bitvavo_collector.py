@@ -104,12 +104,10 @@ class FeatureCache:
                             new_row = pd.DataFrame([latest_candle.values], 
                                                  columns=latest_candle.index, 
                                                  index=[new_timestamp])
-                            # Change line 428 from:
-                            if symbol in self.data_buffers and self.data_buffers[symbol]:
                             # To:
                             if symbol in self.data_buffers and not self.data_buffers[symbol].empty:
-                                self.data_buffers[symbol] = pd.concat([self.data_buffers[symbol], new_row])
-                                if len(self.data_buffers[symbol]) > 500:
+                                    self.data_buffers[symbol] = pd.concat([self.data_buffers[symbol], new_row])
+                            if len(self.data_buffers[symbol]) > 500:
                                     self.data_buffers[symbol] = self.data_buffers[symbol].tail(500)
                             else:
                                 self.data_buffers[symbol] = new_row
