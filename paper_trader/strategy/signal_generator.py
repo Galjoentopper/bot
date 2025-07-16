@@ -9,13 +9,15 @@ class SignalGenerator:
     
     def __init__(self, max_positions: int = 10, position_size_pct: float = 0.10,
                  take_profit_pct: float = 0.01, stop_loss_pct: float = 0.01,
-                 min_confidence: float = 0.5, min_signal_strength: str = 'MODERATE'):
+                 min_confidence: float = 0.5, min_signal_strength: str = 'MODERATE',
+                 min_expected_gain_pct: float = 0.005):
         self.max_positions = max_positions
         self.position_size_pct = position_size_pct
         self.take_profit_pct = take_profit_pct
         self.stop_loss_pct = stop_loss_pct
         self.min_confidence = min_confidence
         self.min_signal_strength = min_signal_strength
+        self.min_expected_gain_pct = min_expected_gain_pct
         
         # Signal strength hierarchy
         self.signal_hierarchy = {
@@ -76,8 +78,8 @@ class SignalGenerator:
                 self.logger.debug(f"Signal strength too low for {symbol}: {signal_strength}")
                 return None
             
-            # Generate buy signal for positive predictions
-            if price_change_pct > 0.005:  # At least 0.5% expected gain
+            # Generate buy signal if expected gain exceeds threshold
+            if price_change_pct > self.min_expected_gain_pct:
                 return self._generate_buy_signal(symbol, current_price, prediction, portfolio)
             
             # No signal for neutral or negative predictions in this strategy
@@ -173,5 +175,6 @@ class SignalGenerator:
             'stop_loss_pct': self.stop_loss_pct,
             'min_confidence': self.min_confidence,
             'min_signal_strength': self.min_signal_strength,
+            'min_expected_gain_pct': self.min_expected_gain_pct,
             'signal_hierarchy': self.signal_hierarchy
         }
