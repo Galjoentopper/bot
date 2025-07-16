@@ -266,6 +266,9 @@ class WindowBasedEnsemblePredictor:
             required_cols = self.model_loader.feature_columns.get(symbol, {}).get(optimal_window)
             if required_cols:
                 missing = [c for c in required_cols if c not in features.columns]
+                # Allow computing lstm_delta later if missing
+                if 'lstm_delta' in missing:
+                    missing.remove('lstm_delta')
                 if missing:
                     self.logger.warning(f"Missing required feature columns for {symbol}: {missing}")
                     return None
@@ -277,6 +280,8 @@ class WindowBasedEnsemblePredictor:
             confidence_scores = {}
             model_details = {}
             
+            lstm_pred = None
+            lstm_conf = 0.0
             # LSTM Prediction with selected window (skip if models are corrupted)
             if available_models['lstm']:
                 try:
@@ -287,6 +292,12 @@ class WindowBasedEnsemblePredictor:
                         model_details['lstm_window'] = optimal_window
                 except Exception as e:
                     self.logger.warning(f"LSTM model failed for {symbol} window {optimal_window}, skipping: {e}")
+
+            # Append lstm_delta to features if required
+            if lstm_pred is not None and required_cols and 'lstm_delta' in required_cols:
+                delta = (lstm_pred - features['close'].iloc[-1]) / features['close'].iloc[-1]
+                features = features.copy()
+                features['lstm_delta'] = delta
             
             # XGBoost Prediction with selected window
             if available_models['xgb']:
