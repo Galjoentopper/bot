@@ -435,8 +435,10 @@ class PaperTrader:
                 self.logger.warning(f"Insufficient features for {symbol}")
                 return False
             
-            # Get current price
-            current_price = await self.data_collector.get_current_price(symbol)
+            # Get current price using buffer first for consistency
+            current_price = self.data_collector.get_latest_price(symbol)
+            if current_price is None:
+                current_price = await self.data_collector.get_current_price(symbol)
             if current_price is None:
                 self.logger.warning(f"Could not get current price for {symbol}")
                 return False
