@@ -16,6 +16,9 @@ LSTM_FEATURES: List[str] = [
     'momentum_10', 'price_zscore_20'
 ]
 
+# Sequence length used during model training
+LSTM_SEQUENCE_LENGTH: int = 96
+
 # Full feature list used during model training
 TRAINING_FEATURES: List[str] = [
     'returns', 'log_returns', 'price_change_1h', 'price_change_4h',
