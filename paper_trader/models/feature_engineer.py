@@ -45,197 +45,197 @@ class FeatureEngineer:
     def engineer_features(self, data: pd.DataFrame) -> Optional[pd.DataFrame]:
         """Create the same technical indicators used during model training."""
         if len(data) < 250:
-        self.logger.warning(f"Insufficient data for feature engineering. Need at least 250 rows, got {len(data)}.")
-        return None
-
-    try:
-        df = data.copy()
-        if 'timestamp' in df.columns:
-            df = df.set_index('timestamp')
-
-        # Calculate all features in one go using a dictionary
-        features = {}
-
-        # Basic price features
-        features['returns'] = df['close'].pct_change()
-        features['log_returns'] = np.log(df['close'] / df['close'].shift(1))
-        features['price_change_1h'] = df['close'].pct_change(4)
-        features['price_change_4h'] = df['close'].pct_change(16)
-        features['price_change_24h'] = df['close'].pct_change(96)
-
-        # Price statistics
-        price_rolling_20 = df['close'].rolling(20)
-        price_rolling_50 = df['close'].rolling(50)
-        features['price_zscore_20'] = (df['close'] - price_rolling_20.mean()) / price_rolling_20.std()
-        features['price_zscore_50'] = (df['close'] - price_rolling_50.mean()) / price_rolling_50.std()
-
-        # Returns lag features
-        for lag in [1, 2, 3, 5, 10, 20]:
-            features[f'returns_lag_{lag}'] = features['returns'].shift(lag)
-            features[f'log_returns_lag_{lag}'] = features['log_returns'].shift(lag)
-
-        # Returns statistics
-        returns_rolling_10 = features['returns'].rolling(10)
-        returns_rolling_20 = features['returns'].rolling(20)
-        features['returns_mean_10'] = returns_rolling_10.mean()
-        features['returns_std_10'] = returns_rolling_10.std()
-        features['returns_skew_20'] = returns_rolling_20.skew()
-        features['returns_kurt_20'] = returns_rolling_20.kurt()
-
-        # Volume features
-        volume_rolling_20 = df['volume'].rolling(20)
-        volume_sma_20 = volume_rolling_20.mean()
-        volume_std_20 = volume_rolling_20.std()
-        features['volume_sma_20'] = volume_sma_20
-        features['volume_ratio'] = df['volume'] / volume_sma_20
-        features['volume_change'] = df['volume'].pct_change()
-        features['volume_zscore'] = (df['volume'] - volume_sma_20) / volume_std_20
-        features['volume_price_trend'] = df['volume'] * features['returns']
-
-        # Volatility features
-        features['volatility_20'] = features['returns'].rolling(20).std()
-        features['volatility_5'] = features['returns'].rolling(5).std()
-        features['volatility_ratio'] = features['volatility_5'] / features['volatility_20']
-
-        # Technical indicators using pandas_ta
-        df_temp = pd.concat([df, pd.DataFrame(features)], axis=1)
-        
-        # RSI
-        rsi_values = ta.rsi(df['close'], length=14)
-        features['rsi'] = rsi_values
-        features['rsi_oversold'] = (rsi_values < 30).astype(int)
-        features['rsi_overbought'] = (rsi_values > 70).astype(int)
-
-        # MACD
-        macd_result = ta.macd(df['close'], fast=12, slow=26, signal=9)
-        if macd_result is not None and not macd_result.empty:
-            features['macd'] = macd_result.iloc[:, 0]  # MACD line
-            features['macd_signal'] = macd_result.iloc[:, 1]  # Signal line
-            features['macd_hist'] = macd_result.iloc[:, 2]  # Histogram
-        else:
-            features['macd'] = pd.Series(0, index=df.index)
-            features['macd_signal'] = pd.Series(0, index=df.index)
-            features['macd_hist'] = pd.Series(0, index=df.index)
-
-        # Bollinger Bands
-        bb_result = ta.bbands(df['close'], length=20, std=2)
-        if bb_result is not None and not bb_result.empty:
-            bb_upper = bb_result.iloc[:, 0]  # Upper band
-            bb_middle = bb_result.iloc[:, 1]  # Middle band (SMA)
-            bb_lower = bb_result.iloc[:, 2]  # Lower band
-            features['bb_upper'] = bb_upper
-            features['bb_middle'] = bb_middle
-            features['bb_lower'] = bb_lower
-            features['bb_width'] = (bb_upper - bb_lower) / bb_middle
-            features['bb_position'] = (df['close'] - bb_lower) / (bb_upper - bb_lower)
-        else:
-            features['bb_upper'] = df['close']
-            features['bb_middle'] = df['close']
-            features['bb_lower'] = df['close']
-            features['bb_width'] = pd.Series(0, index=df.index)
-            features['bb_position'] = pd.Series(0.5, index=df.index)
-
-        # ATR
-        atr_values = ta.atr(df['high'], df['low'], df['close'], length=14)
-        features['atr'] = atr_values if atr_values is not None else pd.Series(0, index=df.index)
-        features['atr_ratio'] = features['atr'] / df['close']
-
-        # Moving averages
-        features['sma_20'] = df['close'].rolling(20).mean()
-        features['sma_50'] = df['close'].rolling(50).mean()
-        features['sma_200'] = df['close'].rolling(200).mean()
-        features['ema_9'] = df['close'].ewm(span=9).mean()
-        features['ema_21'] = df['close'].ewm(span=21).mean()
-
-        # Price vs MA features
-        features['price_vs_sma20'] = (df['close'] - features['sma_20']) / features['sma_20']
-        features['price_vs_sma50'] = (df['close'] - features['sma_50']) / features['sma_50']
-        features['price_vs_sma200'] = (df['close'] - features['sma_200']) / features['sma_200']
-        features['price_vs_ema9'] = (df['close'] - features['ema_9']) / features['ema_9']
-        features['price_vs_ema21'] = (df['close'] - features['ema_21']) / features['ema_21']
-
-        # MA alignment
-        ma_9_vs_21 = (features['ema_9'] > features['ema_21']).astype(int)
-        ma_21_vs_50 = (features['ema_21'] > features['sma_50']).astype(int)
-        features['ma_alignment'] = ma_9_vs_21 + ma_21_vs_50 - 1  # -1, 0, or 1
-
-        # Order flow features
-        features['buying_pressure'] = ((df['close'] - df['low']) / (df['high'] - df['low'])).fillna(0.5)
-        features['selling_pressure'] = ((df['high'] - df['close']) / (df['high'] - df['low'])).fillna(0.5)
-        features['net_pressure'] = features['buying_pressure'] - features['selling_pressure']
-        features['spread_ratio'] = (df['high'] - df['low']) / df['close']
-
-        # Momentum
-        features['momentum_10'] = df['close'] / df['close'].shift(10) - 1
-
-        # Stochastic
-        stoch_result = ta.stoch(df['high'], df['low'], df['close'], k=14, d=3)
-        if stoch_result is not None and not stoch_result.empty:
-            stoch_k = stoch_result.iloc[:, 0]
-            features['stoch_k'] = stoch_k
-            features['stoch_oversold'] = (stoch_k < 20).astype(int)
-            features['stoch_overbought'] = (stoch_k > 80).astype(int)
-        else:
-            features['stoch_k'] = pd.Series(50, index=df.index)
-            features['stoch_oversold'] = pd.Series(0, index=df.index)
-            features['stoch_overbought'] = pd.Series(0, index=df.index)
-
-        # Volume regime
-        volume_percentile = df['volume'].rolling(100).rank(pct=True)
-        features['vol_regime'] = (volume_percentile > 0.8).astype(int)
-
-        # Complex features - calculate after basic features are available
-        # Update df_temp with all basic features first
-        df_temp = pd.concat([df, pd.DataFrame(features, index=df.index)], axis=1)
-        
-        # Now calculate complex features using the updated dataframe
-        complex_features = {}
-        complex_features['rsi_macd_signal'] = features['rsi'] * features['macd_signal']
-        complex_features['volatility_ema_ratio'] = features['volatility_20'] / features['ema_21']
-        complex_features['volume_price_momentum'] = features['volume_ratio'] * features['momentum_10']
-        complex_features['bb_rsi_signal'] = features['bb_position'] * features['rsi']
-        complex_features['trend_strength'] = features['price_vs_ema9'] * features['price_vs_ema21']
-        complex_features['volatility_breakout'] = features['atr'] * features['bb_width']
-        complex_features['momentum_vol_signal'] = features['momentum_10'] * features['volume_ratio'] * features['volatility_ratio']
-        complex_features['trend_momentum_align'] = features['ma_alignment'] * features['momentum_10']
-        complex_features['pressure_volume_signal'] = features['net_pressure'] * features['volume_zscore']
-        complex_features['volatility_regime_signal'] = features['vol_regime'] * features['rsi']
-        complex_features['multi_timeframe_signal'] = features['price_change_1h'] * features['price_change_4h'] * features['price_change_24h']
-        complex_features['oscillator_consensus'] = (features['rsi_oversold'] + features['stoch_oversold']) - (features['rsi_overbought'] + features['stoch_overbought'])
-        complex_features['trend_regime'] = ((features['ma_alignment'] == 1) & (features['price_vs_sma200'] > 0)).astype(int)
-        
-        # BB width rolling calculation
-        bb_width_rolling = features['bb_width'].rolling(50)
-        atr_ratio_rolling = features['atr_ratio'].rolling(50)
-        complex_features['consolidation_regime'] = (
-            (features['bb_width'] < bb_width_rolling.quantile(0.3)) & 
-            (features['atr_ratio'] < atr_ratio_rolling.quantile(0.3))
-        ).astype(int)
-
-        # Combine all features
-        all_features = {**features, **complex_features}
-
-        # Assign all features at once to avoid fragmentation
-        df_final = df.assign(**all_features)
-
-        # Drop rows with NaN values
-        df_final = df_final.dropna()
-
-        if len(df_final) < 30:
-            self.logger.warning(f"Insufficient data after feature engineering and NaN removal. Remaining rows: {len(df_final)}")
+            self.logger.warning(f"Insufficient data for feature engineering. Need at least 250 rows, got {len(data)}.")
             return None
 
-        # Validate that all required training features are present
-        if not self.validate_features(df_final):
-            self.logger.warning("Not all required training features are present")
-            return None
+        try:
+            df = data.copy()
+            if 'timestamp' in df.columns:
+                df = df.set_index('timestamp')
+
+            # Calculate all features in one go using a dictionary
+            features = {}
+
+            # Basic price features
+            features['returns'] = df['close'].pct_change()
+            features['log_returns'] = np.log(df['close'] / df['close'].shift(1))
+            features['price_change_1h'] = df['close'].pct_change(4)
+            features['price_change_4h'] = df['close'].pct_change(16)
+            features['price_change_24h'] = df['close'].pct_change(96)
+
+            # Price statistics
+            price_rolling_20 = df['close'].rolling(20)
+            price_rolling_50 = df['close'].rolling(50)
+            features['price_zscore_20'] = (df['close'] - price_rolling_20.mean()) / price_rolling_20.std()
+            features['price_zscore_50'] = (df['close'] - price_rolling_50.mean()) / price_rolling_50.std()
+
+            # Returns lag features
+            for lag in [1, 2, 3, 5, 10, 20]:
+                features[f'returns_lag_{lag}'] = features['returns'].shift(lag)
+                features[f'log_returns_lag_{lag}'] = features['log_returns'].shift(lag)
+
+            # Returns statistics
+            returns_rolling_10 = features['returns'].rolling(10)
+            returns_rolling_20 = features['returns'].rolling(20)
+            features['returns_mean_10'] = returns_rolling_10.mean()
+            features['returns_std_10'] = returns_rolling_10.std()
+            features['returns_skew_20'] = returns_rolling_20.skew()
+            features['returns_kurt_20'] = returns_rolling_20.kurt()
+
+            # Volume features
+            volume_rolling_20 = df['volume'].rolling(20)
+            volume_sma_20 = volume_rolling_20.mean()
+            volume_std_20 = volume_rolling_20.std()
+            features['volume_sma_20'] = volume_sma_20
+            features['volume_ratio'] = df['volume'] / volume_sma_20
+            features['volume_change'] = df['volume'].pct_change()
+            features['volume_zscore'] = (df['volume'] - volume_sma_20) / volume_std_20
+            features['volume_price_trend'] = df['volume'] * features['returns']
+
+            # Volatility features
+            features['volatility_20'] = features['returns'].rolling(20).std()
+            features['volatility_5'] = features['returns'].rolling(5).std()
+            features['volatility_ratio'] = features['volatility_5'] / features['volatility_20']
+
+            # Technical indicators using pandas_ta
+            df_temp = pd.concat([df, pd.DataFrame(features)], axis=1)
             
-        self.logger.info(f"Successfully created {len(df_final.columns)} features from {len(df_final)} samples")
-        return df_final
+            # RSI
+            rsi_values = ta.rsi(df['close'], length=14)
+            features['rsi'] = rsi_values
+            features['rsi_oversold'] = (rsi_values < 30).astype(int)
+            features['rsi_overbought'] = (rsi_values > 70).astype(int)
+
+            # MACD
+            macd_result = ta.macd(df['close'], fast=12, slow=26, signal=9)
+            if macd_result is not None and not macd_result.empty:
+                features['macd'] = macd_result.iloc[:, 0]  # MACD line
+                features['macd_signal'] = macd_result.iloc[:, 1]  # Signal line
+                features['macd_hist'] = macd_result.iloc[:, 2]  # Histogram
+            else:
+                features['macd'] = pd.Series(0, index=df.index)
+                features['macd_signal'] = pd.Series(0, index=df.index)
+                features['macd_hist'] = pd.Series(0, index=df.index)
+
+            # Bollinger Bands
+            bb_result = ta.bbands(df['close'], length=20, std=2)
+            if bb_result is not None and not bb_result.empty:
+                bb_upper = bb_result.iloc[:, 0]  # Upper band
+                bb_middle = bb_result.iloc[:, 1]  # Middle band (SMA)
+                bb_lower = bb_result.iloc[:, 2]  # Lower band
+                features['bb_upper'] = bb_upper
+                features['bb_middle'] = bb_middle
+                features['bb_lower'] = bb_lower
+                features['bb_width'] = (bb_upper - bb_lower) / bb_middle
+                features['bb_position'] = (df['close'] - bb_lower) / (bb_upper - bb_lower)
+            else:
+                features['bb_upper'] = df['close']
+                features['bb_middle'] = df['close']
+                features['bb_lower'] = df['close']
+                features['bb_width'] = pd.Series(0, index=df.index)
+                features['bb_position'] = pd.Series(0.5, index=df.index)
+
+            # ATR
+            atr_values = ta.atr(df['high'], df['low'], df['close'], length=14)
+            features['atr'] = atr_values if atr_values is not None else pd.Series(0, index=df.index)
+            features['atr_ratio'] = features['atr'] / df['close']
+
+            # Moving averages
+            features['sma_20'] = df['close'].rolling(20).mean()
+            features['sma_50'] = df['close'].rolling(50).mean()
+            features['sma_200'] = df['close'].rolling(200).mean()
+            features['ema_9'] = df['close'].ewm(span=9).mean()
+            features['ema_21'] = df['close'].ewm(span=21).mean()
+
+            # Price vs MA features
+            features['price_vs_sma20'] = (df['close'] - features['sma_20']) / features['sma_20']
+            features['price_vs_sma50'] = (df['close'] - features['sma_50']) / features['sma_50']
+            features['price_vs_sma200'] = (df['close'] - features['sma_200']) / features['sma_200']
+            features['price_vs_ema9'] = (df['close'] - features['ema_9']) / features['ema_9']
+            features['price_vs_ema21'] = (df['close'] - features['ema_21']) / features['ema_21']
+
+            # MA alignment
+            ma_9_vs_21 = (features['ema_9'] > features['ema_21']).astype(int)
+            ma_21_vs_50 = (features['ema_21'] > features['sma_50']).astype(int)
+            features['ma_alignment'] = ma_9_vs_21 + ma_21_vs_50 - 1  # -1, 0, or 1
+
+            # Order flow features
+            features['buying_pressure'] = ((df['close'] - df['low']) / (df['high'] - df['low'])).fillna(0.5)
+            features['selling_pressure'] = ((df['high'] - df['close']) / (df['high'] - df['low'])).fillna(0.5)
+            features['net_pressure'] = features['buying_pressure'] - features['selling_pressure']
+            features['spread_ratio'] = (df['high'] - df['low']) / df['close']
+
+            # Momentum
+            features['momentum_10'] = df['close'] / df['close'].shift(10) - 1
+
+            # Stochastic
+            stoch_result = ta.stoch(df['high'], df['low'], df['close'], k=14, d=3)
+            if stoch_result is not None and not stoch_result.empty:
+                stoch_k = stoch_result.iloc[:, 0]
+                features['stoch_k'] = stoch_k
+                features['stoch_oversold'] = (stoch_k < 20).astype(int)
+                features['stoch_overbought'] = (stoch_k > 80).astype(int)
+            else:
+                features['stoch_k'] = pd.Series(50, index=df.index)
+                features['stoch_oversold'] = pd.Series(0, index=df.index)
+                features['stoch_overbought'] = pd.Series(0, index=df.index)
+
+            # Volume regime
+            volume_percentile = df['volume'].rolling(100).rank(pct=True)
+            features['vol_regime'] = (volume_percentile > 0.8).astype(int)
+
+            # Complex features - calculate after basic features are available
+            # Update df_temp with all basic features first
+            df_temp = pd.concat([df, pd.DataFrame(features, index=df.index)], axis=1)
+            
+            # Now calculate complex features using the updated dataframe
+            complex_features = {}
+            complex_features['rsi_macd_signal'] = features['rsi'] * features['macd_signal']
+            complex_features['volatility_ema_ratio'] = features['volatility_20'] / features['ema_21']
+            complex_features['volume_price_momentum'] = features['volume_ratio'] * features['momentum_10']
+            complex_features['bb_rsi_signal'] = features['bb_position'] * features['rsi']
+            complex_features['trend_strength'] = features['price_vs_ema9'] * features['price_vs_ema21']
+            complex_features['volatility_breakout'] = features['atr'] * features['bb_width']
+            complex_features['momentum_vol_signal'] = features['momentum_10'] * features['volume_ratio'] * features['volatility_ratio']
+            complex_features['trend_momentum_align'] = features['ma_alignment'] * features['momentum_10']
+            complex_features['pressure_volume_signal'] = features['net_pressure'] * features['volume_zscore']
+            complex_features['volatility_regime_signal'] = features['vol_regime'] * features['rsi']
+            complex_features['multi_timeframe_signal'] = features['price_change_1h'] * features['price_change_4h'] * features['price_change_24h']
+            complex_features['oscillator_consensus'] = (features['rsi_oversold'] + features['stoch_oversold']) - (features['rsi_overbought'] + features['stoch_overbought'])
+            complex_features['trend_regime'] = ((features['ma_alignment'] == 1) & (features['price_vs_sma200'] > 0)).astype(int)
+            
+            # BB width rolling calculation
+            bb_width_rolling = features['bb_width'].rolling(50)
+            atr_ratio_rolling = features['atr_ratio'].rolling(50)
+            complex_features['consolidation_regime'] = (
+                (features['bb_width'] < bb_width_rolling.quantile(0.3)) & 
+                (features['atr_ratio'] < atr_ratio_rolling.quantile(0.3))
+            ).astype(int)
+
+            # Combine all features
+            all_features = {**features, **complex_features}
+
+            # Assign all features at once to avoid fragmentation
+            df_final = df.assign(**all_features)
+
+            # Drop rows with NaN values
+            df_final = df_final.dropna()
+
+            if len(df_final) < 30:
+                self.logger.warning(f"Insufficient data after feature engineering and NaN removal. Remaining rows: {len(df_final)}")
+                return None
+
+            # Validate that all required training features are present
+            if not self.validate_features(df_final):
+                self.logger.warning("Not all required training features are present")
+                return None
+                
+            self.logger.info(f"Successfully created {len(df_final.columns)} features from {len(df_final)} samples")
+            return df_final
         
-    except Exception as e:
-        self.logger.error(f"Error in feature engineering: {e}", exc_info=True)
-        return 
+        except Exception as e:
+            self.logger.error(f"Error in feature engineering: {e}", exc_info=True)
+            return None
         
     def prepare_lstm_sequences(self, data: pd.DataFrame, sequence_length: int = 60, 
                               target_col: str = 'close') -> tuple:
