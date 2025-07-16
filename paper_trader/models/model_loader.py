@@ -125,11 +125,14 @@ class WindowBasedModelLoader:
                     try:
                         window_num = int(xgb_file.stem.split('_window_')[1])
                         windows_found.add(window_num)
-                        model = xgb.XGBRegressor()
+                        
+                        # Try loading as classifier first (since your models are classifiers)
+                        model = xgb.XGBClassifier()
                         model.load_model(xgb_file)
                         self.xgb_models[symbol][window_num] = model
-                        self.logger.debug(f"Loaded XGBoost model for {symbol} window {window_num}")
-                    except (ValueError, Exception) as e:
+                        self.logger.debug(f"Loaded XGBoost classifier for {symbol} window {window_num}")
+                        
+                    except Exception as e:
                         self.logger.warning(f"Failed to load XGBoost model {xgb_file}: {e}")
             
             # Scan scalers

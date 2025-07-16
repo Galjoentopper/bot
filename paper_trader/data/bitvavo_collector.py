@@ -50,36 +50,57 @@ class BitvavoDataCollector:
         
         self.logger = logging.getLogger(__name__)
 
+    def initialize_buffer(self, symbol: str, limit: int = 100) -> bool:
+        """Initialize data buffer for a symbol with proper timestamp handling."""
+        try:
+            historical_data = self.get_historical_data(symbol, limit=limit)
+
+            if historical_data is None or historical_data.empty:
+                self.logger.warning(f"Failed to initialize buffer for {symbol}")
+                return False
+
+            # Ensure we have a proper DataFrame with datetime index
+            if not isinstance(historical_data.index, pd.DatetimeIndex):
+                if 'timestamp' in historical_data.columns:
+                    historical_data = historical_data.set_index('timestamp')
+                else:
+                    self.logger.error(f"No timestamp column found for {symbol}")
+                    return False
+
+            self.data_buffers[symbol] = historical_data.copy()
+            self.logger.info(f"Initialized buffer for {symbol} with {len(historical_data)} candles")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error initializing buffer for {symbol}: {e}")
+            return False
+
+    def ensure_sufficient_data(self, symbol: str, min_length: int = 250) -> bool:
+        """Ensure buffer has sufficient data for feature engineering."""
+        try:
+            if symbol not in self.data_buffers:
+                return self.initialize_buffer(symbol, limit=max(500, min_length * 2))
+
+            current_length = len(self.data_buffers[symbol])
+            if current_length < min_length:
+                self.logger.info(f"Fetching more data for {symbol}: current={current_length}, needed={min_length}")
+                new_data = self.get_historical_data(symbol, limit=max(500, min_length * 2))
+                if new_data is not None and len(new_data) >= min_length:
+                    self.data_buffers[symbol] = new_data
+                    return True
+
+            return current_length >= min_length
+
+        except Exception as e:
+            self.logger.error(f"Error ensuring sufficient data for {symbol}: {e}")
+            return False
+
     async def validate_candle_data(self, candle_data: dict) -> bool:
         """Validate incoming candle data."""
         required_fields = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
         return all(field in candle_data for field in required_fields)
         
-    async def initialize_buffers(self, symbols: List[str]):
-        """Initialize data buffers with historical data."""
-        for symbol in symbols:
-            try:
-                # Get last 100 15-minute candles
-                historical_data = await self.get_historical_data(symbol, '15m', 100)
-                if historical_data is not None:
-                    self.data_buffers[symbol] = deque(maxlen=100)
-                    for _, row in historical_data.iterrows():
-                        self.data_buffers[symbol].append({
-                            'timestamp': row['timestamp'],
-                            'open': row['open'],
-                            'high': row['high'],
-                            'low': row['low'],
-                            'close': row['close'],
-                            'volume': row['volume']
-                        })
-                    self.last_update[symbol] = datetime.now()
-                    self.logger.info(f"Initialized buffer for {symbol} with {len(self.data_buffers[symbol])} candles")
-                else:
-                    self.data_buffers[symbol] = deque(maxlen=100)
-                    self.logger.warning(f"Failed to initialize buffer for {symbol}")
-            except Exception as e:
-                self.logger.error(f"Error initializing buffer for {symbol}: {e}")
-                self.data_buffers[symbol] = deque(maxlen=100)
+
     
     async def get_historical_data(self, symbol: str, interval: str = "15m", limit: int = 100) -> Optional[pd.DataFrame]:
         """Fetch historical candle data with anti-Cloudflare measures and robust error handling."""

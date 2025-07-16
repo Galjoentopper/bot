@@ -258,10 +258,15 @@ class PaperTrader:
                 symbol not in self.model_loader.xgb_models):
                 return False
             
+            # Ensure we have sufficient data before proceeding
+            if not self.data_collector.ensure_sufficient_data(symbol, min_length=300):
+                self.logger.warning(f"Could not get sufficient data for {symbol}, skipping")
+                return False
+
             # Get latest data
-            data = await self.data_collector.get_latest_data(symbol, limit=200)
-            if data is None or len(data) < 50:
-                self.logger.warning(f"Insufficient data for {symbol}")
+            data = await self.data_collector.get_latest_data(symbol, limit=300)
+            if data is None or len(data) < 250:
+                self.logger.warning(f"Insufficient data for {symbol} after ensuring")
                 return False
             
             # Engineer features
