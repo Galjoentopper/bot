@@ -10,8 +10,10 @@ class SignalGenerator:
     def __init__(self, max_positions: int = 10, position_size_pct: float = 0.10,
                  take_profit_pct: float = 0.01, stop_loss_pct: float = 0.01,
                  min_confidence: float = 0.5, min_signal_strength: str = 'MODERATE',
-                 min_expected_gain_pct: float = 0.0003):
+                 min_expected_gain_pct: float = 0.0003,
+                 max_positions_per_symbol: int = 1):
         self.max_positions = max_positions
+        self.max_positions_per_symbol = max_positions_per_symbol
         self.position_size_pct = position_size_pct
         self.take_profit_pct = take_profit_pct
         self.stop_loss_pct = stop_loss_pct
@@ -47,13 +49,17 @@ class SignalGenerator:
                        portfolio) -> Optional[Dict]:
         """Generate trading signal based on prediction and portfolio state."""
         try:
-            # Check if we already have a position in this symbol
-            if symbol in portfolio.positions:
-                self.logger.debug(f"Already have position in {symbol}, skipping")
+            # Check if we already have too many positions for this symbol
+            current_per_symbol = len(portfolio.positions.get(symbol, []))
+            if current_per_symbol >= self.max_positions_per_symbol:
+                self.logger.debug(
+                    f"Maximum positions for {symbol} reached ({current_per_symbol}/{self.max_positions_per_symbol})"
+                )
                 return None
             
             # Check portfolio constraints
-            if len(portfolio.positions) >= self.max_positions:
+            total_positions = sum(len(p) for p in portfolio.positions.values())
+            if total_positions >= self.max_positions:
                 self.logger.debug(f"Maximum positions ({self.max_positions}) reached")
                 return None
             
@@ -170,6 +176,7 @@ class SignalGenerator:
         """Get current signal generation parameters."""
         return {
             'max_positions': self.max_positions,
+            'max_positions_per_symbol': self.max_positions_per_symbol,
             'position_size_pct': self.position_size_pct,
             'take_profit_pct': self.take_profit_pct,
             'stop_loss_pct': self.stop_loss_pct,

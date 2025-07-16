@@ -332,6 +332,7 @@ class PaperTrader:
             # Initialize signal generator
             self.signal_generator = SignalGenerator(
                 max_positions=self.settings.max_positions,
+                max_positions_per_symbol=self.settings.max_positions_per_symbol,
                 position_size_pct=self.settings.position_size_pct,
                 take_profit_pct=self.settings.take_profit_pct,
                 stop_loss_pct=self.settings.stop_loss_pct,
@@ -355,7 +356,8 @@ class PaperTrader:
             
             # Initialize portfolio manager
             self.portfolio_manager = PortfolioManager(
-                initial_capital=self.settings.initial_capital
+                initial_capital=self.settings.initial_capital,
+                max_positions_per_symbol=self.settings.max_positions_per_symbol
             )
             
             # Initialize Telegram notifier
@@ -414,9 +416,12 @@ class PaperTrader:
         """Process trading signals for a single symbol."""
         try:
             # Skip if no models for this symbol
-            if (symbol not in self.model_loader.lstm_models and 
+            if (symbol not in self.model_loader.lstm_models and
                 symbol not in self.model_loader.xgb_models):
                 return False
+
+            # Refresh latest market price to avoid stale data
+            await self.data_collector.refresh_latest_price(symbol)
             
             # Ensure we have sufficient data before proceeding
             if not await self.data_collector.ensure_sufficient_data(symbol, min_length=500):
@@ -435,7 +440,8 @@ class PaperTrader:
                 self.logger.warning(f"Insufficient features for {symbol}")
                 return False
             
-            # Get current price using buffer first for consistency
+            # Refresh and get current price using buffer first for consistency
+            await self.data_collector.refresh_latest_price(symbol)
             current_price = self.data_collector.get_latest_price(symbol)
             if current_price is None:
                 current_price = await self.data_collector.get_current_price(symbol)
@@ -471,9 +477,10 @@ class PaperTrader:
                 self.logger.debug(f"Prediction for {symbol} doesn't meet trading thresholds")
                 return False
             
-            # Check if we already have a position
-            if symbol in self.portfolio_manager.positions:
-                return False  # Skip if already have position
+            # Check if we already have too many positions for this symbol
+            current_positions = self.portfolio_manager.positions.get(symbol, [])
+            if len(current_positions) >= self.settings.max_positions_per_symbol:
+                return False  # Skip if limit reached
             
             # Generate signal
             signal = self.signal_generator.generate_signal(
@@ -522,33 +529,31 @@ class PaperTrader:
         try:
             positions_to_close = []
             
-            for symbol in list(self.portfolio_manager.positions.keys()):
+            for symbol, pos_list in list(self.portfolio_manager.positions.items()):
                 try:
                     # Get current price
                     current_price = await self.data_collector.get_current_price(symbol)
                     if current_price is None:
                         continue
-                    
-                    position = self.portfolio_manager.positions[symbol]
-                    
-                    # Check exit conditions
-                    exit_result = self.exit_manager.check_exit_conditions(position, current_price)
-                    
-                    if exit_result:
-                        exit_price = exit_result.get('exit_price', current_price)
-                        exit_reason = exit_result['reason']
-                        positions_to_close.append((symbol, exit_price, exit_reason))
+
+                    for position in list(pos_list):
+                        # Check exit conditions
+                        exit_result = self.exit_manager.check_exit_conditions(position, current_price)
+
+                        if exit_result:
+                            exit_price = exit_result.get('exit_price', current_price)
+                            exit_reason = exit_result['reason']
+                            positions_to_close.append((symbol, position, exit_price, exit_reason))
                 
                 except Exception as e:
                     self.logger.error(f"Error checking exit for {symbol}: {e}")
             
             # Close positions that need to be closed
-            for symbol, exit_price, exit_reason in positions_to_close:
+            for symbol, position, exit_price, exit_reason in positions_to_close:
                 try:
-                    position = self.portfolio_manager.positions[symbol]
-                    
                     success = self.portfolio_manager.close_position(
                         symbol=symbol,
+                        position=position,
                         exit_price=exit_price,
                         reason=exit_reason
                     )

@@ -46,11 +46,13 @@ class Trade:
 
 class PortfolioManager:
     """Manages trading portfolio, positions, and performance tracking."""
-    
-    def __init__(self, initial_capital: float = 10000.0, log_dir: str = 'paper_trader/logs'):
+
+    def __init__(self, initial_capital: float = 10000.0, log_dir: str = 'paper_trader/logs',
+                 max_positions_per_symbol: int = 1):
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
-        self.positions: Dict[str, Position] = {}
+        self.positions: Dict[str, List[Position]] = {}
+        self.max_positions_per_symbol = max_positions_per_symbol
         self.trades: List[Trade] = []
         
         # Performance tracking
@@ -101,8 +103,11 @@ class PortfolioManager:
                      signal_strength: str = 'UNKNOWN') -> bool:
         """Open a new trading position."""
         try:
-            if symbol in self.positions:
-                self.logger.warning(f"Position already exists for {symbol}")
+            current_positions = self.positions.get(symbol, [])
+            if len(current_positions) >= self.max_positions_per_symbol:
+                self.logger.warning(
+                    f"Max positions per symbol reached for {symbol}"
+                )
                 return False
             
             position_value = entry_price * quantity
@@ -129,7 +134,7 @@ class PortfolioManager:
             )
             
             # Update portfolio
-            self.positions[symbol] = position
+            self.positions.setdefault(symbol, []).append(position)
             self.current_capital -= position_value
             
             self.logger.info(
@@ -146,14 +151,13 @@ class PortfolioManager:
             self.logger.error(f"Error opening position for {symbol}: {e}")
             return False
     
-    def close_position(self, symbol: str, exit_price: float, reason: str = 'MANUAL') -> bool:
+    def close_position(self, symbol: str, position: Position, exit_price: float,
+                       reason: str = 'MANUAL') -> bool:
         """Close an existing position."""
         try:
-            if symbol not in self.positions:
-                self.logger.warning(f"No position found for {symbol}")
+            if symbol not in self.positions or position not in self.positions[symbol]:
+                self.logger.warning(f"Position not found for {symbol}")
                 return False
-            
-            position = self.positions[symbol]
             
             # Calculate P&L
             pnl = (exit_price - position.entry_price) * position.quantity
@@ -205,7 +209,9 @@ class PortfolioManager:
             self._log_trade(trade)
             
             # Remove position
-            del self.positions[symbol]
+            self.positions[symbol].remove(position)
+            if not self.positions[symbol]:
+                del self.positions[symbol]
             
             self.logger.info(
                 f"Closed position: {symbol} @ {exit_price:.4f} "
@@ -222,37 +228,42 @@ class PortfolioManager:
             return False
     
     def get_position_value(self, symbol: str, current_price: float) -> float:
-        """Get current value of a position."""
+        """Get current value of all positions for a symbol."""
         if symbol not in self.positions:
             return 0.0
-        return self.positions[symbol].quantity * current_price
+        return sum(pos.quantity * current_price for pos in self.positions[symbol])
     
     def get_position_pnl(self, symbol: str, current_price: float) -> tuple:
         """Get current P&L for a position."""
         if symbol not in self.positions:
             return 0.0, 0.0
-        
-        position = self.positions[symbol]
-        pnl = (current_price - position.entry_price) * position.quantity
-        pnl_pct = (current_price - position.entry_price) / position.entry_price
-        
-        return pnl, pnl_pct
+
+        total_pnl = 0.0
+        total_value = 0.0
+        for pos in self.positions[symbol]:
+            total_pnl += (current_price - pos.entry_price) * pos.quantity
+            total_value += pos.entry_price * pos.quantity
+
+        pnl_pct = total_pnl / total_value if total_value != 0 else 0.0
+
+        return total_pnl, pnl_pct
     
     def get_total_capital_value(self, current_prices: Dict[str, float] = None) -> float:
         """Get total portfolio value including open positions."""
         total_value = self.current_capital
         
         if current_prices:
-            for symbol, position in self.positions.items():
+            for symbol, pos_list in self.positions.items():
                 if symbol in current_prices:
                     total_value += self.get_position_value(symbol, current_prices[symbol])
                 else:
                     # Use entry price if current price not available
-                    total_value += position.position_value
+                    total_value += sum(p.position_value for p in pos_list)
         else:
             # Use entry values for all positions
-            for position in self.positions.values():
-                total_value += position.position_value
+            for pos_list in self.positions.values():
+                for position in pos_list:
+                    total_value += position.position_value
         
         return total_value
     
@@ -262,7 +273,11 @@ class PortfolioManager:
     
     def get_invested_capital(self) -> float:
         """Get total capital invested in open positions."""
-        return sum(position.position_value for position in self.positions.values())
+        total = 0.0
+        for pos_list in self.positions.values():
+            for position in pos_list:
+                total += position.position_value
+        return total
     
     def get_portfolio_summary(self, current_prices: Dict[str, float] = None) -> Dict:
         """Get comprehensive portfolio summary."""
@@ -288,22 +303,24 @@ class PortfolioManager:
         positions_summary = []
         total_unrealized_pnl = 0.0
         
-        for symbol, position in self.positions.items():
-            current_price = current_prices.get(symbol, position.entry_price) if current_prices else position.entry_price
-            pnl, pnl_pct = self.get_position_pnl(symbol, current_price)
-            total_unrealized_pnl += pnl
-            
-            positions_summary.append({
-                'symbol': symbol,
-                'entry_price': position.entry_price,
-                'current_price': current_price,
-                'quantity': position.quantity,
-                'pnl': pnl,
-                'pnl_pct': pnl_pct,
-                'hold_time': str(datetime.now() - position.entry_time),
-                'confidence': position.confidence,
-                'signal_strength': position.signal_strength
-            })
+        for symbol, pos_list in self.positions.items():
+            for position in pos_list:
+                current_price = current_prices.get(symbol, position.entry_price) if current_prices else position.entry_price
+                pnl = (current_price - position.entry_price) * position.quantity
+                pnl_pct = (current_price - position.entry_price) / position.entry_price
+                total_unrealized_pnl += pnl
+
+                positions_summary.append({
+                    'symbol': symbol,
+                    'entry_price': position.entry_price,
+                    'current_price': current_price,
+                    'quantity': position.quantity,
+                    'pnl': pnl,
+                    'pnl_pct': pnl_pct,
+                    'hold_time': str(datetime.now() - position.entry_time),
+                    'confidence': position.confidence,
+                    'signal_strength': position.signal_strength
+                })
         
         summary = {
             'timestamp': datetime.now().isoformat(),
@@ -317,7 +334,7 @@ class PortfolioManager:
             'realized_pnl': self.total_pnl,
             'unrealized_pnl': total_unrealized_pnl,
             'max_drawdown': self.max_drawdown,
-            'num_positions': len(self.positions),
+            'num_positions': sum(len(p) for p in self.positions.values()),
             'total_trades': self.total_trades,
             'winning_trades': self.winning_trades,
             'losing_trades': self.losing_trades,
@@ -372,7 +389,7 @@ class PortfolioManager:
                     self.get_invested_capital(),
                     self.total_pnl,
                     total_return_pct,
-                    len(self.positions),
+                    sum(len(p) for p in self.positions.values()),
                     self.max_drawdown,
                     win_rate,
                     self.total_trades
