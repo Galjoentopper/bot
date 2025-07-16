@@ -413,6 +413,9 @@ class PaperTrader:
                 self.logger.warning(f"Could not get sufficient data for {symbol}, skipping")
                 return False
 
+            # Refresh latest price so our buffer has the most recent close
+            await self.data_collector.refresh_latest_price(symbol)
+
             # Fetch latest data from buffer for feature engineering
             data = self.data_collector.get_buffer_data(symbol, min_length=500)
             if data is None or len(data) < 500:
