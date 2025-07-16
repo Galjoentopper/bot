@@ -152,12 +152,7 @@ class PaperTrader:
                 except Exception as e:
                     self.logger.error(f"    ❌ Error fetching data: {e}")
                 
-                # Test ensure_sufficient_data
-                try:
-                    has_sufficient = self.data_collector.ensure_sufficient_data(symbol, 100)
-                    self.logger.info(f"    ✅ Sufficient data check: {has_sufficient}")
-                except Exception as e:
-                    self.logger.error(f"    ❌ Error checking sufficient data: {e}")
+
                 
                 # Test feature engineering
                 try:
