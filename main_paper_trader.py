@@ -19,6 +19,8 @@ from paper_trader.strategy.signal_generator import SignalGenerator
 from paper_trader.strategy.exit_manager import ExitManager
 from paper_trader.portfolio.portfolio_manager import PortfolioManager
 from paper_trader.notifications.telegram_notifier import TelegramNotifier
+from paper_trader.notifications.websocket_server import PredictionWebSocketServer
+import json
 from paper_trader.models.feature_engineer import TRAINING_FEATURES
 
 class PaperTrader:
@@ -40,6 +42,7 @@ class PaperTrader:
         self.exit_manager = None
         self.portfolio_manager = None
         self.telegram_notifier = None
+        self.ws_server = None
 
         # Background tasks
         self.data_feed_task = None
@@ -357,7 +360,11 @@ class PaperTrader:
                 bot_token=self.settings.telegram_bot_token,
                 chat_id=self.settings.telegram_chat_id
             )
-            
+
+            # Initialize WebSocket server for live prediction updates
+            self.ws_server = PredictionWebSocketServer()
+            await self.ws_server.start()
+
             # Test Telegram connection
             if self.telegram_notifier.is_enabled():
                 await self.telegram_notifier.test_connection()
@@ -445,6 +452,14 @@ class PaperTrader:
 
             # Log prediction result for debugging
             self.logger.info(f"Prediction for {symbol}: {prediction_result}")
+
+            # Broadcast prediction via WebSocket
+            if self.ws_server:
+                await self.ws_server.broadcast({
+                    'type': 'prediction',
+                    'symbol': symbol,
+                    'data': prediction_result
+                })
             
             # Check if prediction meets trading thresholds
             if not self.predictor._meets_trading_threshold(
@@ -684,7 +699,11 @@ class PaperTrader:
                 "STOPPED",
                 "Paper Trader has been stopped"
             )
-            
+
+            # Stop WebSocket server
+            if self.ws_server:
+                await self.ws_server.stop()
+
             self.logger.info("Paper Trader shutdown complete")
             
         except Exception as e:
