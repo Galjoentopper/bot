@@ -11,7 +11,7 @@ import pandas as pd
 import tensorflow as tf
 import xgboost as xgb
 from sklearn.preprocessing import StandardScaler
-from .feature_engineer import LSTM_FEATURES
+from .feature_engineer import LSTM_FEATURES, LSTM_SEQUENCE_LENGTH
 from tensorflow.keras import backend as K
 
 # Standalone directional loss function for proper serialization
@@ -151,16 +151,20 @@ class WindowBasedModelLoader:
             # Load feature column order per window
             feature_dir = self.model_path / 'feature_columns'
             if feature_dir.exists():
-                for fc_file in feature_dir.glob(f"{symbol_lower}_window_*.pkl"):
+                for fc_file in feature_dir.glob(f"{symbol_lower}_window_*_selected.pkl"):
                     try:
                         window_num = int(fc_file.stem.split('_window_')[1].split('_')[0])
                         with open(fc_file, 'rb') as f:
                             cols = pickle.load(f)
                         self.feature_columns[symbol][window_num] = cols
                         windows_found.add(window_num)
-                        self.logger.debug(f"Loaded feature columns for {symbol} window {window_num}")
+                        self.logger.debug(
+                            f"Loaded feature columns for {symbol} window {window_num}"
+                        )
                     except (ValueError, Exception) as e:
-                        self.logger.warning(f"Failed to load feature columns {fc_file}: {e}")
+                        self.logger.warning(
+                            f"Failed to load feature columns {fc_file}: {e}"
+                        )
             
             # Update available windows
             self.available_windows[symbol] = sorted(list(windows_found))
@@ -372,22 +376,19 @@ class WindowBasedEnsemblePredictor:
             if scaler is not None and feature_cols:
                 feature_data[feature_cols] = scaler.transform(feature_data[feature_cols])
             
-            # Create sequence for LSTM (use window size)
-            sequence_length = min(window * 2, len(feature_data))  # Dynamic sequence length
-            if len(feature_data) < sequence_length:
-                sequence_length = len(feature_data)
-            
-            # Select numeric features
+            # Create sequence for LSTM using fixed training length
+            sequence_length = min(LSTM_SEQUENCE_LENGTH, len(feature_data))
+
             numeric_cols = feature_cols
-            
+
             sequence = feature_data[numeric_cols].tail(sequence_length).values
-            
-            # Pad sequence if needed
-            if sequence.shape[0] < window * 2:
-                padding = np.zeros((window * 2 - sequence.shape[0], sequence.shape[1]))
+
+            # Pad sequence if needed to match training length
+            if sequence.shape[0] < LSTM_SEQUENCE_LENGTH:
+                padding = np.zeros((LSTM_SEQUENCE_LENGTH - sequence.shape[0], sequence.shape[1]))
                 sequence = np.vstack([padding, sequence])
-            
-            sequence = sequence.reshape(1, sequence.shape[0], len(numeric_cols))
+
+            sequence = sequence.reshape(1, LSTM_SEQUENCE_LENGTH, len(numeric_cols))
             
             # Make prediction
             prediction = model.predict(sequence, verbose=0)[0][0]
@@ -417,20 +418,19 @@ class WindowBasedEnsemblePredictor:
             
             model = self.model_loader.xgb_models[symbol][window]
             feature_columns = self.model_loader.feature_columns.get(symbol, {}).get(window)
-            
-            # Prepare features
-            if feature_columns:
-                available_features = [c for c in feature_columns if c in features.columns]
-                if len(available_features) < len(feature_columns) * 0.8:
-                    self.logger.warning(
-                        f"Missing features for XGBoost prediction: {symbol} window {window}")
-                    return None, 0.0
-                feature_data = features[available_features].tail(1)
-            else:
-                # Use all numeric features
-                numeric_cols = [col for col in features.columns 
-                              if features[col].dtype in ['float64', 'int64']]
-                feature_data = features[numeric_cols].tail(1)
+
+            if not feature_columns:
+                self.logger.warning(
+                    f"No feature column list for {symbol} window {window}")
+                return None, 0.0
+
+            available_features = [c for c in feature_columns if c in features.columns]
+            if len(available_features) < len(feature_columns) * 0.8:
+                self.logger.warning(
+                    f"Missing features for XGBoost prediction: {symbol} window {window}")
+                return None, 0.0
+
+            feature_data = features[available_features].tail(1)
             
             # Make prediction
             prediction = model.predict(feature_data)[0]
