@@ -49,10 +49,12 @@ class TradingSettings:
     lstm_weight: float = float(os.getenv('LSTM_WEIGHT', '0.6'))
     xgb_weight: float = float(os.getenv('XGB_WEIGHT', '0.4'))
     caboose_weight: float = float(os.getenv('CABOOSE_WEIGHT', '0.3'))
-    
+
     # Risk Management
     max_daily_loss_pct: float = float(os.getenv('MAX_DAILY_LOSS_PCT', '0.05'))
     max_drawdown_pct: float = float(os.getenv('MAX_DRAWDOWN_PCT', '0.10'))
+    # Minimum expected gain (prediction threshold)
+    min_expected_gain_pct: float = float(os.getenv('MIN_EXPECTED_GAIN_PCT', '0.002'))
     
     def __post_init__(self):
         """Initialize symbols list from environment variable."""
