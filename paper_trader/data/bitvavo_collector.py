@@ -317,7 +317,7 @@ class BitvavoDataCollector:
         """Get latest data from buffer or fetch from API."""
         try:
             # Check if we have data in buffer
-            if symbol in self.data_buffers and len(self.data_buffers[symbol]) > 0:
+            if symbol in self.data_buffers and not self.data_buffers[symbol].empty:
                 # Convert buffer to DataFrame
                 data_list = list(self.data_buffers[symbol])
                 df = pd.DataFrame(data_list)

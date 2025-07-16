@@ -233,7 +233,7 @@ class PaperTrader:
             self.logger.debug(f"Checking data availability for {symbol}...")
             
             # Change from:
-            self.data_collector.ensure_sufficient_data(symbol)
+            self.feature_cache.ensure_sufficient_data(symbol)
             # To:
             self.feature_cache.ensure_sufficient_data(symbol)
             
