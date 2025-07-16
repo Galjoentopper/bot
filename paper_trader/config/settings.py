@@ -54,7 +54,7 @@ class TradingSettings:
     max_daily_loss_pct: float = float(os.getenv('MAX_DAILY_LOSS_PCT', '0.05'))
     max_drawdown_pct: float = float(os.getenv('MAX_DRAWDOWN_PCT', '0.10'))
     # Minimum expected gain (prediction threshold)
-    min_expected_gain_pct: float = float(os.getenv('MIN_EXPECTED_GAIN_PCT', '0.002'))
+    min_expected_gain_pct: float = float(os.getenv('MIN_EXPECTED_GAIN_PCT', '0.0003'))
     
     def __post_init__(self):
         """Initialize symbols list from environment variable."""
