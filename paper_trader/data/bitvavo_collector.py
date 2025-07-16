@@ -310,66 +310,7 @@ class BitvavoDataCollector:
     # ... rest of the class remains unchanged
 
 
-    async def validate_candle_data(self, candle_data: dict) -> bool:
-        """Validate incoming candle data."""
-        required_fields = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
-        return all(field in candle_data for field in required_fields)
-        
 
-    
-    async def get_historical_data(self, symbol: str, interval: str = "15m", limit: int = 100) -> Optional[pd.DataFrame]:
-        """Fetch historical candle data with anti-Cloudflare measures and robust error handling."""
-        endpoints_to_try = [
-            f"{self.base_url}/candles",
-            f"{self.base_url}/{symbol}/candles",
-        ]
-        
-        alt_symbols = [
-            symbol,
-            symbol.replace('-', ''),
-            symbol.lower(),
-        ]
-
-        for endpoint in endpoints_to_try:
-            for s in alt_symbols:
-                try:
-                    await asyncio.sleep(random.uniform(0.2, 0.6))  # Random delay
-                    params = {'market': s, 'interval': interval, 'limit': limit}
-                    self.logger.debug(f"Trying endpoint: {endpoint} with symbol: {s}")
-                    
-                    response = await self.session.get(endpoint, params=params, timeout=20)
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        if data and isinstance(data, list) and len(data) > 0:
-                            df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                            df = df.set_index('timestamp')
-                            
-                            numeric_cols = ['open', 'high', 'low', 'close', 'volume']
-                            for col in numeric_cols:
-                                df[col] = pd.to_numeric(df[col], errors='coerce')
-                            
-                            df = df.dropna()
-                            if not df.empty:
-                                self.logger.info(f"Successfully fetched {len(df)} candles for {symbol}")
-                                return df
-                        else:
-                            self.logger.debug(f"Empty or invalid data from {endpoint} for {s}")
-                    elif response.status_code == 404:
-                        self.logger.debug(f"Endpoint {endpoint} not found for symbol {s}")
-                    else:
-                        self.logger.warning(f"HTTP {response.status_code} from {endpoint} for {s}: {response.text[:150]}")
-
-                except httpx.RequestError as e:
-                    self.logger.warning(f"Request failed for {endpoint} with symbol {s}: {e}")
-                except (ValueError, KeyError) as e:
-                    self.logger.warning(f"Error parsing JSON for {s}: {e}")
-                except Exception as e:
-                    self.logger.error(f"An unexpected error occurred for {s}: {e}")
-
-        self.logger.error(f"Failed to fetch historical data for {symbol} after all attempts.")
-        return None
     
     async def get_latest_data(self, symbol: str, limit: int = 100) -> Optional[pd.DataFrame]:
         """Get latest data from buffer or fetch from API."""
@@ -479,6 +420,11 @@ class BitvavoDataCollector:
                         if latest_data is not None and len(latest_data) > 0:
                             latest_candle = latest_data.iloc[-1]
                             
+                            required_keys = ['open', 'high', 'low', 'close', 'volume']
+                            if not all(key in latest_candle for key in required_keys):
+                                self.logger.error(f"Missing required keys in latest_candle for {symbol}: {latest_candle.keys()}")
+                                continue
+
                             candle = {
                                 'timestamp': latest_candle.name,
                                 'open': latest_candle['open'],
@@ -491,7 +437,7 @@ class BitvavoDataCollector:
                             # Add to buffer if it's newer than the last candle
                             if (symbol not in self.data_buffers or
                                 len(self.data_buffers[symbol]) == 0 or
-                                candle['timestamp'] > self.data_buffers[symbol][-1]['timestamp']):
+                                candle['timestamp'] > self.data_buffers[symbol][-1]['timestamp'] if self.data_buffers[symbol] else False):
 
                                 if symbol not in self.data_buffers:
                                     self.data_buffers[symbol] = deque(maxlen=100)
@@ -499,11 +445,15 @@ class BitvavoDataCollector:
                                 if await self.validate_candle_data(candle):
                                     self.data_buffers[symbol].append(candle)
                                     self.last_update[symbol] = datetime.now()
-                                    self.logger.info(f"Updated {symbol} via API: {candle['close']}")
-                
-                # Wait for next update cycle
-                await asyncio.sleep(60)  # Check every minute
-                
+                                    self.logger.info(f"Successfully fetched and appended 1 candle for {symbol}")
+                                else:
+                                    self.logger.warning(f"Invalid candle data for {symbol}: {candle}")
+                            else:
+                                self.logger.debug(f"No new candle to append for {symbol} or candle is not newer.")
+                        else:
+                            self.logger.warning(f"Failed to fetch latest candle for {symbol} or data is empty.")
+                    else:
+                        self.logger.debug(f"Skipping periodic update for {symbol}. Last update was recent.")
             except Exception as e:
-                self.logger.error(f"Error in periodic data update: {e}")
-                await asyncio.sleep(60)
+                self.logger.error(f"Error in periodic data update for {symbol}: {e}")
+            await asyncio.sleep(60) # Wait for 60 seconds before next check
