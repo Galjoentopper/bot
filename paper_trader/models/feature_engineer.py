@@ -271,8 +271,9 @@ class FeatureEngineer:
             # Combine all features
             all_features = {**features, **complex_features}
 
-            # Assign all features at once to avoid fragmentation
-            df_final = df.assign(**all_features)
+            # Concatenate all features at once to avoid DataFrame fragmentation
+            df_new_features = pd.DataFrame(all_features, index=df.index)
+            df_final = pd.concat([df, df_new_features], axis=1)
 
             # Drop rows with NaN values
             df_final = df_final.dropna()
