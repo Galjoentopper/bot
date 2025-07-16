@@ -32,7 +32,7 @@ class TradingSettings:
     max_hold_hours: int = int(os.getenv('MAX_HOLD_HOURS', '2'))
 
     # Data interval for candles
-    candle_interval: str = os.getenv('CANDLE_INTERVAL', '15m')
+    candle_interval: str = os.getenv('CANDLE_INTERVAL', '1m')
     
     # Symbols
     symbols: List[str] = None

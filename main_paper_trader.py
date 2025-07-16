@@ -150,7 +150,9 @@ class PaperTrader:
                 
                 # Test historical data fetch
                 try:
-                    test_data = await self.data_collector.get_historical_data(symbol, '15m', 10)
+                    test_data = await self.data_collector.get_historical_data(
+                        symbol, self.settings.candle_interval, 10
+                    )
                     if test_data is not None and len(test_data) > 0:
                         self.logger.info(f"    ✅ Can fetch historical data: {len(test_data)} candles")
                     else:
@@ -680,7 +682,7 @@ class PaperTrader:
                         await self.send_hourly_update()
                         self.last_hourly_update = now
                     
-                    # Wait before next cycle (15 minutes to align with data intervals)
+                    # Wait before next cycle (1 minute to align with data interval)
                     if self.is_running:
                         self.logger.debug("Waiting for next cycle...")
                         await asyncio.sleep(60)  # 1 minute for debugging

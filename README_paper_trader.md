@@ -4,7 +4,7 @@ A sophisticated paper trading system that uses machine learning models to simula
 
 ## Features
 
-- **Real-time Data Collection**: 15-minute OHLCV data via Bitvavo WebSocket and REST API
+- **Real-time Data Collection**: 1-minute OHLCV data (default) via Bitvavo WebSocket and REST API
 - **Machine Learning Integration**: Supports LSTM and XGBoost ensemble predictions
 - **Advanced Risk Management**: 1% take profit/stop loss, trailing stops, time-based exits
 - **Portfolio Management**: Track up to 10 concurrent positions with 10% position sizing
@@ -130,7 +130,7 @@ The system will:
 1. Initialize all components
 2. Load your ML models
 3. Start real-time data collection
-4. Begin the 15-minute trading cycle
+4. Begin the 1-minute trading cycle (default)
 5. Send Telegram notifications for trades and hourly updates
 
 ## Key Features Explained
@@ -150,7 +150,7 @@ The system will:
 - Emergency stop conditions
 
 ### Data Collection
-- Real-time 15-minute OHLCV data
+- Real-time 1-minute OHLCV data (default)
 - WebSocket feed for live updates
 - Historical data initialization
 - Automatic data buffer management
