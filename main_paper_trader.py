@@ -167,7 +167,7 @@ class PaperTrader:
                         if features is not None:
                             self.logger.info(f"    ✅ Feature engineering: {features.shape}")
                         else:
-                        self.logger.error(f"    ❌ Feature engineering returned None")
+                            self.logger.error(f"    ❌ Feature engineering returned None")
                     else:
                         self.logger.error(f"    ❌ Insufficient buffer data for features")
                 except Exception as e:
