@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 import httpx
 import websockets
+import requests
 from collections import deque
 
 
