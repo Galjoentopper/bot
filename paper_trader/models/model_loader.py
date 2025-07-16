@@ -424,20 +424,22 @@ class WindowBasedEnsemblePredictor:
 
             sequence = sequence.reshape(1, LSTM_SEQUENCE_LENGTH, len(numeric_cols))
             
-            # Make prediction
+            # Make prediction (percentage change from current price)
             prediction = model.predict(sequence, verbose=0)[0][0]
-            
-            # Enhanced confidence calculation
+
             current_price = features['close'].iloc[-1]
+            predicted_price = float(current_price * (1 + prediction))
+
+            # Enhanced confidence calculation
             price_volatility = features['close'].tail(10).std() / features['close'].tail(10).mean()
-            prediction_error = abs(prediction - current_price) / current_price
-            
+            prediction_error = abs(predicted_price - current_price) / current_price
+
             # Confidence based on prediction stability and volatility
             base_confidence = 1.0 - min(prediction_error * 2, 0.8)
             volatility_adjustment = max(0.1, 1.0 - price_volatility)
             confidence = min(0.95, max(0.1, base_confidence * volatility_adjustment))
-            
-            return float(prediction), confidence
+
+            return predicted_price, confidence
             
         except Exception as e:
             self.logger.error(f"Error in LSTM prediction for {symbol} window {window}: {e}")
@@ -470,22 +472,24 @@ class WindowBasedEnsemblePredictor:
                              .fillna(0)
                              .tail(1))
             
-            # Make prediction
-            prediction = model.predict(feature_data)[0]
-            
-            # Enhanced confidence calculation for XGBoost
+            # Make prediction (probability of price increase)
+            prob_up = model.predict_proba(feature_data)[0][1]
+
             current_price = features['close'].iloc[-1]
+            predicted_price = float(current_price * (1 + prob_up * 0.002))
+
+            # Enhanced confidence calculation for XGBoost
             price_volatility = features['close'].tail(10).std() / features['close'].tail(10).mean()
-            prediction_error = abs(prediction - current_price) / current_price
-            
+            prediction_error = abs(predicted_price - current_price) / current_price
+
             # Base confidence adjusted by prediction accuracy and market stability
             base_confidence = 0.75  # Higher base for XGBoost
             error_penalty = min(prediction_error * 1.5, 0.4)
             volatility_bonus = max(0, 0.2 - price_volatility)  # XGBoost performs better in stable markets
-            
+
             confidence = min(0.9, max(0.2, base_confidence - error_penalty + volatility_bonus))
-            
-            return float(prediction), confidence
+
+            return predicted_price, confidence
             
         except Exception as e:
             self.logger.error(f"Error in XGBoost prediction for {symbol} window {window}: {e}")
