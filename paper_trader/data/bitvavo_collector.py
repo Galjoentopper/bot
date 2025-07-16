@@ -16,6 +16,9 @@ from collections import deque
 
 class FeatureCache:
     def __init__(self, max_size=1000):
+        self.cache = {}
+        self.timestamps = deque(maxlen=max_size)
+
     def ensure_sufficient_data(self, symbol: str, min_length: int = 250) -> bool:
         """Ensure buffer has sufficient data for feature engineering."""
         try:
@@ -128,17 +131,17 @@ class FeatureCache:
             if not buffer.empty:
                 last_update = self.last_update.get(symbol)
                 status[symbol] = {
-                    'buffer_size': len(buffer),
-                    'last_update': last_update.isoformat() if last_update else None,
-                    'latest_price': float(buffer['close'].iloc[-1]) if len(buffer) > 0 else None,
-                    'latest_timestamp': buffer.index[-1].isoformat() if len(buffer) > 0 else None
+                    "buffer_size": len(buffer),
+                    "last_update": last_update.isoformat() if last_update else None,
+                    "latest_price": float(buffer['close'].iloc[-1]) if len(buffer) > 0 else None,
+                    "latest_timestamp": buffer.index[-1].isoformat() if len(buffer) > 0 else None
                 }
             else:
                 status[symbol] = {
-                    'buffer_size': 0,
-                    'last_update': None,
-                    'latest_price': None,
-                    'latest_timestamp': None
+                    "buffer_size": 0,
+                    "last_update": None,
+                    "latest_price": None,
+                    "latest_timestamp": None
                 }
         return status
 self.cache = {}
@@ -447,15 +450,3 @@ class BitvavoDataCollector:
             except Exception as e:
                 self.logger.error(f"Error in periodic data update: {e}")
                 await asyncio.sleep(60)
-    
-    def get_buffer_status(self) -> Dict[str, dict]:
-        """Get status of all data buffers."""
-        status = {}
-        for symbol, buffer in self.data_buffers.items():
-            last_update = self.last_update.get(symbol)
-            status[symbol] = {
-                'buffer_size': len(buffer),
-                'last_update': last_update.isoformat() if last_update else None,
-                'latest_price': buffer[-1]['close'] if buffer else None
-            }
-        return status
