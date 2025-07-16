@@ -237,7 +237,7 @@ class PaperTrader:
             # To:
             self.feature_cache.ensure_sufficient_data(symbol)
             
-            if not self.data_collector.ensure_sufficient_data(symbol, min_length=300):
+            if not await self.data_collector.ensure_sufficient_data(symbol, min_length=300):
                 self.logger.warning(f"Could not ensure sufficient data for {symbol}")
                 
                 # Get detailed buffer status for debugging
@@ -398,7 +398,7 @@ class PaperTrader:
                 return False
             
             # Ensure we have sufficient data before proceeding
-            if not self.data_collector.ensure_sufficient_data(symbol, min_length=300):
+            if not await self.data_collector.ensure_sufficient_data(symbol, min_length=300):
                 self.logger.warning(f"Could not get sufficient data for {symbol}, skipping")
                 return False
 
