@@ -413,12 +413,21 @@ class BitvavoDataCollector:
     async def get_current_price(self, symbol: str) -> Optional[float]:
         """Get current price for a symbol."""
         try:
+            # Prefer price from buffer if it was updated recently
+            if (
+                symbol in self.data_buffers
+                and not self.data_buffers[symbol].empty
+            ):
+                latest_ts = self.data_buffers[symbol].index[-1]
+                if datetime.now() - latest_ts < timedelta(minutes=1):
+                    return float(self.data_buffers[symbol]['close'].iloc[-1])
+
             url = f"{self.base_url}/ticker/price"
             params = {'market': symbol}
-            
+
             response = requests.get(url, params=params, timeout=5)
             response.raise_for_status()
-            
+
             data = response.json()
             return float(data['price'])
 
@@ -435,9 +444,16 @@ class BitvavoDataCollector:
                 and symbol in self.data_buffers
                 and not self.data_buffers[symbol].empty
             ):
-                self.data_buffers[symbol].iloc[-1, self.data_buffers[symbol].columns.get_loc('close')] = price
-                self.last_update[symbol] = datetime.now()
-                self.logger.debug(f"Refreshed {symbol} price to {price}")
+                last_close = float(self.data_buffers[symbol]['close'].iloc[-1])
+                price_diff = abs(price - last_close) / last_close if last_close else 0
+                if price_diff < 0.05:  # avoid overwriting with stale data
+                    self.data_buffers[symbol].iloc[-1, self.data_buffers[symbol].columns.get_loc('close')] = price
+                    self.last_update[symbol] = datetime.now()
+                    self.logger.debug(f"Refreshed {symbol} price to {price}")
+                else:
+                    self.logger.warning(
+                        f"Skipped refreshing {symbol} price due to large difference: {last_close} -> {price}"
+                    )
         except Exception as e:
             self.logger.warning(f"Failed to refresh price for {symbol}: {e}")
     
