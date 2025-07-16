@@ -454,8 +454,10 @@ class PaperTrader:
             price_data = features_df['close'].tail(20)  # Use last 20 periods
             market_volatility = price_data.std() / price_data.mean() if len(price_data) > 1 else 0.5
             
-            # Generate enhanced prediction with market volatility
-            prediction_result = await self.predictor.predict(symbol, features_df, market_volatility)
+            # Generate enhanced prediction with market volatility and current price
+            prediction_result = await self.predictor.predict(
+                symbol, features_df, market_volatility, current_price
+            )
             if prediction_result is None:
                 return False
 
