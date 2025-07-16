@@ -47,6 +47,9 @@ class PaperTrader:
         # Background tasks
         self.data_feed_task = None
         self.api_update_task = None
+
+        # Track when a symbol was last processed
+        self.last_prediction_time: Dict[str, datetime] = {}
         
         # State tracking
         self.last_hourly_update = datetime.now()
@@ -420,9 +423,6 @@ class PaperTrader:
                 self.logger.warning(f"Could not get sufficient data for {symbol}, skipping")
                 return False
 
-            # Refresh latest price so our buffer has the most recent close
-            await self.data_collector.refresh_latest_price(symbol)
-
             # Fetch latest data from buffer for feature engineering
             data = self.data_collector.get_buffer_data(symbol, min_length=500)
             if data is None or len(data) < 500:
@@ -636,9 +636,13 @@ class PaperTrader:
             self.api_update_task = asyncio.create_task(
                 self.data_collector.update_data_periodically(self.settings.symbols)
             )
-            
+
+            # Initialize last prediction timestamps
+            for symbol in self.settings.symbols:
+                self.last_prediction_time[symbol] = self.data_collector.last_update.get(symbol)
+
             self.logger.info("Paper Trader is now running...")
-            
+
             # Main trading loop
             while self.is_running:
                 try:
@@ -646,7 +650,16 @@ class PaperTrader:
                     for symbol in self.settings.symbols:
                         if not self.is_running:
                             break
-                        await self.process_symbol(symbol)
+                        last_update = self.data_collector.last_update.get(symbol)
+                        last_processed = self.last_prediction_time.get(symbol)
+
+                        # Run prediction only if we received new data
+                        if last_update and (last_processed is None or last_update > last_processed):
+                            await self.process_symbol(symbol)
+                            self.last_prediction_time[symbol] = last_update
+                        else:
+                            self.logger.debug(f"No new data for {symbol}, skipping prediction")
+
                         await asyncio.sleep(1)  # Small delay between symbols
                     
                     # Check exit conditions for open positions
