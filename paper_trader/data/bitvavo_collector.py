@@ -18,6 +18,9 @@ class FeatureCache:
     def __init__(self, max_size=1000):
         self.cache = {}
         self.timestamps = deque(maxlen=max_size)
+        self.data_buffers = {}
+        self.last_update = {}
+        self.logger = logging.getLogger(__name__)
 
     def ensure_sufficient_data(self, symbol: str, min_length: int = 250) -> bool:
         """Ensure buffer has sufficient data for feature engineering."""
@@ -144,10 +147,8 @@ class FeatureCache:
                     "latest_timestamp": None
                 }
         return status
-self.cache = {}
-        self.timestamps = deque(maxlen=max_size)
 
-    def get_features(self, symbol, timestamp):
+    def get_features(self, symbol: str, timestamp: str) -> Optional[Dict]:
         return self.cache.get(f"{symbol}_{timestamp}")
 
 
