@@ -237,7 +237,7 @@ class PaperTrader:
             # To:
             self.feature_cache.ensure_sufficient_data(symbol)
             
-            if not await self.data_collector.ensure_sufficient_data(symbol, min_length=300):
+            if not await self.data_collector.ensure_sufficient_data(symbol, min_length=500):
                 self.logger.warning(f"Could not ensure sufficient data for {symbol}")
                 
                 # Get detailed buffer status for debugging
@@ -248,11 +248,11 @@ class PaperTrader:
 
             # Get buffer data with validation
             self.logger.debug(f"Getting buffer data for {symbol}...")
-            data = self.data_collector.get_buffer_data(symbol, min_length=250)
-            
-            if data is None or len(data) < 250:
+            data = self.data_collector.get_buffer_data(symbol, min_length=500)
+
+            if data is None or len(data) < 500:
                 actual_length = len(data) if data is not None else 0
-                self.logger.warning(f"Insufficient buffer data for {symbol}: {actual_length}/250")
+                self.logger.warning(f"Insufficient buffer data for {symbol}: {actual_length}/500")
                 return False
             
             self.logger.debug(f"Got {len(data)} candles for {symbol}, proceeding with analysis...")
@@ -398,13 +398,13 @@ class PaperTrader:
                 return False
             
             # Ensure we have sufficient data before proceeding
-            if not await self.data_collector.ensure_sufficient_data(symbol, min_length=300):
+            if not await self.data_collector.ensure_sufficient_data(symbol, min_length=500):
                 self.logger.warning(f"Could not get sufficient data for {symbol}, skipping")
                 return False
 
             # Fetch latest data from buffer for feature engineering
-            data = self.data_collector.get_buffer_data(symbol, min_length=250)
-            if data is None or len(data) < 250:
+            data = self.data_collector.get_buffer_data(symbol, min_length=500)
+            if data is None or len(data) < 500:
                 self.logger.warning(f"Insufficient buffer data for {symbol}, skipping.")
                 return False
             
