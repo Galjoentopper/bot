@@ -272,9 +272,22 @@ class WindowBasedEnsemblePredictor:
             'VERY_STRONG': 5
         }
         
-    async def predict(self, symbol: str, features: pd.DataFrame,
-                     market_volatility: float = 0.5) -> Optional[dict]:
-        """Generate enhanced ensemble prediction with window-based model selection."""
+    async def predict(
+        self,
+        symbol: str,
+        features: pd.DataFrame,
+        market_volatility: float = 0.5,
+        current_price: float | None = None,
+    ) -> Optional[dict]:
+        """Generate enhanced ensemble prediction with window-based model selection.
+
+        Args:
+            symbol: Trading symbol
+            features: Feature DataFrame with historical data
+            market_volatility: Market volatility measure
+            current_price: Optional latest price. If ``None`` the last ``close``
+                value from ``features`` is used.
+        """
         try:
             if len(features) < 10:  # Minimum features needed
                 self.logger.warning(f"Insufficient features for prediction: {len(features)}")
@@ -315,7 +328,9 @@ class WindowBasedEnsemblePredictor:
             # LSTM Prediction with selected window (skip if models are corrupted)
             if available_models['lstm']:
                 try:
-                    lstm_pred, lstm_conf = await self._predict_lstm_window(symbol, features, optimal_window)
+                    lstm_pred, lstm_conf = await self._predict_lstm_window(
+                        symbol, features, optimal_window, current_price
+                    )
                     if lstm_pred is not None:
                         predictions['lstm'] = lstm_pred
                         confidence_scores['lstm'] = lstm_conf
@@ -325,13 +340,16 @@ class WindowBasedEnsemblePredictor:
 
             # Append lstm_delta to features if required
             if lstm_pred is not None and required_cols and 'lstm_delta' in required_cols:
-                delta = (lstm_pred - features['close'].iloc[-1]) / features['close'].iloc[-1]
+                base_price = current_price if current_price is not None else features['close'].iloc[-1]
+                delta = (lstm_pred - base_price) / base_price
                 features = features.copy()
                 features['lstm_delta'] = delta
             
             # XGBoost Prediction with selected window
             if available_models['xgb']:
-                xgb_pred, xgb_conf = await self._predict_xgboost_window(symbol, features, optimal_window)
+                xgb_pred, xgb_conf = await self._predict_xgboost_window(
+                    symbol, features, optimal_window, current_price
+                )
                 if xgb_pred is not None:
                     predictions['xgb'] = xgb_pred
                     confidence_scores['xgb'] = xgb_conf
@@ -339,7 +357,9 @@ class WindowBasedEnsemblePredictor:
 
             # Caboose (CatBoost) Prediction with selected window
             if available_models.get('caboose'):
-                caboose_pred, caboose_conf = await self._predict_caboose_window(symbol, features, optimal_window)
+                caboose_pred, caboose_conf = await self._predict_caboose_window(
+                    symbol, features, optimal_window, current_price
+                )
                 if caboose_pred is not None:
                     predictions['caboose'] = caboose_pred
                     confidence_scores['caboose'] = caboose_conf
@@ -357,7 +377,10 @@ class WindowBasedEnsemblePredictor:
             avg_confidence = self._calculate_adjusted_confidence(confidence_scores, market_volatility)
             
             # Determine signal strength
-            current_price = float(features['close'].iloc[-1])
+            if current_price is None:
+                current_price = float(features['close'].iloc[-1])
+            else:
+                current_price = float(current_price)
             price_change_pct = (ensemble_pred - current_price) / current_price
             
             # Enhanced signal classification
@@ -394,7 +417,13 @@ class WindowBasedEnsemblePredictor:
             self.logger.error(f"Error generating enhanced prediction for {symbol}: {e}")
             return None
     
-    async def _predict_lstm_window(self, symbol: str, features: pd.DataFrame, window: int) -> Tuple[Optional[float], float]:
+    async def _predict_lstm_window(
+        self,
+        symbol: str,
+        features: pd.DataFrame,
+        window: int,
+        current_price: float | None = None,
+    ) -> Tuple[Optional[float], float]:
         """Generate LSTM prediction using specific window model."""
         try:
             if (symbol not in self.model_loader.lstm_models or 
@@ -429,7 +458,8 @@ class WindowBasedEnsemblePredictor:
             # Make prediction (percentage change from current price)
             prediction = model.predict(sequence, verbose=0)[0][0]
 
-            current_price = features['close'].iloc[-1]
+            if current_price is None:
+                current_price = features['close'].iloc[-1]
             predicted_price = float(current_price * (1 + prediction))
 
             # Enhanced confidence calculation
@@ -447,7 +477,13 @@ class WindowBasedEnsemblePredictor:
             self.logger.error(f"Error in LSTM prediction for {symbol} window {window}: {e}")
             return None, 0.0
     
-    async def _predict_xgboost_window(self, symbol: str, features: pd.DataFrame, window: int) -> Tuple[Optional[float], float]:
+    async def _predict_xgboost_window(
+        self,
+        symbol: str,
+        features: pd.DataFrame,
+        window: int,
+        current_price: float | None = None,
+    ) -> Tuple[Optional[float], float]:
         """Generate XGBoost prediction using specific window model."""
         try:
             if (symbol not in self.model_loader.xgb_models or 
@@ -477,7 +513,8 @@ class WindowBasedEnsemblePredictor:
             # Make prediction (probability of price increase)
             prob_up = model.predict_proba(feature_data)[0][1]
 
-            current_price = features['close'].iloc[-1]
+            if current_price is None:
+                current_price = features['close'].iloc[-1]
             predicted_price = float(current_price * (1 + prob_up * 0.002))
 
             # Enhanced confidence calculation for XGBoost
@@ -497,7 +534,13 @@ class WindowBasedEnsemblePredictor:
             self.logger.error(f"Error in XGBoost prediction for {symbol} window {window}: {e}")
             return None, 0.0
 
-    async def _predict_caboose_window(self, symbol: str, features: pd.DataFrame, window: int) -> Tuple[Optional[float], float]:
+    async def _predict_caboose_window(
+        self,
+        symbol: str,
+        features: pd.DataFrame,
+        window: int,
+        current_price: float | None = None,
+    ) -> Tuple[Optional[float], float]:
         """Generate Caboose (CatBoost) prediction using specific window model."""
         try:
             if (
@@ -522,7 +565,8 @@ class WindowBasedEnsemblePredictor:
 
             prediction = model.predict(feature_data)[0]
 
-            current_price = features['close'].iloc[-1]
+            if current_price is None:
+                current_price = features['close'].iloc[-1]
             price_volatility = features['close'].tail(10).std() / features['close'].tail(10).mean()
             prediction_error = abs(prediction - current_price) / current_price
 
