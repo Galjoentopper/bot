@@ -602,7 +602,12 @@ class PaperTrader:
             # Initialize data buffers
             self.logger.info("Initializing data buffers...")
             await self.data_collector.initialize_buffers(self.settings.symbols)
-            
+
+            # Ensure each buffer has enough historical data **before**
+            # starting the real-time feed to avoid overwriting fresh updates
+            for symbol in self.settings.symbols:
+                await self.data_collector.ensure_sufficient_data(symbol, min_length=500)
+
             # Start WebSocket data feed and periodic API updates in background
             self.logger.info("Starting real-time data feed...")
             self.data_feed_task = asyncio.create_task(
