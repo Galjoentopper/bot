@@ -197,9 +197,10 @@ class HybridModelTrainer:
         # Enhanced Model parameters
         self.lstm_sequence_length = 96  # 24 hours of 15-min candles (increased from 60)
         self.prediction_horizon = 1  # Next 15-min candle
-        self.price_change_threshold = (
-            0.001  # 0.1% for binary classification (more sensitive)
-        )
+        # Binary classification target: predict if price will rise at least 0.5%
+        # by the next candle. Adjust the threshold here to retrain models with
+        # a different price change objective.
+        self.price_change_threshold = 0.005
 
         # Advanced LSTM parameters (optimized for better GPU utilization)
         self.lstm_units = [256, 128, 64]  # Increased units for better GPU utilization
