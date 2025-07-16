@@ -23,6 +23,8 @@ class TradingSettings:
     # Trading Parameters
     initial_capital: float = float(os.getenv('INITIAL_CAPITAL', '10000.0'))
     max_positions: int = int(os.getenv('MAX_POSITIONS', '10'))
+    # Maximum simultaneous positions allowed per symbol
+    max_positions_per_symbol: int = int(os.getenv('MAX_POSITIONS_PER_SYMBOL', '1'))
     position_size_pct: float = float(os.getenv('POSITION_SIZE_PCT', '0.10'))
     take_profit_pct: float = float(os.getenv('TAKE_PROFIT_PCT', '0.01'))
     stop_loss_pct: float = float(os.getenv('STOP_LOSS_PCT', '0.01'))
@@ -78,6 +80,9 @@ class TradingSettings:
             return False
             
         if self.max_positions <= 0:
+            return False
+
+        if self.max_positions_per_symbol <= 0:
             return False
             
         if not (0 < self.position_size_pct <= 1):
