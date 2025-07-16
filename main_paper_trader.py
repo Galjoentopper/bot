@@ -263,9 +263,9 @@ class PaperTrader:
                 self.logger.warning(f"Could not get sufficient data for {symbol}, skipping")
                 return False
 
-            # Get latest data
-            data = await self.data_collector.get_latest_data(symbol, limit=300)
-            if data is None or len(data) < 250:
+            # Get buffer data for feature engineering
+            data = self.data_collector.get_buffer_data(symbol, min_length=300)
+            if data is None or data.empty or len(data) < 250:
                 self.logger.warning(f"Insufficient data for {symbol} after ensuring")
                 return False
             

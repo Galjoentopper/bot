@@ -44,56 +44,86 @@ class BitvavoDataCollector:
         }
         self.session = httpx.AsyncClient(headers=headers, follow_redirects=True)
         
-        # Data buffers for each symbol (store last 100 candles)
-        self.data_buffers: Dict[str, deque] = {}
+        # Data buffers for each symbol (store last 100 candles) as pandas DataFrames
+        self.data_buffers: Dict[str, pd.DataFrame] = {}
         self.last_update: Dict[str, datetime] = {}
         
         self.logger = logging.getLogger(__name__)
 
-    def initialize_buffer(self, symbol: str, limit: int = 100) -> bool:
-        """Initialize data buffer for a symbol with proper timestamp handling."""
-        try:
-            historical_data = self.get_historical_data(symbol, limit=limit)
-
-            if historical_data is None or historical_data.empty:
+    async def initialize_buffers(self, symbols: List[str], limit: int = 100):
+        """Initialize data buffers for multiple symbols asynchronously."""
+        tasks = [self.get_historical_data(symbol, limit=limit) for symbol in symbols]
+        results = await asyncio.gather(*tasks)
+        for symbol, data in zip(symbols, results):
+            if data is not None and not data.empty:
+                self.data_buffers[symbol] = data
+                self.logger.info(f"Initialized buffer for {symbol} with {len(data)} candles")
+            else:
                 self.logger.warning(f"Failed to initialize buffer for {symbol}")
-                return False
 
-            # Ensure we have a proper DataFrame with datetime index
-            if not isinstance(historical_data.index, pd.DatetimeIndex):
-                if 'timestamp' in historical_data.columns:
-                    historical_data = historical_data.set_index('timestamp')
-                else:
-                    self.logger.error(f"No timestamp column found for {symbol}")
-                    return False
+    def get_buffer_data(self, symbol: str, min_length: int = 250) -> pd.DataFrame:
+        """Get buffer data for feature engineering, ensuring minimum length."""
+        if symbol not in self.data_buffers or len(self.data_buffers[symbol]) < min_length:
+            self.logger.warning(f"Insufficient data for {symbol}: have {len(self.data_buffers.get(symbol, []))}, need {min_length}")
+            return pd.DataFrame()
+        return self.data_buffers[symbol].tail(min_length).copy()
 
-            self.data_buffers[symbol] = historical_data.copy()
-            self.logger.info(f"Initialized buffer for {symbol} with {len(historical_data)} candles")
-            return True
+    async def get_historical_data(self, symbol: str, interval: str = "15m", limit: int = 100) -> Optional[pd.DataFrame]:
+        # unchanged
+        endpoints_to_try = [
+            f"{self.base_url}/candles",
+            f"{self.base_url}/{symbol}/candles",
+        ]
+        
+        alt_symbols = [
+            symbol,
+            symbol.replace('-', ''),
+            symbol.lower(),
+        ]
 
-        except Exception as e:
-            self.logger.error(f"Error initializing buffer for {symbol}: {e}")
-            return False
+        for endpoint in endpoints_to_try:
+            for s in alt_symbols:
+                try:
+                    await asyncio.sleep(random.uniform(0.2, 0.6))  # Random delay
+                    params = {'market': s, 'interval': interval, 'limit': limit}
+                    self.logger.debug(f"Trying endpoint: {endpoint} with symbol: {s}")
+                    
+                    response = await self.session.get(endpoint, params=params, timeout=20)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data and isinstance(data, list) and len(data) > 0:
+                            df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                            df = df.set_index('timestamp')
+                            
+                            numeric_cols = ['open', 'high', 'low', 'close', 'volume']
+                            for col in numeric_cols:
+                                df[col] = pd.to_numeric(df[col], errors='coerce')
+                            
+                            df = df.dropna()
+                            if not df.empty:
+                                self.logger.info(f"Successfully fetched {len(df)} candles for {symbol}")
+                                return df
+                        else:
+                            self.logger.debug(f"Empty or invalid data from {endpoint} for {s}")
+                    elif response.status_code == 404:
+                        self.logger.debug(f"Endpoint {endpoint} not found for symbol {s}")
+                    else:
+                        self.logger.warning(f"HTTP {response.status_code} from {endpoint} for {s}: {response.text[:150]}")
 
-    def ensure_sufficient_data(self, symbol: str, min_length: int = 250) -> bool:
-        """Ensure buffer has sufficient data for feature engineering."""
-        try:
-            if symbol not in self.data_buffers:
-                return self.initialize_buffer(symbol, limit=max(500, min_length * 2))
+                except httpx.RequestError as e:
+                    self.logger.warning(f"Request failed for {endpoint} with symbol {s}: {e}")
+                except (ValueError, KeyError) as e:
+                    self.logger.warning(f"Error parsing JSON for {s}: {e}")
+                except Exception as e:
+                    self.logger.error(f"An unexpected error occurred for {s}: {e}")
 
-            current_length = len(self.data_buffers[symbol])
-            if current_length < min_length:
-                self.logger.info(f"Fetching more data for {symbol}: current={current_length}, needed={min_length}")
-                new_data = self.get_historical_data(symbol, limit=max(500, min_length * 2))
-                if new_data is not None and len(new_data) >= min_length:
-                    self.data_buffers[symbol] = new_data
-                    return True
+        self.logger.error(f"Failed to fetch historical data for {symbol} after all attempts.")
+        return None
 
-            return current_length >= min_length
+    # ... rest of the class remains unchanged
 
-        except Exception as e:
-            self.logger.error(f"Error ensuring sufficient data for {symbol}: {e}")
-            return False
 
     async def validate_candle_data(self, candle_data: dict) -> bool:
         """Validate incoming candle data."""
