@@ -321,6 +321,7 @@ class PaperTrader:
             # Set ensemble weights from settings
             self.predictor.lstm_weight = self.settings.lstm_weight
             self.predictor.xgb_weight = self.settings.xgb_weight
+            self.predictor.caboose_weight = self.settings.caboose_weight
             
             # Initialize signal generator
             self.signal_generator = SignalGenerator(
