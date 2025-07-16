@@ -482,26 +482,18 @@ class BitvavoDataCollector:
         except Exception as e:
             self.logger.error(f"Error processing WebSocket message: {e}")
     
-    def ensure_sufficient_data(self, symbol: str, min_length: int = 250) -> bool:
-        """Ensure buffer has sufficient data for the symbol."""
+    async def ensure_sufficient_data(self, symbol: str, min_length: int = 250) -> bool:
+        """Ensure buffer has sufficient data for feature engineering."""
         try:
             if symbol not in self.data_buffers:
                 self.logger.info(f"No buffer for {symbol}, initializing...")
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(self.initialize_buffers([symbol], min_length * 2))
-                loop.close()
+                await self.initialize_buffers([symbol], min_length * 2)
                 return len(self.data_buffers.get(symbol, pd.DataFrame())) >= min_length
 
             current_length = len(self.data_buffers[symbol])
             if current_length < min_length:
                 self.logger.info(f"Fetching more data for {symbol}: current={current_length}, needed={min_length}")
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                new_data = loop.run_until_complete(
-                    self.get_historical_data(symbol, '15m', max(500, min_length * 2))
-                )
-                loop.close()
+                new_data = await self.get_historical_data(symbol, '15m', max(500, min_length * 2))
 
                 if new_data is not None and len(new_data) >= min_length:
                     self.data_buffers[symbol] = new_data
