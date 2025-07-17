@@ -4,46 +4,64 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 
+
+
 class ExitManager:
     """Manages exit conditions for open trading positions."""
     
     def __init__(self, trailing_stop_pct: float = 0.005, max_hold_hours: int = 2,
-                 emergency_stop_pct: float = 0.05):
+                 emergency_stop_pct: float = 0.05,
+                 enable_prediction_exits: bool = True,
+                 prediction_exit_min_confidence: float = 0.7,
+                 prediction_exit_min_strength: str = 'STRONG',
+                 dynamic_stop_loss_adjustment: bool = True):
         self.trailing_stop_pct = trailing_stop_pct
         self.max_hold_hours = max_hold_hours
         self.emergency_stop_pct = emergency_stop_pct
+
+        self.enable_prediction_exits = enable_prediction_exits
+        self.prediction_exit_min_confidence = prediction_exit_min_confidence
+        self.prediction_exit_min_strength = prediction_exit_min_strength
+        self.dynamic_stop_loss_adjustment = dynamic_stop_loss_adjustment
         
         self.logger = logging.getLogger(__name__)
     
-    def check_exit_conditions(self, position, current_price: float) -> Optional[Dict]:
-        """Check all exit conditions for a position."""
+    def check_exit_conditions(self, position, current_price: float,
+                             prediction_result: dict = None) -> Optional[Dict]:
+        """Check all exit conditions including prediction reversal."""
         try:
-            # 1. Check take profit
+            # 1. Check prediction reversal FIRST (most important)
+            if prediction_result and self.enable_prediction_exits:
+                prediction_exit = self._check_prediction_reversal(position, prediction_result)
+                if prediction_exit:
+                    return prediction_exit
+
+            # 2. Check take profit
             take_profit_exit = self._check_take_profit(position, current_price)
             if take_profit_exit:
                 return take_profit_exit
-            
-            # 2. Check stop loss
-            stop_loss_exit = self._check_stop_loss(position, current_price)
+
+            # 3. Check stop loss
+            stop_loss_exit = self._check_stop_loss(position, current_price, prediction_result)
             if stop_loss_exit:
                 return stop_loss_exit
-            
-            # 3. Check trailing stop
+
+            # 4. Check trailing stop
             trailing_stop_exit = self._check_trailing_stop(position, current_price)
             if trailing_stop_exit:
                 return trailing_stop_exit
-            
-            # 4. Check time-based exit
+
+            # 5. Check time-based exit
             time_exit = self._check_time_exit(position)
             if time_exit:
                 return time_exit
-            
-            # 5. Check emergency stop
+
+            # 6. Check emergency stop
             emergency_exit = self._check_emergency_stop(position, current_price)
             if emergency_exit:
                 return emergency_exit
-            
-            # 6. Update trailing stop if price moved favorably
+
+            # 7. Update trailing stop if price moved favorably
             self._update_trailing_stop(position, current_price)
             
             return None
@@ -72,8 +90,17 @@ class ExitManager:
             }
         return None
     
-    def _check_stop_loss(self, position, current_price: float) -> Optional[Dict]:
-        """Check if stop loss level is reached."""
+    def _check_stop_loss(self, position, current_price: float,
+                         prediction_result: dict = None) -> Optional[Dict]:
+        """Check if stop loss level is reached, adjusting dynamically."""
+        if self.dynamic_stop_loss_adjustment:
+            adjusted_stop = self._calculate_dynamic_stop_loss(position, prediction_result)
+            if adjusted_stop != position.stop_loss:
+                self.logger.debug(
+                    f"Adjusted stop loss for {position.symbol}: {position.stop_loss:.4f} -> {adjusted_stop:.4f}"
+                )
+                position.stop_loss = adjusted_stop
+
         if current_price <= position.stop_loss:
             pnl = (current_price - position.entry_price) * position.quantity
             pnl_pct = (current_price - position.entry_price) / position.entry_price
@@ -157,6 +184,53 @@ class ExitManager:
                 'loss_pct': loss_pct
             }
         return None
+
+    def _check_prediction_reversal(self, position, prediction_result: dict) -> Optional[Dict]:
+        """Check if model predicts significant adverse movement."""
+        if prediction_result is None:
+            return None
+
+        confidence = prediction_result.get('confidence', 0)
+        signal_strength = prediction_result.get('signal_strength', 'NEUTRAL')
+        predicted_direction = prediction_result.get('direction', 'NEUTRAL')
+
+        if (predicted_direction == 'DOWN' and
+            confidence >= self.prediction_exit_min_confidence and
+            signal_strength.upper() in ['STRONG', 'VERY_STRONG']):
+
+            self.logger.info(
+                f"Prediction reversal exit triggered for {position.symbol}: "
+                f"Model predicts {predicted_direction} with {confidence:.1%} confidence"
+            )
+
+            return {
+                'reason': 'PREDICTION_REVERSAL',
+                'exit_price': None,
+                'pnl': None,
+                'pnl_pct': None,
+                'timestamp': datetime.now(),
+                'reversal_confidence': confidence,
+                'reversal_signal': signal_strength
+            }
+
+        return None
+
+    def _calculate_dynamic_stop_loss(self, position, prediction_result: dict) -> float:
+        """Dynamically adjust stop loss based on prediction confidence."""
+        base_stop_loss = position.stop_loss
+
+        if prediction_result and prediction_result.get('direction') == 'DOWN':
+            confidence = prediction_result.get('confidence', 0)
+
+            if confidence > 0.8:
+                adjustment_factor = 0.5  # Reduce stop loss distance by 50%
+                entry_price = position.entry_price
+                stop_distance = entry_price - base_stop_loss
+                new_stop_loss = entry_price - (stop_distance * adjustment_factor)
+
+                return max(new_stop_loss, base_stop_loss)
+
+        return base_stop_loss
     
     def _update_trailing_stop(self, position, current_price: float):
         """Update trailing stop if price moved favorably."""
