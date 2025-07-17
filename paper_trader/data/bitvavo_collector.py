@@ -134,7 +134,10 @@ class FeatureCache:
             historical_data = await self.get_historical_data(symbol, self.interval, limit)
             if historical_data is not None and len(historical_data) >= 100:
                 self.data_buffers[symbol] = historical_data.copy()
-                self.last_update[symbol] = datetime.now()
+                # Track the timestamp of the latest candle rather than the
+                # current time so that downstream logic only triggers when a
+                # truly new candle arrives
+                self.last_update[symbol] = historical_data.index[-1]
                 self.logger.info(f"Initialized buffer for {symbol} with {len(historical_data)} candles")
             else:
                 self.data_buffers[symbol] = pd.DataFrame()
@@ -188,7 +191,8 @@ class FeatureCache:
                                     self.data_buffers[symbol] = self.data_buffers[symbol].tail(500)
                             else:
                                 self.data_buffers[symbol] = new_row
-                            self.last_update[symbol] = datetime.now()
+                            # Use the candle timestamp as the last update marker
+                            self.last_update[symbol] = latest_timestamp
                             self.logger.info(f"Updated {symbol} buffer via API: {latest_candle['close']:.2f}")
                 await asyncio.sleep(60)
             except Exception as e:
@@ -234,7 +238,8 @@ class FeatureCache:
             historical_data = await self.get_historical_data(symbol, self.interval, min_length * 2)
             if historical_data is not None and len(historical_data) >= min_length:
                 self.data_buffers[symbol] = historical_data.copy()
-                self.last_update[symbol] = datetime.now()
+                # Use the candle timestamp of the fetched data as last_update
+                self.last_update[symbol] = historical_data.index[-1]
                 self.logger.info(f"Initialized buffer for {symbol} with {len(historical_data)} candles")
             else:
                 self.data_buffers[symbol] = pd.DataFrame()
@@ -452,7 +457,9 @@ class BitvavoDataCollector:
                 price_diff = abs(price - last_close) / last_close if last_close else 0
                 if price_diff < 0.05:  # avoid overwriting with stale data
                     self.data_buffers[symbol].iloc[-1, self.data_buffers[symbol].columns.get_loc('close')] = price
-                    self.last_update[symbol] = datetime.now()
+                    # Keep last_update in sync with the candle timestamp to
+                    # avoid triggering multiple predictions for interim updates
+                    self.last_update[symbol] = self.data_buffers[symbol].index[-1]
                     self.logger.debug(f"Refreshed {symbol} price to {price}")
                 else:
                     self.logger.warning(
@@ -537,20 +544,26 @@ class BitvavoDataCollector:
                         'volume': float(candle_data[5])
                     }
                     if await self.validate_candle_data(candle):
-                        # Add to buffer using DataFrame concatenation
-                        new_row = (
-                            pd.DataFrame([candle])
-                            .set_index("timestamp")
-                        )
-                        self.data_buffers[symbol] = pd.concat(
-                            [self.data_buffers[symbol], new_row]
-                        )
+                        # Create dataframe row
+                        new_row = pd.DataFrame([candle]).set_index("timestamp")
 
-                        # Trim buffer to last 500 candles
-                        if len(self.data_buffers[symbol]) > 500:
-                            self.data_buffers[symbol] = self.data_buffers[symbol].tail(500)
+                        # Replace existing candle if we already have this timestamp
+                        if (
+                            symbol in self.data_buffers
+                            and not self.data_buffers[symbol].empty
+                            and new_row.index[0] in self.data_buffers[symbol].index
+                        ):
+                            self.data_buffers[symbol].loc[new_row.index[0]] = new_row.iloc[0]
+                        else:
+                            self.data_buffers[symbol] = pd.concat(
+                                [self.data_buffers[symbol], new_row]
+                            )
+                            if len(self.data_buffers[symbol]) > 500:
+                                self.data_buffers[symbol] = self.data_buffers[symbol].tail(500)
 
-                        self.last_update[symbol] = datetime.now()
+                        # Update last_update using candle timestamp so repeated
+                        # updates for the same candle don't trigger extra predictions
+                        self.last_update[symbol] = new_row.index[0]
                         self.logger.debug(
                             f"Updated {symbol} candle: {candle['close']}"
                         )
@@ -626,7 +639,10 @@ class BitvavoDataCollector:
                             if len(self.data_buffers[symbol]) > 500: 
                                 self.data_buffers[symbol] = self.data_buffers[symbol].tail(500) 
                             
-                            self.last_update[symbol] = datetime.now() 
+                            # Record the timestamp of the candle rather than
+                            # the current time so main loop only triggers on
+                            # new candles
+                            self.last_update[symbol] = latest_timestamp
                             self.logger.info(f"Updated {symbol} buffer: latest price {latest_data['close'].iloc[-1]:.2f}") 
                         else: 
                             self.logger.warning(f"Failed to fetch latest candle for {symbol}") 
