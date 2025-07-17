@@ -65,6 +65,9 @@ class PortfolioManager:
         self.winning_trades = 0
         self.losing_trades = 0
         self.total_trades = 0
+
+        # Track last closed time per symbol for cooldowns
+        self.last_closed_time: Dict[str, datetime] = {}
         
         # Logging
         self.log_dir = Path(log_dir)
@@ -204,9 +207,12 @@ class PortfolioManager:
             )
             
             self.trades.append(trade)
-            
+
             # Log trade
             self._log_trade(trade)
+
+            # Record last closed time for cooldowns
+            self.last_closed_time[symbol] = trade.exit_time
             
             # Remove position
             self.positions[symbol].remove(position)

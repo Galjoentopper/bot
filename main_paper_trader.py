@@ -336,19 +336,17 @@ class PaperTrader:
             self.signal_generator = SignalGenerator(
                 max_positions=self.settings.max_positions,
                 max_positions_per_symbol=self.settings.max_positions_per_symbol,
-                position_size_pct=self.settings.position_size_pct,
+                base_position_size=self.settings.base_position_size,
+                max_position_size=self.settings.max_position_size,
+                min_position_size=self.settings.min_position_size,
                 take_profit_pct=self.settings.take_profit_pct,
                 stop_loss_pct=self.settings.stop_loss_pct,
-                min_expected_gain_pct=self.settings.min_expected_gain_pct
-            )
-
-            # Relax signal thresholds to generate more trades
-            self.predictor.min_confidence_threshold = 0.3
-            self.predictor.min_signal_strength = "WEAK"
-            self.signal_generator.update_signal_parameters(
-                min_confidence=0.3,
-                min_signal_strength="WEAK",
-                min_expected_gain_pct=self.settings.min_expected_gain_pct
+                min_confidence=self.settings.min_confidence_threshold,
+                min_signal_strength=self.settings.min_signal_strength,
+                min_expected_gain_pct=self.settings.min_expected_gain_pct,
+                position_cooldown_minutes=self.settings.position_cooldown_minutes,
+                data_collector=self.data_collector,
+                max_daily_trades_per_symbol=self.settings.max_daily_trades_per_symbol
             )
             
             # Initialize exit manager

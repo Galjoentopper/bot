@@ -25,11 +25,17 @@ class TradingSettings:
     max_positions: int = int(os.getenv('MAX_POSITIONS', '10'))
     # Maximum simultaneous positions allowed per symbol
     max_positions_per_symbol: int = int(os.getenv('MAX_POSITIONS_PER_SYMBOL', '1'))
-    position_size_pct: float = float(os.getenv('POSITION_SIZE_PCT', '0.10'))
-    take_profit_pct: float = float(os.getenv('TAKE_PROFIT_PCT', '0.01'))
-    stop_loss_pct: float = float(os.getenv('STOP_LOSS_PCT', '0.01'))
-    trailing_stop_pct: float = float(os.getenv('TRAILING_STOP_PCT', '0.005'))
+    base_position_size: float = float(os.getenv('BASE_POSITION_SIZE', '0.08'))
+    max_position_size: float = float(os.getenv('MAX_POSITION_SIZE', '0.15'))
+    min_position_size: float = float(os.getenv('MIN_POSITION_SIZE', '0.02'))
+    take_profit_pct: float = float(os.getenv('TAKE_PROFIT_PCT', '0.015'))
+    stop_loss_pct: float = float(os.getenv('STOP_LOSS_PCT', '0.008'))
+    trailing_stop_pct: float = float(os.getenv('TRAILING_STOP_PCT', '0.006'))
+    min_profit_for_trailing: float = float(os.getenv('MIN_PROFIT_FOR_TRAILING', '0.005'))
     max_hold_hours: int = int(os.getenv('MAX_HOLD_HOURS', '2'))
+    min_hold_time_minutes: int = int(os.getenv('MIN_HOLD_TIME_MINUTES', '10'))
+    position_cooldown_minutes: int = int(os.getenv('POSITION_COOLDOWN_MINUTES', '5'))
+    max_daily_trades_per_symbol: int = int(os.getenv('MAX_DAILY_TRADES_PER_SYMBOL', '50'))
 
     # Data interval for candles
     candle_interval: str = os.getenv('CANDLE_INTERVAL', '1m')
@@ -47,7 +53,7 @@ class TradingSettings:
     default_window: int = int(os.getenv('DEFAULT_WINDOW', '15'))
     
     # Prediction Confidence Thresholds
-    min_confidence_threshold: float = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.6'))
+    min_confidence_threshold: float = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.7'))
     min_signal_strength: str = os.getenv('MIN_SIGNAL_STRENGTH', 'MODERATE')
     
     # Ensemble Model Weights
@@ -59,11 +65,11 @@ class TradingSettings:
     max_daily_loss_pct: float = float(os.getenv('MAX_DAILY_LOSS_PCT', '0.05'))
     max_drawdown_pct: float = float(os.getenv('MAX_DRAWDOWN_PCT', '0.10'))
     # Minimum expected gain (prediction threshold)
-    min_expected_gain_pct: float = float(os.getenv('MIN_EXPECTED_GAIN_PCT', '0.0003'))
+    min_expected_gain_pct: float = float(os.getenv('MIN_EXPECTED_GAIN_PCT', '0.001'))
 
     # Prediction-based exit parameters
     enable_prediction_exits: bool = os.getenv('ENABLE_PREDICTION_EXITS', 'True') == 'True'
-    prediction_exit_min_confidence: float = float(os.getenv('PREDICTION_EXIT_MIN_CONFIDENCE', '0.7'))
+    prediction_exit_min_confidence: float = float(os.getenv('PREDICTION_EXIT_MIN_CONFIDENCE', '0.8'))
     prediction_exit_min_strength: str = os.getenv('PREDICTION_EXIT_MIN_STRENGTH', 'STRONG')
     prediction_lookback_periods: int = int(os.getenv('PREDICTION_LOOKBACK_PERIODS', '5'))
     dynamic_stop_loss_adjustment: bool = os.getenv('DYNAMIC_STOP_LOSS_ADJUSTMENT', 'True') == 'True'
@@ -95,7 +101,7 @@ class TradingSettings:
         if self.max_positions_per_symbol <= 0:
             return False
             
-        if not (0 < self.position_size_pct <= 1):
+        if not (0 < self.base_position_size <= 1):
             return False
             
         if not self.symbols:
@@ -105,4 +111,4 @@ class TradingSettings:
     
     def get_position_size(self, current_capital: float) -> float:
         """Calculate position size based on current capital."""
-        return current_capital * self.position_size_pct
+        return current_capital * self.base_position_size
