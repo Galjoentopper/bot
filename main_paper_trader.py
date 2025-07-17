@@ -5,7 +5,7 @@ import logging
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 import contextlib
 
 # Add paper_trader to path
@@ -354,7 +354,11 @@ class PaperTrader:
             # Initialize exit manager
             self.exit_manager = ExitManager(
                 trailing_stop_pct=self.settings.trailing_stop_pct,
-                max_hold_hours=self.settings.max_hold_hours
+                max_hold_hours=self.settings.max_hold_hours,
+                enable_prediction_exits=self.settings.enable_prediction_exits,
+                prediction_exit_min_confidence=self.settings.prediction_exit_min_confidence,
+                prediction_exit_min_strength=self.settings.prediction_exit_min_strength,
+                dynamic_stop_loss_adjustment=self.settings.dynamic_stop_loss_adjustment
             )
             
             # Initialize portfolio manager
@@ -588,6 +592,154 @@ class PaperTrader:
         
         except Exception as e:
             self.logger.error(f"Error checking exit conditions: {e}")
+
+    async def get_prediction_for_symbol(self, symbol: str) -> Optional[dict]:
+        """Fetch data and return model prediction for a symbol."""
+        try:
+            if (symbol not in self.model_loader.lstm_models and
+                symbol not in self.model_loader.xgb_models):
+                return None
+
+            await self.data_collector.refresh_latest_price(symbol)
+
+            if not await self.data_collector.ensure_sufficient_data(symbol, min_length=500):
+                return None
+
+            data = self.data_collector.get_buffer_data(symbol, min_length=500)
+            if data is None or len(data) < 500:
+                return None
+
+            features_df = self.feature_engineer.engineer_features(data)
+            if features_df is None or len(features_df) < self.settings.sequence_length:
+                return None
+
+            await self.data_collector.refresh_latest_price(symbol)
+            current_price = self.data_collector.get_latest_price(symbol)
+            if current_price is None:
+                current_price = await self.data_collector.get_current_price(symbol)
+            if current_price is None:
+                return None
+
+            price_data = features_df['close'].tail(20)
+            market_volatility = price_data.std() / price_data.mean() if len(price_data) > 1 else 0.5
+
+            prediction_result = await self.predictor.predict(
+                symbol, features_df, market_volatility, current_price
+            )
+
+            if prediction_result is not None and self.ws_server:
+                await self.ws_server.broadcast({'type': 'prediction', 'symbol': symbol, 'data': prediction_result})
+
+            return prediction_result
+
+        except Exception as e:
+            self.logger.error(f"Error getting prediction for {symbol}: {e}")
+            return None
+
+    async def check_existing_positions(self, symbol: str, prediction_result: dict):
+        """Check existing positions for prediction-based exits."""
+        positions = self.portfolio_manager.positions.get(symbol, [])
+
+        for position in list(positions):
+            current_price = await self.data_collector.get_current_price(symbol)
+            if current_price is None:
+                continue
+
+            exit_signal = self.exit_manager.check_exit_conditions(
+                position, current_price, prediction_result
+            )
+
+            if exit_signal:
+                exit_price = exit_signal.get('exit_price', current_price)
+                reason = exit_signal['reason']
+                success = self.portfolio_manager.close_position(
+                    symbol=symbol,
+                    position=position,
+                    exit_price=exit_price,
+                    reason=reason
+                )
+
+                if success:
+                    pnl = (exit_price - position.entry_price) * position.quantity
+                    pnl_pct = (exit_price - position.entry_price) / position.entry_price
+                    hold_time = (datetime.now() - position.entry_time).total_seconds() / 3600
+
+                    if reason == 'PREDICTION_REVERSAL':
+                        await self.telegram_notifier.send_prediction_exit_alert(
+                            symbol=symbol,
+                            confidence=exit_signal.get('reversal_confidence', 0),
+                            signal_strength=exit_signal.get('reversal_signal', ''),
+                            pnl=pnl
+                        )
+                    else:
+                        await self.telegram_notifier.send_position_closed(
+                            symbol=symbol,
+                            entry_price=position.entry_price,
+                            exit_price=exit_price,
+                            quantity=position.quantity,
+                            pnl=pnl,
+                            pnl_pct=pnl_pct,
+                            exit_reason=reason,
+                            hold_time_hours=hold_time
+                        )
+
+    async def check_entry_opportunities(self, symbol: str, prediction_result: dict):
+        """Check for new entry opportunities based on prediction."""
+        if not prediction_result:
+            return
+
+        if not self.predictor._meets_trading_threshold(
+            prediction_result['confidence'], prediction_result['signal_strength']
+        ):
+            return
+
+        current_positions = self.portfolio_manager.positions.get(symbol, [])
+        if len(current_positions) >= self.settings.max_positions_per_symbol:
+            return
+
+        current_price = await self.data_collector.get_current_price(symbol)
+        if current_price is None:
+            return
+
+        signal = self.signal_generator.generate_signal(
+            symbol=symbol,
+            prediction=prediction_result,
+            current_price=current_price,
+            portfolio=self.portfolio_manager
+        )
+
+        if signal and signal['action'] == 'BUY':
+            success = self.portfolio_manager.open_position(
+                symbol=symbol,
+                entry_price=current_price,
+                quantity=signal['quantity'],
+                take_profit=signal['take_profit'],
+                stop_loss=signal['stop_loss'],
+                confidence=prediction_result['confidence'],
+                signal_strength=prediction_result['signal_strength']
+            )
+
+            if success:
+                await self.telegram_notifier.send_position_opened(
+                    symbol=symbol,
+                    entry_price=current_price,
+                    quantity=signal['quantity'],
+                    take_profit=signal['take_profit'],
+                    stop_loss=signal['stop_loss'],
+                    confidence=prediction_result['confidence'],
+                    signal_strength=prediction_result['signal_strength'],
+                    position_value=signal['position_value']
+                )
+
+    async def run_trading_cycle(self):
+        """Enhanced trading cycle with prediction monitoring."""
+        for symbol in self.settings.symbols:
+            try:
+                prediction_result = await self.get_prediction_for_symbol(symbol)
+                await self.check_existing_positions(symbol, prediction_result)
+                await self.check_entry_opportunities(symbol, prediction_result)
+            except Exception as e:
+                self.logger.error(f"Error in trading cycle for {symbol}: {e}")
     
     async def send_hourly_update(self):
         """Send hourly portfolio update."""
@@ -659,25 +811,8 @@ class PaperTrader:
             # Main trading loop
             while self.is_running:
                 try:
-                    # Process each symbol
-                    for symbol in self.settings.symbols:
-                        if not self.is_running:
-                            break
-                        last_update = self.data_collector.last_update.get(symbol)
-                        last_processed = self.last_prediction_time.get(symbol)
+                    await self.run_trading_cycle()
 
-                        # Run prediction only if we received new data
-                        if last_update and (last_processed is None or last_update > last_processed):
-                            await self.process_symbol(symbol)
-                            self.last_prediction_time[symbol] = last_update
-                        else:
-                            self.logger.debug(f"No new data for {symbol}, skipping prediction")
-
-                        await asyncio.sleep(1)  # Small delay between symbols
-                    
-                    # Check exit conditions for open positions
-                    await self.check_exit_conditions()
-                    
                     # Send hourly updates
                     now = datetime.now()
                     if now - self.last_hourly_update >= timedelta(hours=1):

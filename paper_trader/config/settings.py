@@ -60,6 +60,13 @@ class TradingSettings:
     max_drawdown_pct: float = float(os.getenv('MAX_DRAWDOWN_PCT', '0.10'))
     # Minimum expected gain (prediction threshold)
     min_expected_gain_pct: float = float(os.getenv('MIN_EXPECTED_GAIN_PCT', '0.0003'))
+
+    # Prediction-based exit parameters
+    enable_prediction_exits: bool = os.getenv('ENABLE_PREDICTION_EXITS', 'True') == 'True'
+    prediction_exit_min_confidence: float = float(os.getenv('PREDICTION_EXIT_MIN_CONFIDENCE', '0.7'))
+    prediction_exit_min_strength: str = os.getenv('PREDICTION_EXIT_MIN_STRENGTH', 'STRONG')
+    prediction_lookback_periods: int = int(os.getenv('PREDICTION_LOOKBACK_PERIODS', '5'))
+    dynamic_stop_loss_adjustment: bool = os.getenv('DYNAMIC_STOP_LOSS_ADJUSTMENT', 'True') == 'True'
     
     def __post_init__(self):
         """Initialize symbols list from environment variable."""

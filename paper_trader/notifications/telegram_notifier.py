@@ -217,6 +217,20 @@ class TelegramNotifier:
         except Exception as e:
             self.logger.error(f"Error creating daily summary message: {e}")
             return False
+
+    async def send_prediction_exit_alert(self, symbol: str, confidence: float,
+                                          signal_strength: str, pnl: float):
+        """Send alert for prediction-based exit."""
+        message = (
+            f"🔮 <b>Prediction Exit Triggered</b>\n\n"
+            f"📊 Symbol: <code>{symbol}</code>\n"
+            f"🎯 Model Confidence: <code>{confidence:.1%}</code>\n"
+            f"⚡ Signal Strength: <code>{signal_strength}</code>\n"
+            f"💰 P&L: <code>${pnl:+.2f}</code>\n\n"
+            f"🧠 AI detected potential reversal - position closed proactively"
+        )
+
+        return await self.send_message(message)
     
     async def send_market_alert(self, symbol: str, alert_type: str, message_text: str) -> bool:
         """Send market-related alerts."""
