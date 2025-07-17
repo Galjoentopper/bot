@@ -460,7 +460,17 @@ class BitvavoDataCollector:
                     )
         except Exception as e:
             self.logger.warning(f"Failed to refresh price for {symbol}: {e}")
-    
+
+    def get_latest_price(self, symbol: str) -> Optional[float]:
+        """Return the most recent close price stored for a symbol."""
+        try:
+            if symbol in self.data_buffers and not self.data_buffers[symbol].empty:
+                return float(self.data_buffers[symbol]["close"].iloc[-1])
+            return None
+        except Exception as e:
+            self.logger.error(f"Error getting latest price for {symbol}: {e}")
+            return None
+
     async def start_websocket_feed(self, symbols: List[str]):
         """Start WebSocket feed for real-time data updates."""
         while True:
