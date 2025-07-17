@@ -7,19 +7,28 @@ from typing import Dict, Optional
 class SignalGenerator:
     """Generates trading signals based on model predictions and portfolio constraints."""
     
-    def __init__(self, max_positions: int = 10, position_size_pct: float = 0.10,
-                 take_profit_pct: float = 0.01, stop_loss_pct: float = 0.01,
-                 min_confidence: float = 0.5, min_signal_strength: str = 'MODERATE',
-                 min_expected_gain_pct: float = 0.0003,
-                 max_positions_per_symbol: int = 1):
+    def __init__(self, max_positions: int = 10, base_position_size: float = 0.08,
+                 max_position_size: float = 0.15, min_position_size: float = 0.02,
+                 take_profit_pct: float = 0.015, stop_loss_pct: float = 0.008,
+                 min_confidence: float = 0.7, min_signal_strength: str = 'MODERATE',
+                 min_expected_gain_pct: float = 0.001,
+                 max_positions_per_symbol: int = 1,
+                 position_cooldown_minutes: int = 5,
+                 data_collector=None,
+                 max_daily_trades_per_symbol: int = 50):
         self.max_positions = max_positions
         self.max_positions_per_symbol = max_positions_per_symbol
-        self.position_size_pct = position_size_pct
+        self.base_position_size = base_position_size
+        self.max_position_size = max_position_size
+        self.min_position_size = min_position_size
         self.take_profit_pct = take_profit_pct
         self.stop_loss_pct = stop_loss_pct
         self.min_confidence = min_confidence
         self.min_signal_strength = min_signal_strength
         self.min_expected_gain_pct = min_expected_gain_pct
+        self.position_cooldown_minutes = position_cooldown_minutes
+        self.max_daily_trades_per_symbol = max_daily_trades_per_symbol
+        self.data_collector = data_collector
         
         # Signal strength hierarchy
         self.signal_hierarchy = {
@@ -34,16 +43,17 @@ class SignalGenerator:
 
     def calculate_position_size(self, confidence: float, signal_strength: str) -> float:
         """Calculate dynamic position size based on confidence and signal strength."""
-        confidence_multiplier = min(1.0, max(0.5, confidence))
+        confidence_multiplier = max(0.7, min(1.0, confidence))
         strength_multipliers = {
-            'VERY_STRONG': 1.0,
-            'STRONG': 0.8,
-            'MODERATE': 0.6,
-            'WEAK': 0.4,
-            'NEUTRAL': 0.0
+            'VERY_STRONG': 1.2,
+            'STRONG': 1.0,
+            'MODERATE': 0.8,
+            'WEAK': 0.5,
+            'NEUTRAL': 0.3
         }
         strength_multiplier = strength_multipliers.get(signal_strength, 0.5)
-        return self.position_size_pct * confidence_multiplier * strength_multiplier
+        final_size = self.base_position_size * confidence_multiplier * strength_multiplier
+        return max(self.min_position_size, min(self.max_position_size, final_size))
     
     def generate_signal(self, symbol: str, prediction: dict, current_price: float, 
                        portfolio) -> Optional[Dict]:
@@ -56,6 +66,19 @@ class SignalGenerator:
                     f"Maximum positions for {symbol} reached ({current_per_symbol}/{self.max_positions_per_symbol})"
                 )
                 return None
+
+            # Cooldown after closing a position
+            last_closed = getattr(portfolio, 'last_closed_time', {}).get(symbol)
+            if last_closed and (datetime.now() - last_closed).total_seconds() < self.position_cooldown_minutes * 60:
+                self.logger.debug(f"Cooldown active for {symbol}")
+                return None
+
+            # Limit daily trades per symbol
+            if self.max_daily_trades_per_symbol and hasattr(portfolio, 'trades'):
+                today_trades = [t for t in portfolio.trades if t.symbol == symbol and (datetime.now() - t.exit_time).total_seconds() < 86400]
+                if len(today_trades) >= self.max_daily_trades_per_symbol:
+                    self.logger.debug(f"Daily trade limit reached for {symbol}")
+                    return None
             
             # Check portfolio constraints
             total_positions = sum(len(p) for p in portfolio.positions.values())
@@ -84,6 +107,10 @@ class SignalGenerator:
                 self.logger.debug(f"Signal strength too low for {symbol}: {signal_strength}")
                 return None
             
+            # Check market conditions before generating a signal
+            if not self._check_market_conditions(symbol):
+                return None
+
             # Generate buy signal if expected gain exceeds threshold
             if price_change_pct > self.min_expected_gain_pct:
                 return self._generate_buy_signal(symbol, current_price, prediction, portfolio)
@@ -115,6 +142,27 @@ class SignalGenerator:
             return False
         
         return True
+
+    def _check_market_conditions(self, symbol: str) -> bool:
+        """Check if market conditions are favorable for trading."""
+        if not self.data_collector:
+            return True
+        try:
+            recent_data = self.data_collector.get_buffer_data(symbol, 20)
+            if recent_data is None or len(recent_data) < 20:
+                return False
+
+            volatility = recent_data['close'].pct_change().std()
+            if volatility > 0.03:
+                return False
+
+            sma_short = recent_data['close'].rolling(5).mean().iloc[-1]
+            sma_long = recent_data['close'].rolling(20).mean().iloc[-1]
+            trend_strength = abs(sma_short - sma_long) / sma_long
+            return trend_strength > 0.005
+        except Exception as e:
+            self.logger.error(f"Market condition check failed for {symbol}: {e}")
+            return False
     
     def _generate_buy_signal(self, symbol: str, current_price: float, 
                            prediction: dict, portfolio) -> Dict:
@@ -177,11 +225,15 @@ class SignalGenerator:
         return {
             'max_positions': self.max_positions,
             'max_positions_per_symbol': self.max_positions_per_symbol,
-            'position_size_pct': self.position_size_pct,
+            'base_position_size': self.base_position_size,
+            'max_position_size': self.max_position_size,
+            'min_position_size': self.min_position_size,
             'take_profit_pct': self.take_profit_pct,
             'stop_loss_pct': self.stop_loss_pct,
             'min_confidence': self.min_confidence,
             'min_signal_strength': self.min_signal_strength,
             'min_expected_gain_pct': self.min_expected_gain_pct,
-            'signal_hierarchy': self.signal_hierarchy
+            'signal_hierarchy': self.signal_hierarchy,
+            'position_cooldown_minutes': self.position_cooldown_minutes,
+            'max_daily_trades_per_symbol': self.max_daily_trades_per_symbol
         }

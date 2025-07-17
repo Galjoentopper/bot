@@ -78,12 +78,18 @@ TELEGRAM_CHAT_ID=your_telegram_chat_id
 INITIAL_CAPITAL=10000.0
 MAX_POSITIONS=10
 MAX_POSITIONS_PER_SYMBOL=5
-POSITION_SIZE_PCT=0.10
-TAKE_PROFIT_PCT=0.01
-STOP_LOSS_PCT=0.01
-TRAILING_STOP_PCT=0.005
+BASE_POSITION_SIZE=0.08
+MAX_POSITION_SIZE=0.15
+MIN_POSITION_SIZE=0.02
+TAKE_PROFIT_PCT=0.015
+STOP_LOSS_PCT=0.008
+TRAILING_STOP_PCT=0.006
+MIN_PROFIT_FOR_TRAILING=0.005
 MAX_HOLD_HOURS=24
-MIN_EXPECTED_GAIN_PCT=0.0003
+MIN_HOLD_TIME_MINUTES=10
+POSITION_COOLDOWN_MINUTES=5
+MAX_DAILY_TRADES_PER_SYMBOL=50
+MIN_EXPECTED_GAIN_PCT=0.001
 
 # Symbols to Trade (comma-separated)
 SYMBOLS=BTC-EUR,ETH-EUR,ADA-EUR,DOT-EUR,LINK-EUR
@@ -93,7 +99,7 @@ MODEL_PATH=models
 SEQUENCE_LENGTH=60
 
 # Risk Management
-MIN_CONFIDENCE=0.6
+MIN_CONFIDENCE=0.7
 MIN_VOLUME_RATIO=1.0
 MAX_VOLATILITY=0.05
 ```
@@ -137,15 +143,16 @@ The system will:
 
 ### Trading Strategy
 - **Entry**: Based on ensemble ML predictions (LSTM + XGBoost)
-- **Position Sizing**: 10% of available capital per position
-- **Take Profit**: 1% above entry price
-- **Stop Loss**: 1% below entry price
-- **Trailing Stop**: 0.5% trailing stop to lock in profits
-- **Time Exit**: Maximum 24-hour hold time
+- **Position Sizing**: Dynamic 8% base size scaled by confidence and strength
+- **Take Profit**: 1.5% above entry price
+- **Stop Loss**: 0.8% below entry price
+- **Trailing Stop**: 0.6% trailing stop after 0.5% profit
+- **Time Exit**: Maximum 24-hour hold time with 10 minute minimum
 
 ### Risk Management
 - Maximum 10 concurrent positions
-- Minimum 60% confidence threshold for trades
+- Minimum 70% confidence threshold for trades
+- Cooling-off period between trades
 - Volume and volatility filters
 - Emergency stop conditions
 
