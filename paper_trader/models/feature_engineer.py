@@ -275,8 +275,17 @@ class FeatureEngineer:
             df_new_features = pd.DataFrame(all_features, index=df.index)
             df_final = pd.concat([df, df_new_features], axis=1)
 
+            # Replace inf values with NaN then drop
+            if np.isinf(df_final.to_numpy()).any():
+                self.logger.debug("Replacing inf values in engineered features")
+                df_final.replace([np.inf, -np.inf], np.nan, inplace=True)
+
             # Drop rows with NaN values
+            before_rows = len(df_final)
             df_final = df_final.dropna()
+            dropped = before_rows - len(df_final)
+            if dropped > 0:
+                self.logger.debug(f"Dropped {dropped} rows due to NaN/inf values")
 
             if len(df_final) < 30:
                 self.logger.warning(f"Insufficient data after feature engineering and NaN removal. Remaining rows: {len(df_final)}")
