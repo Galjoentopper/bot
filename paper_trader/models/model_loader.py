@@ -440,6 +440,13 @@ class WindowBasedEnsemblePredictor:
                 feature_data[feature_cols] = scaler.transform(
                     feature_data[feature_cols].to_numpy()
                 )
+
+            # Sanitize feature values before sequence creation
+            if np.isnan(feature_data[feature_cols].to_numpy()).any() or np.isinf(feature_data[feature_cols].to_numpy()).any():
+                self.logger.debug("Replacing invalid values in LSTM feature data")
+                feature_data[feature_cols] = np.nan_to_num(
+                    feature_data[feature_cols].to_numpy(), nan=0.0, posinf=0.0, neginf=0.0
+                )
             
             # Create sequence for LSTM using fixed training length
             sequence_length = min(LSTM_SEQUENCE_LENGTH, len(feature_data))
@@ -447,6 +454,11 @@ class WindowBasedEnsemblePredictor:
             numeric_cols = feature_cols
 
             sequence = feature_data[numeric_cols].tail(sequence_length).values
+
+            # Replace any remaining invalid values
+            if not np.isfinite(sequence).all():
+                self.logger.debug("Cleaning invalid values in LSTM sequence")
+                sequence = np.nan_to_num(sequence, nan=0.0, posinf=0.0, neginf=0.0)
 
             # Pad sequence if needed to match training length
             if sequence.shape[0] < LSTM_SEQUENCE_LENGTH:
