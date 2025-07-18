@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import warnings
 import os
 import json
+import pickle
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 from collections import defaultdict
@@ -131,7 +132,7 @@ class ModelBacktester:
         return df
     
     def load_models(self, symbol: str, window_num: int):
-        """Load LSTM and XGBoost models for a specific window"""
+        """Load LSTM and XGBoost models for a specific window - FIXED VERSION"""
         try:
             # Load LSTM model
             lstm_path = f'models/lstm/{symbol.lower()}_window_{window_num}.keras'
@@ -140,7 +141,7 @@ class ModelBacktester:
                 try:
                     import tensorflow as tf
                     from tensorflow.keras.models import load_model
-                    
+
                     # Try different loading approaches for compatibility
                     try:
                         # First try: standard loading
@@ -152,14 +153,15 @@ class ModelBacktester:
                     except Exception as e1:
                         try:
                             # Second try: with compile=False for compatibility
-                            lstm_model = load_model(lstm_path, compile=False, custom_objects={"directional_loss": directional_loss})
+                            lstm_model = load_model(lstm_path, compile=False, 
+                                                  custom_objects={"directional_loss": directional_loss})
                             # Recompile with current TensorFlow version
                             lstm_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
                         except Exception as e2:
                             print(f"    LSTM model loading failed for window {window_num}: {e1}")
                             print(f"    Alternative loading also failed: {e2}")
                             lstm_model = None
-                            
+
                     if lstm_model is not None:
                         print(f"    LSTM model loaded successfully for window {window_num}")
                 except Exception as e:
@@ -167,7 +169,7 @@ class ModelBacktester:
                     lstm_model = None
             else:
                 print(f"    LSTM model file not found: {lstm_path}")
-            
+
             # Load XGBoost model
             xgb_path = f'models/xgboost/{symbol.lower()}_window_{window_num}.json'
             xgb_model = None
@@ -181,25 +183,114 @@ class ModelBacktester:
                     xgb_model = None
             else:
                 print(f"    XGBoost model file not found: {xgb_path}")
-            
-            # Load scalers
-            scaler_path = f'models/scalers/{symbol.lower()}_window_{window_num}_scaler.pkl'
-            scaler = MinMaxScaler()
-            if os.path.exists(scaler_path):
-                try:
-                    with open(scaler_path, 'rb') as f:
-                        scaler = pickle.load(f)
-                    print(f"    Scaler loaded successfully for window {window_num}")
-                except Exception as e:
-                    print(f"    Scaler loading failed for window {window_num}: {e}")
-            else:
-                print(f"    Scaler file not found: {scaler_path}")
-            
+
+            # Load or create fitted scaler - THIS IS THE KEY FIX
+            scaler = self._load_or_create_scaler(symbol, window_num)
+
             return lstm_model, xgb_model, scaler
+
         except Exception as e:
             print(f"Error loading models for {symbol} window {window_num}: {e}")
-            return None, None, MinMaxScaler()
-    
+            # Even in error case, return a fitted scaler
+            scaler = self._load_or_create_scaler(symbol, window_num)
+            return None, None, scaler
+
+    def _load_or_create_scaler(self, symbol: str, window_num: int) -> MinMaxScaler:
+        """Load existing scaler or create a fitted one"""
+
+        scaler_path = f'models/scalers/{symbol.lower()}_window_{window_num}_scaler.pkl'
+
+        if os.path.exists(scaler_path):
+            try:
+                with open(scaler_path, 'rb') as f:
+                    scaler = pickle.load(f)
+
+                if hasattr(scaler, 'scale_') and scaler.scale_ is not None:
+                    print(f"    ✅ Loaded fitted scaler for {symbol} window {window_num}")
+                    return scaler
+                else:
+                    print(f"    ⚠️ Loaded scaler is not fitted, will create new one")
+
+            except Exception as e:
+                print(f"    ❌ Failed to load scaler {scaler_path}: {e}")
+        else:
+            print(f"    ⚠️ Scaler file not found: {scaler_path}")
+
+        return self._create_fitted_scaler(symbol)
+
+    def _create_fitted_scaler(self, symbol: str) -> MinMaxScaler:
+        """Create a fitted scaler using available historical data"""
+
+        try:
+            import sqlite3
+            db_path = f'data/{symbol.lower()}_15m.db'
+
+            if os.path.exists(db_path):
+                conn = sqlite3.connect(db_path)
+                query = """
+                SELECT close, volume FROM market_data 
+                WHERE close > 0 AND volume > 0 
+                ORDER BY timestamp 
+                LIMIT 5000
+                """
+                df = pd.read_sql_query(query, conn)
+                conn.close()
+
+                if len(df) > 100:
+                    df = df.fillna(method='ffill').dropna()
+
+                    if len(df) > 50:
+                        scaler = MinMaxScaler()
+                        scaler.fit(df[['close', 'volume']].values)
+                        print(f"    ✅ Created fitted scaler using {len(df)} historical samples")
+                        return scaler
+
+        except Exception as e:
+            print(f"    ❌ Could not load historical data for {symbol}: {e}")
+
+        print(f"    ⚠️ Creating pass-through scaler for {symbol}")
+        return self._create_passthrough_scaler()
+
+    def _create_passthrough_scaler(self) -> MinMaxScaler:
+        """Create a 'scaler' that doesn't actually scale (identity transformation)"""
+
+        scaler = MinMaxScaler()
+        scaler.scale_ = np.array([1.0, 1.0])
+        scaler.min_ = np.array([0.0, 0.0])
+        scaler.data_min_ = np.array([0.0, 0.0])
+        scaler.data_max_ = np.array([1.0, 1.0])
+        scaler.data_range_ = np.array([1.0, 1.0])
+        scaler.n_samples_seen_ = 1000
+        scaler.feature_range = (0, 1)
+
+        return scaler
+
+    def check_scalers(self, symbol: str):
+        """Check status of all scalers for a symbol"""
+
+        print(f"\n🔍 Checking scalers for {symbol}:")
+
+        import glob
+        pattern = f"models/scalers/{symbol.lower()}_window_*_scaler.pkl"
+        scaler_files = glob.glob(pattern)
+
+        if not scaler_files:
+            print(f"  ❌ No scaler files found")
+            return
+
+        for file in scaler_files:
+            try:
+                window = file.split('_window_')[1].split('_scaler')[0]
+                with open(file, 'rb') as f:
+                    scaler = pickle.load(f)
+
+                is_fitted = hasattr(scaler, 'scale_') and scaler.scale_ is not None
+                status = "✅ Fitted" if is_fitted else "❌ Not fitted"
+                print(f"  Window {window}: {status}")
+
+            except Exception as e:
+                print(f"  Window {window}: ❌ Error - {e}")
+
     def calculate_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate all technical indicators and features"""
         data = df.copy()
@@ -279,19 +370,36 @@ class ModelBacktester:
         return data
     
     def create_lstm_sequences(self, data: pd.DataFrame, scaler: MinMaxScaler) -> np.ndarray:
-        """Create sequences for LSTM prediction"""
-        # Select features for LSTM (must match training: close and volume only)
+        """Create sequences for LSTM prediction - FIXED VERSION"""
+
         lstm_features = ['close', 'volume']
-        
-        # Scale the data (use transform only, scaler is already fitted)
-        scaled_data = scaler.transform(
-            data[lstm_features].fillna(method='ffill').to_numpy()
-        )
-        
+
+        feature_data = data[lstm_features].fillna(method='ffill').dropna()
+
+        if len(feature_data) == 0:
+            print("    ❌ No valid data for LSTM sequences")
+            return np.array([])
+
+        if not hasattr(scaler, 'scale_') or scaler.scale_ is None:
+            print("    ⚠️ Scaler not fitted, fitting on available data...")
+            scaler.fit(feature_data.values)
+
+        try:
+            scaled_data = scaler.transform(feature_data.values)
+            print(f"    ✅ Successfully scaled {len(feature_data)} data points")
+        except Exception as e:
+            print(f"    ❌ Scaling failed: {e}, using unscaled data")
+            scaled_data = feature_data.values
+
         sequences = []
         for i in range(self.config.sequence_length, len(scaled_data)):
             sequences.append(scaled_data[i-self.config.sequence_length:i])
-        
+
+        if len(sequences) == 0:
+            print(f"    ❌ Not enough data for sequences (need {self.config.sequence_length + 1}+)")
+            return np.array([])
+
+        print(f"    ✅ Created {len(sequences)} LSTM sequences")
         return np.array(sequences)
     
     def get_xgb_features(self, data: pd.DataFrame, lstm_delta: float) -> np.ndarray:
