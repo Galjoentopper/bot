@@ -136,6 +136,9 @@ ORDER BY date;
 1. **Network Errors**: The program will retry automatically
 2. **Rate Limiting**: Built-in delays prevent rate limit issues
 3. **Incomplete Data**: Check logs for specific error messages
+4. **Out of Bounds Timestamp Errors**: Binance switched to microsecond
+   timestamps for bulk files in 2025. Update to the latest collector version
+   if you see `Out of bounds nanosecond` messages.
 
 ### Logs
 
