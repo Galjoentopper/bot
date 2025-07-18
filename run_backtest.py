@@ -99,11 +99,15 @@ class OptimizedBacktester(ModelBacktester):
         
         return models
     
-    def simulate_trading_window(self, data, lstm_model, xgb_model, scaler, symbol, initial_capital, positions):
+    def simulate_trading_window(self, data, lstm_model, xgb_model, scaler,
+                                symbol, initial_capital, positions, window_num):
         """Override simulate_trading_window to add debug data collection"""
         if not self.debug_mode:
             # Use parent method if debug mode is disabled
-            return super().simulate_trading_window(data, lstm_model, xgb_model, scaler, symbol, initial_capital, positions)
+            return super().simulate_trading_window(
+                data, lstm_model, xgb_model, scaler,
+                symbol, initial_capital, positions, window_num
+            )
         
         # Debug mode: collect detailed information
         import csv
@@ -145,7 +149,9 @@ class OptimizedBacktester(ModelBacktester):
                 lstm_delta = lstm_pred
                 
                 # XGBoost prediction
-                xgb_features = self.get_xgb_features(data.iloc[:i+1], lstm_delta)
+                xgb_features = self.get_xgb_features(
+                    data.iloc[:i+1], lstm_delta, window_num
+                )
                 xgb_prob = xgb_model.predict_proba(xgb_features)[0][1]
                 
                 # Generate signal
@@ -408,7 +414,8 @@ class OptimizedBacktester(ModelBacktester):
             
             # Simulate trading for this window
             window_trades, window_capital = self.simulate_trading_window(
-                test_data, lstm_model, xgb_model, scaler, symbol, capital, positions
+                test_data, lstm_model, xgb_model, scaler,
+                symbol, capital, positions, window_num
             )
             
             trades.extend(window_trades)

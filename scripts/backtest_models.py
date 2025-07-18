@@ -582,7 +582,8 @@ class ModelBacktester:
             
             # Simulate trading for this window
             window_trades, window_capital = self.simulate_trading_window(
-                test_data, lstm_model, xgb_model, scaler, symbol, capital, positions
+                test_data, lstm_model, xgb_model, scaler,
+                symbol, capital, positions, window_num
             )
             
             trades.extend(window_trades)
@@ -608,8 +609,9 @@ class ModelBacktester:
             'final_capital': capital
         }
     
-    def simulate_trading_window(self, data: pd.DataFrame, lstm_model, xgb_model, scaler, 
-                              symbol: str, initial_capital: float, positions: List[Trade]) -> Tuple[List[Trade], float]:
+    def simulate_trading_window(self, data: pd.DataFrame, lstm_model, xgb_model, scaler,
+                              symbol: str, initial_capital: float, positions: List[Trade],
+                              window_num: int) -> Tuple[List[Trade], float]:
         """Simulate trading for a single window"""
         capital = initial_capital
         window_trades = []
