@@ -37,7 +37,7 @@ class BacktestConfig:
     slide_months: int = 1
     
     # Data Parameters
-    sequence_length: int = 60
+    sequence_length: int = 96
     price_change_threshold: float = 0.002
     
     # Feature Engineering

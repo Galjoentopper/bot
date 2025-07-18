@@ -303,7 +303,7 @@ class FeatureEngineer:
             self.logger.error(f"Error in feature engineering: {e}", exc_info=True)
             return None
         
-    def prepare_lstm_sequences(self, data: pd.DataFrame, sequence_length: int = 60, 
+    def prepare_lstm_sequences(self, data: pd.DataFrame, sequence_length: int = 96,
                               target_col: str = 'close') -> tuple:
         """Prepare sequences for LSTM model input."""
         try:

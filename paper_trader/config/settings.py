@@ -45,7 +45,7 @@ class TradingSettings:
     
     # Model Configuration
     model_path: str = os.getenv('MODEL_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'models'))
-    sequence_length: int = int(os.getenv('SEQUENCE_LENGTH', '60'))
+    sequence_length: int = int(os.getenv('SEQUENCE_LENGTH', '96'))
     
     # Window-based Model Configuration
     min_window: int = int(os.getenv('MIN_WINDOW', '3'))
