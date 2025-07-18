@@ -320,8 +320,13 @@ class ModelBacktester:
         
         # Price features
         data['returns'] = data['close'].pct_change()
+        data['log_returns'] = np.log(data['close'] / data['close'].shift(1))
         data['price_change_1h'] = data['close'].pct_change(4)  # 4 * 15min = 1h
         data['price_change_4h'] = data['close'].pct_change(16)  # 16 * 15min = 4h
+        data['price_zscore_20'] = (
+            (data['close'] - data['close'].rolling(20).mean())
+            / data['close'].rolling(20).std()
+        )
         
         # Volume features
         data['volume_ratio'] = data['volume'] / data['volume'].rolling(20).mean()
@@ -330,6 +335,7 @@ class ModelBacktester:
         # Volatility features
         data['volatility_20'] = data['returns'].rolling(20).std()
         data['atr'] = TechnicalIndicators.calculate_atr(data['high'], data['low'], data['close'])
+        data['atr_ratio'] = data['atr'] / data['close']
         
         # Moving averages
         data['sma_200'] = data['close'].rolling(200).mean()
@@ -369,6 +375,9 @@ class ModelBacktester:
         data['candle_body'] = abs(data['close'] - data['open']) / data['open']
         data['upper_wick'] = (data['high'] - data[['open', 'close']].max(axis=1)) / data['open']
         data['lower_wick'] = (data[['open', 'close']].min(axis=1) - data['low']) / data['open']
+        data['buying_pressure'] = ((data['close'] - data['low']) / (data['high'] - data['low'])).fillna(0.5)
+        data['selling_pressure'] = ((data['high'] - data['close']) / (data['high'] - data['low'])).fillna(0.5)
+        data['spread_ratio'] = (data['high'] - data['low']) / data['close']
         
         # Time features
         data['hour'] = data.index.hour
