@@ -468,10 +468,19 @@ class ModelBacktester:
         ]
         
         # Add lstm_delta to features
-        features = data[feature_columns].iloc[-1].values.tolist()
-        features.append(lstm_delta)
-        
-        return np.array(features).reshape(1, -1)
+        features = []
+        last_row = data[feature_columns].iloc[-1]
+        for col in feature_columns:
+            val = last_row[col]
+            if isinstance(val, (list, tuple, np.ndarray)):
+                # Flatten any accidental sequences and take the first element
+                val = np.asarray(val).flatten()[0]
+            features.append(float(val))
+
+        # append lstm_delta ensuring it is numeric
+        features.append(float(lstm_delta))
+
+        return np.array(features, dtype=float).reshape(1, -1)
     
     def generate_signal(self, xgb_prob: float, lstm_delta: float) -> str:
         """Generate trading signal based on model outputs"""
