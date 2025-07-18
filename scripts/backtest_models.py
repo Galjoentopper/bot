@@ -60,7 +60,10 @@ class BacktestConfig:
         self.slide_months = 1
         
         # Data parameters
-        self.sequence_length = 60
+        # Sequence length must match the value used during model training.
+        # Models in this repository were trained with 96 timesteps, so use the
+        # same length here to avoid shape mismatches at inference time.
+        self.sequence_length = 96
         self.price_change_threshold = 0.002
 
 class TechnicalIndicators:
