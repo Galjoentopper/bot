@@ -331,91 +331,14 @@ class ModelBacktester:
                 print(f"  Window {window}: ❌ Error - {e}")
 
     def calculate_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate all technical indicators and features"""
-        data = df.copy()
-        
-        # Price features
-        data['returns'] = data['close'].pct_change()
-        data['log_returns'] = np.log(data['close'] / data['close'].shift(1))
-        data['price_change_1h'] = data['close'].pct_change(4)  # 4 * 15min = 1h
-        data['price_change_4h'] = data['close'].pct_change(16)  # 16 * 15min = 4h
-        data['price_zscore_20'] = (
-            (data['close'] - data['close'].rolling(20).mean())
-            / data['close'].rolling(20).std()
-        )
-        
-        # Volume features
-        data['volume_ratio'] = data['volume'] / data['volume'].rolling(20).mean()
-        data['volume_change'] = data['volume'].pct_change()
-        
-        # Volatility features
-        data['volatility_20'] = data['returns'].rolling(20).std()
-        data['atr'] = TechnicalIndicators.calculate_atr(data['high'], data['low'], data['close'])
-        data['atr_ratio'] = data['atr'] / data['close']
-        
-        # Moving averages
-        data['sma_200'] = data['close'].rolling(200).mean()
-        data['ema_9'] = data['close'].ewm(span=9).mean()
-        data['ema_21'] = data['close'].ewm(span=21).mean()
-        
-        # Price vs moving averages
-        data['price_vs_sma200'] = (data['close'] - data['sma_200']) / data['sma_200']
-        data['price_vs_ema9'] = (data['close'] - data['ema_9']) / data['ema_9']
-        data['price_vs_ema21'] = (data['close'] - data['ema_21']) / data['ema_21']
-        
-        # RSI
-        data['rsi'] = TechnicalIndicators.calculate_rsi(data['close'])
-        data['rsi_overbought'] = (data['rsi'] > 70).astype(int)
-        data['rsi_oversold'] = (data['rsi'] < 30).astype(int)
-        
-        # MACD
-        macd, signal, histogram = TechnicalIndicators.calculate_macd(data['close'])
-        data['macd'] = macd
-        data['macd_histogram'] = histogram
-        data['macd_bullish'] = (macd > signal).astype(int)
-        
-        # Bollinger Bands
-        bb_upper, bb_lower, bb_middle = TechnicalIndicators.calculate_bollinger_bands(data['close'])
-        data['bb_position'] = (data['close'] - bb_lower) / (bb_upper - bb_lower)
-        data['bb_width'] = (bb_upper - bb_lower) / bb_middle
-        
-        # VWAP
-        data['vwap'] = (data['close'] * data['volume']).cumsum() / data['volume'].cumsum()
-        data['price_vs_vwap'] = (data['close'] - data['vwap']) / data['vwap']
-        
-        # Momentum
-        data['roc_10'] = data['close'].pct_change(10)
-        data['momentum_10'] = data['close'] / data['close'].shift(10) - 1
-        
-        # Candlestick patterns
-        data['candle_body'] = abs(data['close'] - data['open']) / data['open']
-        data['upper_wick'] = (data['high'] - data[['open', 'close']].max(axis=1)) / data['open']
-        data['lower_wick'] = (data[['open', 'close']].min(axis=1) - data['low']) / data['open']
-        data['buying_pressure'] = ((data['close'] - data['low']) / (data['high'] - data['low'])).fillna(0.5)
-        data['selling_pressure'] = ((data['high'] - data['close']) / (data['high'] - data['low'])).fillna(0.5)
-        data['spread_ratio'] = (data['high'] - data['low']) / data['close']
-        
-        # Time features
-        data['hour'] = data.index.hour
-        data['day_of_week'] = data.index.dayofweek
-        data['is_weekend'] = (data.index.dayofweek >= 5).astype(int)
-        
-        # Support/Resistance (simplified)
-        data['near_support'] = 0  # Placeholder
-        data['near_resistance'] = 0  # Placeholder
-        
-        # Feature interactions (from our enhanced model)
-        data['rsi_macd_combo'] = data['rsi'] * data['macd']
-        data['volatility_ema_ratio'] = data['volatility_20'] / data['ema_21']
-        data['volume_price_momentum'] = data['volume_ratio'] * data['momentum_10']
-        data['bb_rsi_signal'] = data['bb_position'] * data['rsi']
-        data['trend_strength'] = abs(data['price_vs_ema9']) * data['volume_ratio']
-        data['volatility_breakout'] = (data['volatility_20'] > data['volatility_20'].rolling(20).mean()).astype(int)
-        
-        # Create target for validation
-        data['target'] = (data['close'].pct_change().shift(-1) > self.config.price_change_threshold).astype(int)
-        
-        return data
+        """Calculate all technical indicators and features."""
+        from paper_trader.models.feature_engineer import FeatureEngineer
+
+        fe = FeatureEngineer()
+        engineered = fe.engineer_features(df)
+        if engineered is None:
+            raise ValueError("Feature engineering failed due to insufficient data")
+        return engineered
     
     def create_lstm_sequences(self, data: pd.DataFrame, scaler: StandardScaler) -> np.ndarray:
         """Create sequences for LSTM prediction."""
