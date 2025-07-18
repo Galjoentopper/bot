@@ -104,13 +104,14 @@ class TechnicalIndicators:
 
 class ModelBacktester:
     """Main backtesting engine"""
-    
+
     def __init__(self, config: BacktestConfig):
         self.config = config
         self.results = defaultdict(list)
         self.trades_history = []
         self.equity_curve = []
         self.daily_returns = []
+        self.xgb_feature_columns: Dict[int, List[str]] = {}
         
         # Create directories
         os.makedirs('backtests', exist_ok=True)
@@ -189,6 +190,18 @@ class ModelBacktester:
 
             # Load or create fitted scaler - THIS IS THE KEY FIX
             scaler = self._load_or_create_scaler(symbol, window_num)
+
+            # Load feature column list for XGBoost
+            fc_path = f"models/feature_columns/{symbol.lower()}_window_{window_num}_selected.pkl"
+            if os.path.exists(fc_path):
+                try:
+                    with open(fc_path, 'rb') as f:
+                        self.xgb_feature_columns[window_num] = pickle.load(f)
+                    print(f"    ✅ Loaded feature columns for window {window_num}")
+                except Exception as e:
+                    print(f"    ❌ Failed to load feature columns {fc_path}: {e}")
+            else:
+                print(f"    ⚠️ Feature columns file not found: {fc_path}")
 
             return lstm_model, xgb_model, scaler
 
@@ -455,17 +468,11 @@ class ModelBacktester:
         print(f"    ✅ Created {len(sequences)} LSTM sequences")
         return np.array(sequences)
     
-    def get_xgb_features(self, data: pd.DataFrame, lstm_delta: float) -> np.ndarray:
+    def get_xgb_features(self, data: pd.DataFrame, lstm_delta: float, window_num: int) -> np.ndarray:
         """Get feature vector for XGBoost prediction"""
-        feature_columns = [
-            'returns', 'price_change_1h', 'price_change_4h', 'volume_ratio', 'volume_change',
-            'volatility_20', 'atr', 'price_vs_sma200', 'price_vs_ema9', 'price_vs_ema21',
-            'rsi', 'rsi_overbought', 'rsi_oversold', 'macd', 'macd_histogram', 'macd_bullish',
-            'bb_position', 'bb_width', 'price_vs_vwap', 'roc_10', 'momentum_10',
-            'candle_body', 'upper_wick', 'lower_wick', 'hour', 'day_of_week', 'is_weekend',
-            'near_support', 'near_resistance', 'rsi_macd_combo', 'volatility_ema_ratio',
-            'volume_price_momentum', 'bb_rsi_signal', 'trend_strength', 'volatility_breakout'
-        ]
+        feature_columns = self.xgb_feature_columns.get(window_num)
+        if not feature_columns:
+            raise ValueError(f"Feature columns for window {window_num} not loaded")
         
         # Add lstm_delta to features
         features = []
@@ -641,7 +648,7 @@ class ModelBacktester:
                 lstm_delta = lstm_pred  # LSTM already outputs percentage change directly
                 
                 # XGBoost prediction
-                xgb_features = self.get_xgb_features(data.iloc[:i+1], lstm_delta)
+                xgb_features = self.get_xgb_features(data.iloc[:i+1], lstm_delta, window_num)
                 xgb_prob = xgb_model.predict_proba(xgb_features)[0][1]
                 
                 # Generate signal
