@@ -222,7 +222,7 @@ def run_custom_optimization(
         save_top_n=10
     )
     
-    print(f"🎯 Running custom optimization:")
+    print("🎯 Running custom optimization:")
     print(f"   Method: {method}")
     print(f"   Objective: {objective}")
     print(f"   Symbols: {symbols}")
@@ -312,7 +312,7 @@ if __name__ == "__main__":
         print(f"🚀 Running preset optimization: {args.preset}")
         results = run_preset_optimization(args.preset, args.symbols)
     else:
-        print(f"🎯 Running custom optimization")
+        print("🎯 Running custom optimization")
         results = run_custom_optimization(
             method=args.method,
             objective=args.objective,
