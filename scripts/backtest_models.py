@@ -3,7 +3,7 @@ import numpy as np
 import sqlite3
 import joblib
 import xgboost as xgb
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -195,7 +195,7 @@ class ModelBacktester:
             scaler = self._load_or_create_scaler(symbol, window_num)
             return None, None, scaler
 
-    def _load_or_create_scaler(self, symbol: str, window_num: int) -> MinMaxScaler:
+    def _load_or_create_scaler(self, symbol: str, window_num: int) -> StandardScaler:
         """Load existing scaler or create a fitted one"""
 
         scaler_path = f'models/scalers/{symbol.lower()}_window_{window_num}_scaler.pkl'
@@ -218,31 +218,57 @@ class ModelBacktester:
 
         return self._create_fitted_scaler(symbol)
 
-    def _create_fitted_scaler(self, symbol: str) -> MinMaxScaler:
+    def _create_fitted_scaler(self, symbol: str) -> StandardScaler:
         """Create a fitted scaler using available historical data"""
 
         try:
             import sqlite3
-            db_path = f'data/{symbol.lower()}_15m.db'
+            db_path = f"data/{symbol.lower()}_15m.db"
 
             if os.path.exists(db_path):
                 conn = sqlite3.connect(db_path)
                 query = """
-                SELECT close, volume FROM market_data 
-                WHERE close > 0 AND volume > 0 
-                ORDER BY timestamp 
+                SELECT * FROM market_data
+                ORDER BY timestamp
                 LIMIT 5000
                 """
                 df = pd.read_sql_query(query, conn)
                 conn.close()
 
                 if len(df) > 100:
-                    df = df.fillna(method='ffill').dropna()
+                    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+                    df.set_index("timestamp", inplace=True)
+                    df = df.fillna(method="ffill").dropna()
+                    df = self.calculate_features(df)
 
-                    if len(df) > 50:
-                        scaler = MinMaxScaler()
-                        scaler.fit(df[['close', 'volume']].values)
-                        print(f"    ✅ Created fitted scaler using {len(df)} historical samples")
+                    lstm_features = [
+                        "close",
+                        "volume",
+                        "returns",
+                        "log_returns",
+                        "volatility_20",
+                        "atr_ratio",
+                        "rsi",
+                        "macd",
+                        "bb_position",
+                        "volume_ratio",
+                        "price_vs_ema9",
+                        "price_vs_ema21",
+                        "buying_pressure",
+                        "selling_pressure",
+                        "spread_ratio",
+                        "momentum_10",
+                        "price_zscore_20",
+                    ]
+
+                    feature_data = df[lstm_features].dropna()
+
+                    if len(feature_data) > 50:
+                        scaler = StandardScaler()
+                        scaler.fit(feature_data.values)
+                        print(
+                            f"    ✅ Created fitted scaler using {len(feature_data)} historical samples"
+                        )
                         return scaler
 
         except Exception as e:
@@ -251,17 +277,14 @@ class ModelBacktester:
         print(f"    ⚠️ Creating pass-through scaler for {symbol}")
         return self._create_passthrough_scaler()
 
-    def _create_passthrough_scaler(self) -> MinMaxScaler:
+    def _create_passthrough_scaler(self) -> StandardScaler:
         """Create a 'scaler' that doesn't actually scale (identity transformation)"""
 
-        scaler = MinMaxScaler()
-        scaler.scale_ = np.array([1.0, 1.0])
-        scaler.min_ = np.array([0.0, 0.0])
-        scaler.data_min_ = np.array([0.0, 0.0])
-        scaler.data_max_ = np.array([1.0, 1.0])
-        scaler.data_range_ = np.array([1.0, 1.0])
+        scaler = StandardScaler()
+        scaler.mean_ = np.zeros(17)
+        scaler.scale_ = np.ones(17)
+        scaler.var_ = np.ones(17)
         scaler.n_samples_seen_ = 1000
-        scaler.feature_range = (0, 1)
 
         return scaler
 
@@ -369,12 +392,30 @@ class ModelBacktester:
         
         return data
     
-    def create_lstm_sequences(self, data: pd.DataFrame, scaler: MinMaxScaler) -> np.ndarray:
-        """Create sequences for LSTM prediction - FIXED VERSION"""
+    def create_lstm_sequences(self, data: pd.DataFrame, scaler: StandardScaler) -> np.ndarray:
+        """Create sequences for LSTM prediction."""
 
-        lstm_features = ['close', 'volume']
+        lstm_features = [
+            "close",
+            "volume",
+            "returns",
+            "log_returns",
+            "volatility_20",
+            "atr_ratio",
+            "rsi",
+            "macd",
+            "bb_position",
+            "volume_ratio",
+            "price_vs_ema9",
+            "price_vs_ema21",
+            "buying_pressure",
+            "selling_pressure",
+            "spread_ratio",
+            "momentum_10",
+            "price_zscore_20",
+        ]
 
-        feature_data = data[lstm_features].fillna(method='ffill').dropna()
+        feature_data = data[lstm_features].fillna(method="ffill").dropna()
 
         if len(feature_data) == 0:
             print("    ❌ No valid data for LSTM sequences")
