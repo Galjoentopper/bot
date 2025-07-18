@@ -36,3 +36,5 @@ pytz>=2022.1
 
 # Data handling
 pyarrow>=10.0.0
+
+
