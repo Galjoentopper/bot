@@ -276,7 +276,8 @@ class FeatureEngineer:
             df_final = pd.concat([df, df_new_features], axis=1)
 
             # Replace inf values with NaN then drop
-            if np.isinf(df_final.to_numpy()).any():
+            numeric_data = df_final.select_dtypes(include=[np.number])
+            if np.isinf(numeric_data.to_numpy()).any():
                 self.logger.debug("Replacing inf values in engineered features")
                 df_final.replace([np.inf, -np.inf], np.nan, inplace=True)
 
