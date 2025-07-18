@@ -20,7 +20,7 @@ This directory contains a comprehensive machine learning pipeline for training c
 
 | Component | Input | Output | Purpose |
 |-----------|-------|--------|---------|
-| **LSTM** | 60 candles of [price, volume] | `lstm_delta` (% price change) | Learn temporal patterns |
+| **LSTM** | 96 candles of [price, volume] | `lstm_delta` (% price change) | Learn temporal patterns |
 | **XGBoost** | Technical indicators + `lstm_delta` | Buy/Sell signal (binary) | Final trading decision |
 
 ## 📁 Project Structure
@@ -103,7 +103,7 @@ The script implements **walk-forward validation** with a sliding window approach
 For each time window:
 
 ##### 🧠 LSTM Training
-- **Input**: 60-step sequences of [price, volume] from training window
+- **Input**: 96-step sequences of [price, volume] from training window
 - **Architecture**: `LSTM(64) → Dropout(0.2) → LSTM(32) → Dense(32) → Dense(1)`
 - **Target**: Next 15-minute price change percentage
 - **Split**: 80% train, 20% validation within window
@@ -263,7 +263,7 @@ min_training_samples = 10000        # Minimum samples for training
 seed = 42                           # Random seed for reproducibility
 
 # LSTM Configuration
-lstm_sequence_length = 60           # 15 hours of 15-min candles
+lstm_sequence_length = 96           # 24 hours of 15-min candles
 prediction_horizon = 1              # Next 15-min candle
 
 # XGBoost Configuration
@@ -339,7 +339,7 @@ pip install git+https://github.com/twopirllc/pandas-ta
 batch_size=16  # instead of 32
 
 # Or reduce sequence length
-lstm_sequence_length = 30  # instead of 60
+lstm_sequence_length = 30  # instead of 96
 ```
 
 #### 3. No Data Available
@@ -391,7 +391,7 @@ with open('models/scalers/btceur_scaler.pkl', 'rb') as f:
 ### Making Predictions
 
 ```python
-# 1. Prepare LSTM input (last 60 candles)
+# 1. Prepare LSTM input (last 96 candles)
 lstm_input = prepare_lstm_sequence(recent_data)
 lstm_input_scaled = scaler.transform(lstm_input)
 
