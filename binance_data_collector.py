@@ -130,7 +130,12 @@ class BinanceDataCollector:
                         'close_time', 'quote_volume', 'trades', 'taker_buy_base',
                         'taker_buy_quote', 'ignore'
                     ])
-            
+
+            # Normalize timestamps (Binance switched to microseconds in 2025)
+            df['timestamp'] = pd.to_numeric(df['timestamp'], errors='coerce')
+            if df['timestamp'].abs().max() > 1e14:
+                df['timestamp'] = (df['timestamp'] // 1000).astype('int64')
+
             # Add human-readable datetime
             df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
             
@@ -238,7 +243,11 @@ class BinanceDataCollector:
         
         df['timestamp'] = pd.to_numeric(df['timestamp'], errors='coerce')
         df['trades'] = pd.to_numeric(df['trades'], errors='coerce')
-        
+
+        # Normalize timestamps (microseconds handling)
+        if df['timestamp'].abs().max() > 1e14:
+            df['timestamp'] = (df['timestamp'] // 1000).astype('int64')
+
         # Add human-readable datetime
         df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
         
