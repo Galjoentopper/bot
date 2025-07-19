@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import socket
 from typing import Set
 
 import websockets
@@ -14,6 +15,23 @@ class PredictionWebSocketServer:
         self.clients: Set[websockets.WebSocketServerProtocol] = set()
         self.server: websockets.server.Serve = None
         self.logger = logging.getLogger(__name__)
+
+    def _is_port_available(self, port: int) -> bool:
+        """Check if a port is available for binding."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.bind((self.host, port))
+                return True
+        except OSError:
+            return False
+
+    def _find_available_port(self, start_port: int, max_attempts: int = 100) -> int:
+        """Find an available port starting from start_port."""
+        for port_offset in range(max_attempts):
+            test_port = start_port + port_offset
+            if self._is_port_available(test_port):
+                return test_port
+        raise RuntimeError(f"Could not find an available port after {max_attempts} attempts starting from {start_port}")
 
     async def _handler(self, websocket: websockets.WebSocketServerProtocol) -> None:
         """Register client connection and keep it open."""
@@ -30,6 +48,13 @@ class PredictionWebSocketServer:
 
     async def start(self) -> None:
         """Start the WebSocket server."""
+        # Check if the preferred port is available
+        if not self._is_port_available(self.port):
+            self.logger.warning(f"Port {self.port} is already in use, finding alternative port...")
+            original_port = self.port
+            self.port = self._find_available_port(self.port)
+            self.logger.info(f"Using port {self.port} instead of {original_port}")
+        
         self.server = await websockets.serve(self._handler, self.host, self.port)
         self.logger.info(f"WebSocket server started on {self.host}:{self.port}")
 

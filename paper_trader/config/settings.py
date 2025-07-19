@@ -94,6 +94,10 @@ class TradingSettings:
     api_retry_delay_min: float = float(os.getenv('API_RETRY_DELAY_MIN', '0.2'))
     api_retry_delay_max: float = float(os.getenv('API_RETRY_DELAY_MAX', '0.6'))
     
+    # WebSocket Server Configuration
+    websocket_server_host: str = os.getenv('WEBSOCKET_SERVER_HOST', '0.0.0.0')
+    websocket_server_port: int = int(os.getenv('WEBSOCKET_SERVER_PORT', '8765'))
+    
     # Signal Generation Configuration
     confidence_multiplier_min: float = float(os.getenv('CONFIDENCE_MULTIPLIER_MIN', '0.7'))
     confidence_multiplier_max: float = float(os.getenv('CONFIDENCE_MULTIPLIER_MAX', '1.0'))
