@@ -376,7 +376,10 @@ class PaperTrader:
             )
 
             # Initialize WebSocket server for live prediction updates
-            self.ws_server = PredictionWebSocketServer()
+            self.ws_server = PredictionWebSocketServer(
+                host=self.settings.websocket_server_host,
+                port=self.settings.websocket_server_port
+            )
             await self.ws_server.start()
 
             # Test Telegram connection
