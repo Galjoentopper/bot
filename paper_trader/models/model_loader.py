@@ -3,6 +3,8 @@
 import logging
 import os
 import pickle
+import tempfile
+import zipfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -49,6 +51,308 @@ def quantile_loss(q):
 
     return loss
 
+
+def create_comprehensive_custom_objects():
+    """Create a comprehensive custom object scope for loading legacy Keras models."""
+    
+    custom_objects = {}
+    
+    # Add all standard Keras classes
+    keras_classes = {
+        # Models
+        'Functional': tf.keras.Model,
+        'Sequential': tf.keras.Sequential,
+        'Model': tf.keras.Model,
+        
+        # Core layers
+        'Dense': tf.keras.layers.Dense,
+        'Dropout': tf.keras.layers.Dropout,
+        'InputLayer': tf.keras.layers.InputLayer,
+        
+        # Convolutional layers
+        'Conv1D': tf.keras.layers.Conv1D,
+        'Conv2D': tf.keras.layers.Conv2D,
+        'MaxPooling1D': tf.keras.layers.MaxPooling1D,
+        'MaxPooling2D': tf.keras.layers.MaxPooling2D,
+        
+        # Recurrent layers
+        'LSTM': tf.keras.layers.LSTM,
+        'GRU': tf.keras.layers.GRU,
+        'SimpleRNN': tf.keras.layers.SimpleRNN,
+        
+        # Normalization
+        'BatchNormalization': tf.keras.layers.BatchNormalization,
+        'LayerNormalization': tf.keras.layers.LayerNormalization,
+        
+        # Merge layers
+        'Dot': tf.keras.layers.Dot,
+        'Add': tf.keras.layers.Add,
+        'Concatenate': tf.keras.layers.Concatenate,
+        
+        # Initializers
+        'GlorotUniform': tf.keras.initializers.GlorotUniform,
+        'GlorotNormal': tf.keras.initializers.GlorotNormal,
+        'HeUniform': tf.keras.initializers.HeUniform,
+        'HeNormal': tf.keras.initializers.HeNormal,
+        'Zeros': tf.keras.initializers.Zeros,
+        'Ones': tf.keras.initializers.Ones,
+        'Orthogonal': tf.keras.initializers.Orthogonal,
+        'RandomNormal': tf.keras.initializers.RandomNormal,
+        'RandomUniform': tf.keras.initializers.RandomUniform,
+        
+        # Optimizers
+        'Adam': tf.keras.optimizers.Adam,
+        'SGD': tf.keras.optimizers.SGD,
+        'RMSprop': tf.keras.optimizers.RMSprop,
+        
+        # Learning rate schedules
+        'ExponentialDecay': tf.keras.optimizers.schedules.ExponentialDecay,
+        'PiecewiseConstantDecay': tf.keras.optimizers.schedules.PiecewiseConstantDecay,
+        
+        # Losses
+        'MeanSquaredError': tf.keras.losses.MeanSquaredError,
+        'MeanAbsoluteError': tf.keras.losses.MeanAbsoluteError,
+        'CategoricalCrossentropy': tf.keras.losses.CategoricalCrossentropy,
+        'SparseCategoricalCrossentropy': tf.keras.losses.SparseCategoricalCrossentropy,
+        'BinaryCrossentropy': tf.keras.losses.BinaryCrossentropy,
+        
+        # Metrics
+        'Accuracy': tf.keras.metrics.Accuracy,
+        'CategoricalAccuracy': tf.keras.metrics.CategoricalAccuracy,
+        'SparseCategoricalAccuracy': tf.keras.metrics.SparseCategoricalAccuracy,
+        'MeanAbsoluteError': tf.keras.metrics.MeanAbsoluteError,
+        'MeanSquaredError': tf.keras.metrics.MeanSquaredError,
+    }
+    
+    custom_objects.update(keras_classes)
+    
+    # Add custom functions
+    custom_objects.update({
+        'directional_loss': directional_loss,
+        'quantile_loss': quantile_loss,
+        'function': lambda x: x,  # Generic function placeholder
+        'builtins': lambda x: x,  # For builtin function references
+    })
+    
+    return custom_objects
+
+
+def create_lstm_model_architecture():
+    """
+    Recreate the LSTM model architecture for weight loading.
+    This creates a model compatible with the saved weights from training.
+    """
+    # Input layer - matches the saved model
+    inputs = tf.keras.layers.Input(shape=(96, 17), name='input_1')
+    
+    # Conv1D layer
+    x = tf.keras.layers.Conv1D(
+        filters=64, 
+        kernel_size=3, 
+        strides=1, 
+        padding='causal', 
+        activation='relu',
+        name='conv1d'
+    )(inputs)
+    
+    # BatchNormalization
+    x = tf.keras.layers.BatchNormalization(
+        axis=2, 
+        momentum=0.99, 
+        epsilon=0.001,
+        name='batch_normalization'
+    )(x)
+    
+    # MaxPooling1D
+    x = tf.keras.layers.MaxPooling1D(
+        pool_size=2, 
+        strides=2, 
+        padding='valid',
+        name='max_pooling1d'
+    )(x)
+    
+    # First LSTM layer
+    x = tf.keras.layers.LSTM(
+        units=256, 
+        return_sequences=True, 
+        activation='tanh',
+        recurrent_activation='sigmoid',
+        name='lstm'
+    )(x)
+    
+    # BatchNormalization
+    x = tf.keras.layers.BatchNormalization(
+        axis=2, 
+        momentum=0.99, 
+        epsilon=0.001,
+        name='batch_normalization_1'
+    )(x)
+    
+    # Second LSTM layer
+    x = tf.keras.layers.LSTM(
+        units=128, 
+        return_sequences=True, 
+        activation='tanh',
+        recurrent_activation='sigmoid',
+        name='lstm_1'
+    )(x)
+    
+    # BatchNormalization
+    x = tf.keras.layers.BatchNormalization(
+        axis=2, 
+        momentum=0.99, 
+        epsilon=0.001,
+        name='batch_normalization_2'
+    )(x)
+    
+    # Third LSTM layer
+    lstm_out = tf.keras.layers.LSTM(
+        units=64, 
+        return_sequences=True, 
+        activation='tanh',
+        recurrent_activation='sigmoid',
+        name='lstm_2'
+    )(x)
+    
+    # BatchNormalization
+    lstm_norm = tf.keras.layers.BatchNormalization(
+        axis=2, 
+        momentum=0.99, 
+        epsilon=0.001,
+        name='batch_normalization_3'
+    )(lstm_out)
+    
+    # Attention mechanism
+    attention = tf.keras.layers.Dense(
+        units=128, 
+        activation='tanh',
+        name='dense'
+    )(lstm_norm)
+    
+    attention_weights = tf.keras.layers.Dense(
+        units=1, 
+        activation='softmax',
+        name='dense_1'
+    )(attention)
+    
+    # Apply attention
+    attended = tf.keras.layers.Dot(axes=1, name='dot')([attention_weights, lstm_norm])
+    
+    # Final dense layers
+    x = tf.keras.layers.Dense(
+        units=64, 
+        activation='relu',
+        name='dense_2'
+    )(attended)
+    
+    x = tf.keras.layers.Dropout(rate=0.3, name='dropout')(x)
+    
+    x = tf.keras.layers.BatchNormalization(
+        axis=2, 
+        momentum=0.99, 
+        epsilon=0.001,
+        name='batch_normalization_4'
+    )(x)
+    
+    x = tf.keras.layers.Dense(
+        units=32, 
+        activation='relu',
+        name='dense_3'
+    )(x)
+    
+    x = tf.keras.layers.Dropout(rate=0.3, name='dropout_1')(x)
+    
+    x = tf.keras.layers.BatchNormalization(
+        axis=2, 
+        momentum=0.99, 
+        epsilon=0.001,
+        name='batch_normalization_5'
+    )(x)
+    
+    # Output layer
+    outputs = tf.keras.layers.Dense(
+        units=1, 
+        activation='linear',
+        name='dense_4'
+    )(x)
+    
+    # Create model
+    model = tf.keras.Model(inputs=inputs, outputs=outputs, name='model')
+    
+    return model
+
+
+def load_model_weights_only(model_path: str) -> Optional[tf.keras.Model]:
+    """
+    Load model by recreating architecture and loading weights separately.
+    This is the most robust approach for TensorFlow version compatibility issues.
+    """
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Extract the keras file
+            with zipfile.ZipFile(model_path, 'r') as zip_file:
+                zip_file.extractall(temp_path)
+            
+            weights_path = temp_path / 'model.weights.h5'
+            if not weights_path.exists():
+                return None
+            
+            # Create a new model with the same architecture as the saved one
+            model = create_lstm_model_architecture()
+            
+            # Load weights
+            model.load_weights(str(weights_path))
+            
+            return model
+            
+    except Exception as e:
+        print(f"Weights-only loading failed: {e}")
+        return None
+
+
+def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = None) -> Optional[tf.keras.Model]:
+    """
+    Robust model loading with multiple fallback strategies for TensorFlow compatibility.
+    """
+    model_path = Path(model_path)
+    
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model file not found: {model_path}")
+    
+    # Merge custom objects
+    default_custom_objects = create_comprehensive_custom_objects()
+    if custom_objects:
+        default_custom_objects.update(custom_objects)
+    
+    # Strategy 1: Direct loading with comprehensive custom objects
+    try:
+        model = tf.keras.models.load_model(
+            str(model_path), 
+            compile=False, 
+            custom_objects=default_custom_objects
+        )
+        return model
+    except Exception as e:
+        pass  # Silently continue to next strategy
+    
+    # Strategy 2: Load weights into new architecture (most robust for version conflicts)
+    model = load_model_weights_only(str(model_path))
+    if model:
+        return model
+    
+    # Strategy 3: Try loading with custom object scope
+    try:
+        with tf.keras.utils.custom_object_scope(default_custom_objects):
+            model = tf.keras.models.load_model(str(model_path), compile=False)
+        return model
+    except Exception as e:
+        pass
+    
+    # All strategies failed
+    return None
+
 class WindowBasedModelLoader:
     """Loads and manages window-based pre-trained models for trading predictions."""
     
@@ -91,22 +395,20 @@ class WindowBasedModelLoader:
                     try:
                         window_num = int(lstm_file.stem.split('_window_')[1])
                         if custom_objects is None:
-                            custom_objects = {
-                                'directional_loss': directional_loss,
-                                'quantile_loss': lambda q: (
-                                    lambda y_true, y_pred: quantile_loss(q)(y_true, y_pred)
-                                ),
-                            }
+                            custom_objects = create_comprehensive_custom_objects()
                         try:
-                            # Attempt to load with compile=False first, as it's more robust
-                            model = tf.keras.models.load_model(str(lstm_file), compile=False, custom_objects=custom_objects)
-                            # Then, compile the model with the custom loss function
-                            model.compile(optimizer='adam', loss=directional_loss, metrics=['mae'])
-                            self.lstm_models[symbol][window_num] = model
-                            self.logger.info(f"Loaded LSTM model {lstm_file} with compile=False and re-compiled.")
+                            # Use robust loading function that handles TensorFlow version compatibility
+                            model = load_keras_model_robust(str(lstm_file), custom_objects)
+                            if model is not None:
+                                # Compile the model with the custom loss function
+                                model.compile(optimizer='adam', loss=directional_loss, metrics=['mae'])
+                                self.lstm_models[symbol][window_num] = model
+                                self.logger.info(f"Successfully loaded LSTM model {lstm_file}")
+                            else:
+                                self.logger.warning(f"Failed to load LSTM model {lstm_file} with all strategies")
                         except Exception as e:
                             self.logger.warning(f"Failed to load LSTM model {lstm_file}. Error: {e}")
-                            # If that fails, try loading from separate files as a last resort
+                            # Try loading from separate files as final fallback
                             try:
                                 arch_path = str(lstm_file).replace('.keras', '_architecture.json')
                                 weights_path = str(lstm_file).replace('.keras', '_weights.h5')
