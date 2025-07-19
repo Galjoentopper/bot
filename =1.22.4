@@ -1,0 +1,127 @@
+Defaulting to user installation because normal site-packages is not writeable
+Collecting tensorflow
+  Downloading tensorflow-2.19.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata
+     - 4.1 kB ? 0:00:00
+Collecting numpy
+  Downloading numpy-2.3.1-cp312-cp312-manylinux_2_28_x86_64.whl.metadata
+     - 62.1 kB 208.9 MB/s 0:00:00
+Collecting absl-py>=1.0.0 (from tensorflow)
+  Downloading absl_py-2.3.1-py3-none-any.whl.metadata
+     - 3.3 kB ? 0:00:00
+Collecting astunparse>=1.6.0 (from tensorflow)
+  Downloading astunparse-1.6.3-py2.py3-none-any.whl.metadata
+     - 4.4 kB ? 0:00:00
+Collecting flatbuffers>=24.3.25 (from tensorflow)
+  Downloading flatbuffers-25.2.10-py2.py3-none-any.whl.metadata
+     - 875 bytes ? 0:00:00
+Collecting gast!=0.5.0,!=0.5.1,!=0.5.2,>=0.2.1 (from tensorflow)
+  Downloading gast-0.6.0-py3-none-any.whl.metadata
+     - 1.3 kB ? 0:00:00
+Collecting google-pasta>=0.1.1 (from tensorflow)
+  Downloading google_pasta-0.2.0-py3-none-any.whl.metadata
+     - 814 bytes ? 0:00:00
+Collecting libclang>=13.0.0 (from tensorflow)
+  Downloading libclang-18.1.1-py2.py3-none-manylinux2010_x86_64.whl.metadata
+     - 5.2 kB ? 0:00:00
+Collecting opt-einsum>=2.3.2 (from tensorflow)
+  Downloading opt_einsum-3.4.0-py3-none-any.whl.metadata
+     - 6.3 kB ? 0:00:00
+Requirement already satisfied: packaging in /usr/lib/python3/dist-packages (from tensorflow) (24.0)
+Collecting protobuf!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<6.0.0dev,>=3.20.3 (from tensorflow)
+  Downloading protobuf-5.29.5-cp38-abi3-manylinux2014_x86_64.whl.metadata
+     - 592 bytes ? 0:00:00
+Requirement already satisfied: requests<3,>=2.21.0 in /usr/lib/python3/dist-packages (from tensorflow) (2.31.0)
+Requirement already satisfied: setuptools in /usr/lib/python3/dist-packages (from tensorflow) (68.1.2)
+Requirement already satisfied: six>=1.12.0 in /usr/lib/python3/dist-packages (from tensorflow) (1.16.0)
+Collecting termcolor>=1.1.0 (from tensorflow)
+  Downloading termcolor-3.1.0-py3-none-any.whl.metadata
+     - 6.4 kB ? 0:00:00
+Requirement already satisfied: typing-extensions>=3.6.6 in /usr/lib/python3/dist-packages (from tensorflow) (4.10.0)
+Collecting wrapt>=1.11.0 (from tensorflow)
+  Downloading wrapt-1.17.2-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata
+     - 6.4 kB ? 0:00:00
+Collecting grpcio<2.0,>=1.24.3 (from tensorflow)
+  Downloading grpcio-1.73.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata
+     - 3.8 kB ? 0:00:00
+Collecting tensorboard~=2.19.0 (from tensorflow)
+  Downloading tensorboard-2.19.0-py3-none-any.whl.metadata
+     - 1.8 kB ? 0:00:00
+Collecting keras>=3.5.0 (from tensorflow)
+  Downloading keras-3.10.0-py3-none-any.whl.metadata
+     - 6.0 kB ? 0:00:00
+Collecting numpy
+  Downloading numpy-2.1.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata
+     - 62.0 kB 256.4 MB/s 0:00:00
+Collecting h5py>=3.11.0 (from tensorflow)
+  Downloading h5py-3.14.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata
+     - 2.7 kB ? 0:00:00
+Collecting ml-dtypes<1.0.0,>=0.5.1 (from tensorflow)
+  Downloading ml_dtypes-0.5.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata
+     - 21.8 kB 223.4 MB/s 0:00:00
+Requirement already satisfied: wheel<1.0,>=0.23.0 in /usr/lib/python3/dist-packages (from astunparse>=1.6.0->tensorflow) (0.42.0)
+Requirement already satisfied: rich in /usr/lib/python3/dist-packages (from keras>=3.5.0->tensorflow) (13.7.1)
+Collecting namex (from keras>=3.5.0->tensorflow)
+  Downloading namex-0.1.0-py3-none-any.whl.metadata
+     - 322 bytes ? 0:00:00
+Collecting optree (from keras>=3.5.0->tensorflow)
+  Downloading optree-0.16.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata
+     - 30.9 kB 176.1 MB/s 0:00:00
+Collecting markdown>=2.6.8 (from tensorboard~=2.19.0->tensorflow)
+  Downloading markdown-3.8.2-py3-none-any.whl.metadata
+     - 5.1 kB ? 0:00:00
+Collecting tensorboard-data-server<0.8.0,>=0.7.0 (from tensorboard~=2.19.0->tensorflow)
+  Downloading tensorboard_data_server-0.7.2-py3-none-manylinux_2_31_x86_64.whl.metadata
+     - 1.1 kB ? 0:00:00
+Collecting werkzeug>=1.0.1 (from tensorboard~=2.19.0->tensorflow)
+  Downloading werkzeug-3.1.3-py3-none-any.whl.metadata
+     - 3.7 kB ? 0:00:00
+Requirement already satisfied: MarkupSafe>=2.1.1 in /usr/lib/python3/dist-packages (from werkzeug>=1.0.1->tensorboard~=2.19.0->tensorflow) (2.1.5)
+Requirement already satisfied: markdown-it-py>=2.2.0 in /usr/lib/python3/dist-packages (from rich->keras>=3.5.0->tensorflow) (3.0.0)
+Requirement already satisfied: pygments<3.0.0,>=2.13.0 in /usr/lib/python3/dist-packages (from rich->keras>=3.5.0->tensorflow) (2.17.2)
+Requirement already satisfied: mdurl~=0.1 in /usr/lib/python3/dist-packages (from markdown-it-py>=2.2.0->rich->keras>=3.5.0->tensorflow) (0.1.2)
+Downloading tensorflow-2.19.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+   - 645.0 MB 255.4 MB/s 0:00:05
+Downloading numpy-2.1.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+   \ 16.0 MB 205.1 MB/s 0:00:00
+Downloading absl_py-2.3.1-py3-none-any.whl
+   - 135.8 kB 177.1 MB/s 0:00:00
+Downloading astunparse-1.6.3-py2.py3-none-any.whl
+   - 12.7 kB 114.9 MB/s 0:00:00
+Downloading flatbuffers-25.2.10-py2.py3-none-any.whl
+   - 31.0 kB 199.4 MB/s 0:00:00
+Downloading gast-0.6.0-py3-none-any.whl
+   - 21.2 kB 99.9 MB/s 0:00:00
+Downloading google_pasta-0.2.0-py3-none-any.whl
+   - 57.5 kB 162.3 MB/s 0:00:00
+Downloading grpcio-1.73.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+   - 6.0 MB 165.4 MB/s 0:00:00
+Downloading h5py-3.14.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+   - 4.9 MB 176.0 MB/s 0:00:00
+Downloading keras-3.10.0-py3-none-any.whl
+   - 1.4 MB 187.1 MB/s 0:00:00
+Downloading libclang-18.1.1-py2.py3-none-manylinux2010_x86_64.whl
+   \ 24.5 MB 243.5 MB/s 0:00:00
+Downloading ml_dtypes-0.5.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+   - 4.7 MB 172.5 MB/s 0:00:00
+Downloading opt_einsum-3.4.0-py3-none-any.whl
+   - 71.9 kB 227.0 MB/s 0:00:00
+Downloading protobuf-5.29.5-cp38-abi3-manylinux2014_x86_64.whl
+   - 319.9 kB 186.9 MB/s 0:00:00
+Downloading tensorboard-2.19.0-py3-none-any.whl
+   - 5.5 MB 139.4 MB/s 0:00:00
+Downloading termcolor-3.1.0-py3-none-any.whl
+   - 7.7 kB ? 0:00:00
+Downloading wrapt-1.17.2-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+   - 89.2 kB 216.2 MB/s 0:00:00
+Downloading markdown-3.8.2-py3-none-any.whl
+   - 106.8 kB 174.7 MB/s 0:00:00
+Downloading tensorboard_data_server-0.7.2-py3-none-manylinux_2_31_x86_64.whl
+   - 6.6 MB 173.2 MB/s 0:00:00
+Downloading werkzeug-3.1.3-py3-none-any.whl
+   - 224.5 kB 167.3 MB/s 0:00:00
+Downloading namex-0.1.0-py3-none-any.whl
+   - 5.9 kB ? 0:00:00
+Downloading optree-0.16.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+   - 412.7 kB 186.2 MB/s 0:00:00
+Installing collected packages: namex, libclang, flatbuffers, wrapt, werkzeug, termcolor, tensorboard-data-server, protobuf, optree, opt-einsum, numpy, markdown, grpcio, google-pasta, gast, astunparse, absl-py, tensorboard, ml-dtypes, h5py, keras, tensorflow
+Successfully installed absl-py-2.3.1 astunparse-1.6.3 flatbuffers-25.2.10 gast-0.6.0 google-pasta-0.2.0 grpcio-1.73.1 h5py-3.14.0 keras-3.10.0 libclang-18.1.1 markdown-3.8.2 ml-dtypes-0.5.1 namex-0.1.0 numpy-2.1.3 opt-einsum-3.4.0 optree-0.16.0 protobuf-5.29.5 tensorboard-2.19.0 tensorboard-data-server-0.7.2 tensorflow-2.19.0 termcolor-3.1.0 werkzeug-3.1.3 wrapt-1.17.2
