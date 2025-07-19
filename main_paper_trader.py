@@ -483,7 +483,8 @@ class PaperTrader:
             # Check if prediction meets trading thresholds
             if not self.predictor._meets_trading_threshold(
                 prediction_result['confidence'], 
-                prediction_result['signal_strength']
+                prediction_result['signal_strength'],
+                prediction_result
             ):
                 self.logger.debug(f"Prediction for {symbol} doesn't meet trading thresholds")
                 return False
@@ -691,7 +692,7 @@ class PaperTrader:
             return
 
         if not self.predictor._meets_trading_threshold(
-            prediction_result['confidence'], prediction_result['signal_strength']
+            prediction_result['confidence'], prediction_result['signal_strength'], prediction_result
         ):
             return
 
