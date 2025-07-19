@@ -5,6 +5,7 @@ import json
 import logging
 import time
 import random
+import sqlite3
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -413,7 +414,66 @@ class BitvavoDataCollector:
                     self.logger.error(f"An unexpected error occurred for {s}: {e}")
 
         self.logger.error(f"Failed to fetch historical data for {symbol} after all attempts.")
-        return None
+        
+        # Fallback to local SQLite database if API is unavailable
+        self.logger.info(f"Attempting to load data from local database for {symbol}")
+        return await self._load_from_local_database(symbol, limit)
+
+    async def _load_from_local_database(self, symbol: str, limit: int = 100) -> Optional[pd.DataFrame]:
+        """Load historical data from local SQLite database as fallback."""
+        try:
+            # Convert symbol format for database filename
+            db_symbol = symbol.lower().replace('-', '')
+            db_path = f"data/{db_symbol}_15m.db"
+            
+            # Check if database file exists
+            if not Path(db_path).exists():
+                self.logger.warning(f"Local database not found: {db_path}")
+                return None
+            
+            # Connect to SQLite database
+            conn = sqlite3.connect(db_path)
+            
+            # Query the most recent data
+            query = """
+                SELECT timestamp, datetime, open, high, low, close, volume
+                FROM market_data 
+                ORDER BY timestamp DESC 
+                LIMIT ?
+            """
+            
+            df = pd.read_sql_query(query, conn, params=(limit,))
+            conn.close()
+            
+            if df.empty:
+                self.logger.warning(f"No data found in local database for {symbol}")
+                return None
+            
+            # Convert timestamp to datetime and set as index
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df = df.set_index('timestamp')
+            df = df.drop('datetime', axis=1)  # Remove duplicate datetime column
+            
+            # Sort by timestamp (ascending order)
+            df = df.sort_index()
+            
+            # Ensure numeric columns are properly typed
+            numeric_cols = ['open', 'high', 'low', 'close', 'volume']
+            for col in numeric_cols:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            df = df.dropna()
+            
+            if not df.empty:
+                self.logger.info(f"Successfully loaded {len(df)} candles from local database for {symbol}")
+                return df
+            else:
+                self.logger.warning(f"Local database data was empty after processing for {symbol}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error loading data from local database for {symbol}: {e}")
+            return None
 
     # ... rest of the class remains unchanged
 
