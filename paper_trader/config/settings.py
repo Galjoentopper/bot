@@ -74,6 +74,37 @@ class TradingSettings:
     prediction_lookback_periods: int = int(os.getenv('PREDICTION_LOOKBACK_PERIODS', '5'))
     dynamic_stop_loss_adjustment: bool = os.getenv('DYNAMIC_STOP_LOSS_ADJUSTMENT', 'True') == 'True'
     
+    # API Configuration
+    bitvavo_base_url: str = os.getenv('BITVAVO_BASE_URL', 'https://api.bitvavo.com/v2')
+    bitvavo_ws_url: str = os.getenv('BITVAVO_WS_URL', 'wss://ws.bitvavo.com/v2')
+    
+    # Data Collection Configuration
+    data_cache_max_size: int = int(os.getenv('DATA_CACHE_MAX_SIZE', '1000'))
+    buffer_initialization_limit: int = int(os.getenv('BUFFER_INITIALIZATION_LIMIT', '300'))
+    min_data_length: int = int(os.getenv('MIN_DATA_LENGTH', '250'))
+    max_buffer_size: int = int(os.getenv('MAX_BUFFER_SIZE', '500'))
+    api_update_interval_minutes: int = int(os.getenv('API_UPDATE_INTERVAL_MINUTES', '15'))
+    sufficient_data_multiplier: int = int(os.getenv('SUFFICIENT_DATA_MULTIPLIER', '2'))
+    healthy_buffer_threshold: int = int(os.getenv('HEALTHY_BUFFER_THRESHOLD', '100'))
+    
+    # Network Configuration
+    api_timeout_seconds: int = int(os.getenv('API_TIMEOUT_SECONDS', '20'))
+    price_api_timeout_seconds: int = int(os.getenv('PRICE_API_TIMEOUT_SECONDS', '5'))
+    websocket_sleep_seconds: int = int(os.getenv('WEBSOCKET_SLEEP_SECONDS', '60'))
+    api_retry_delay_min: float = float(os.getenv('API_RETRY_DELAY_MIN', '0.2'))
+    api_retry_delay_max: float = float(os.getenv('API_RETRY_DELAY_MAX', '0.6'))
+    
+    # Signal Generation Configuration
+    confidence_multiplier_min: float = float(os.getenv('CONFIDENCE_MULTIPLIER_MIN', '0.7'))
+    confidence_multiplier_max: float = float(os.getenv('CONFIDENCE_MULTIPLIER_MAX', '1.0'))
+    very_strong_signal_multiplier: float = float(os.getenv('VERY_STRONG_SIGNAL_MULTIPLIER', '1.2'))
+    strong_signal_multiplier: float = float(os.getenv('STRONG_SIGNAL_MULTIPLIER', '1.0'))
+    moderate_signal_multiplier: float = float(os.getenv('MODERATE_SIGNAL_MULTIPLIER', '0.8'))
+    trend_strength_threshold: float = float(os.getenv('TREND_STRENGTH_THRESHOLD', '0.005'))
+    
+    # Model Configuration
+    price_prediction_multiplier: float = float(os.getenv('PRICE_PREDICTION_MULTIPLIER', '0.002'))
+    
     def __post_init__(self):
         """Initialize symbols list from environment variable."""
         if self.symbols is None:

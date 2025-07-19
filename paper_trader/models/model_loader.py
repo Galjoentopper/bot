@@ -15,6 +15,11 @@ from sklearn.preprocessing import StandardScaler
 from .feature_engineer import LSTM_FEATURES, LSTM_SEQUENCE_LENGTH
 from tensorflow.keras import backend as K
 
+# Import settings for configuration
+import sys
+sys.path.append(str(Path(__file__).parent.parent))
+from config.settings import TradingSettings
+
 # Standalone directional loss function for proper serialization
 @tf.keras.utils.register_keras_serializable(package="Custom", name="directional_loss")
 def directional_loss(y_true, y_pred):
@@ -252,7 +257,11 @@ class WindowBasedEnsemblePredictor:
     
     def __init__(self, model_loader: WindowBasedModelLoader, 
                  min_confidence_threshold: float = 0.6,
-                 min_signal_strength: str = 'MODERATE'):
+                 min_signal_strength: str = 'MODERATE',
+                 settings: TradingSettings = None):
+        if settings is None:
+            settings = TradingSettings()
+        self.settings = settings
         self.model_loader = model_loader
         self.logger = logging.getLogger(__name__)
         
@@ -527,7 +536,7 @@ class WindowBasedEnsemblePredictor:
 
             if current_price is None:
                 current_price = features['close'].iloc[-1]
-            predicted_price = float(current_price * (1 + prob_up * 0.002))
+            predicted_price = float(current_price * (1 + prob_up * self.settings.price_prediction_multiplier))
 
             # Enhanced confidence calculation for XGBoost
             price_volatility = features['close'].tail(10).std() / features['close'].tail(10).mean()

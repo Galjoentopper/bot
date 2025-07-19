@@ -311,7 +311,8 @@ class PaperTrader:
             self.data_collector = BitvavoDataCollector(
                 api_key=self.settings.bitvavo_api_key,
                 api_secret=self.settings.bitvavo_api_secret,
-                interval=self.settings.candle_interval
+                interval=self.settings.candle_interval,
+                settings=self.settings
             )
             
             # Initialize feature engineer
@@ -324,7 +325,8 @@ class PaperTrader:
             self.predictor = WindowBasedEnsemblePredictor(
                 model_loader=self.model_loader,
                 min_confidence_threshold=self.settings.min_confidence_threshold,
-                min_signal_strength=self.settings.min_signal_strength
+                min_signal_strength=self.settings.min_signal_strength,
+                settings=self.settings
             )
             
             # Set ensemble weights from settings
@@ -346,7 +348,8 @@ class PaperTrader:
                 min_expected_gain_pct=self.settings.min_expected_gain_pct,
                 position_cooldown_minutes=self.settings.position_cooldown_minutes,
                 data_collector=self.data_collector,
-                max_daily_trades_per_symbol=self.settings.max_daily_trades_per_symbol
+                max_daily_trades_per_symbol=self.settings.max_daily_trades_per_symbol,
+                settings=self.settings
             )
             
             # Initialize exit manager
@@ -356,7 +359,8 @@ class PaperTrader:
                 enable_prediction_exits=self.settings.enable_prediction_exits,
                 prediction_exit_min_confidence=self.settings.prediction_exit_min_confidence,
                 prediction_exit_min_strength=self.settings.prediction_exit_min_strength,
-                dynamic_stop_loss_adjustment=self.settings.dynamic_stop_loss_adjustment
+                dynamic_stop_loss_adjustment=self.settings.dynamic_stop_loss_adjustment,
+                settings=self.settings
             )
             
             # Initialize portfolio manager

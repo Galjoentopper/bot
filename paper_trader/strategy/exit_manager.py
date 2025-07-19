@@ -4,6 +4,12 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 
+# Import settings for configuration
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from config.settings import TradingSettings
+
 
 
 class ExitManager:
@@ -16,7 +22,11 @@ class ExitManager:
                  prediction_exit_min_strength: str = 'STRONG',
                  dynamic_stop_loss_adjustment: bool = True,
                  min_profit_for_trailing: float = 0.005,
-                 min_hold_time_minutes: int = 10):
+                 min_hold_time_minutes: int = 10,
+                 settings: TradingSettings = None):
+        if settings is None:
+            settings = TradingSettings()
+        self.settings = settings
         self.trailing_stop_pct = trailing_stop_pct
         self.max_hold_hours = max_hold_hours
         self.emergency_stop_pct = emergency_stop_pct

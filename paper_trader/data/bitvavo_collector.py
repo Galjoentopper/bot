@@ -14,14 +14,26 @@ import websockets
 import requests
 from collections import deque
 
+# Import settings for configuration
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from config.settings import TradingSettings
+
 
 class FeatureCache:
-    def __init__(self, max_size=1000):
+    def __init__(self, settings: TradingSettings = None):
+        if settings is None:
+            settings = TradingSettings()
+        self.settings = settings
         self.cache = {}
-        self.timestamps = deque(maxlen=max_size)
+        self.timestamps = deque(maxlen=settings.data_cache_max_size)
         self.data_buffers = {}
         self.last_update = {}
         self.logger = logging.getLogger(__name__)
+        
+        # Constants from settings
+        self.MIN_DATA_LENGTH = settings.min_data_length
 
     def get_buffer_data(self, symbol: str, min_length: int = None) -> Optional[pd.DataFrame]:
         """
@@ -82,7 +94,7 @@ class FeatureCache:
                         ) if latest_timestamp and oldest_timestamp else None,
                         "columns": list(buffer.columns),
                         "null_counts": buffer.isnull().sum().to_dict() if len(buffer) > 0 else {},
-                        "status": "healthy" if len(buffer) >= 100 else "insufficient_data"
+                        "status": "healthy" if len(buffer) >= self.settings.healthy_buffer_threshold else "insufficient_data"
                     }
                 else:
                     status[symbol] = {
@@ -99,23 +111,25 @@ class FeatureCache:
                 }
         return status
 
-    def ensure_sufficient_data(self, symbol: str, min_length: int = 250) -> bool:
+    def ensure_sufficient_data(self, symbol: str, min_length: int = None) -> bool:
         """Ensure buffer has sufficient data for feature engineering."""
+        if min_length is None:
+            min_length = self.settings.min_data_length
         try:
             if symbol not in self.data_buffers:
                 self.logger.info(f"No buffer for {symbol}, initializing...")
                 import asyncio
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    asyncio.create_task(self._initialize_single_buffer(symbol, min_length * 2))
+                    asyncio.create_task(self._initialize_single_buffer(symbol, min_length * self.settings.sufficient_data_multiplier))
                     return False
                 else:
-                    loop.run_until_complete(self._initialize_single_buffer(symbol, min_length * 2))
+                    loop.run_until_complete(self._initialize_single_buffer(symbol, min_length * self.settings.sufficient_data_multiplier))
                     return len(self.data_buffers.get(symbol, pd.DataFrame())) >= min_length
             current_length = len(self.data_buffers[symbol])
             if current_length < min_length:
                 self.logger.info(f"Fetching more data for {symbol}: current={current_length}, needed={min_length}")
-                new_data = self._get_historical_data_sync(symbol, self.interval, max(500, min_length * 2))
+                new_data = self._get_historical_data_sync(symbol, self.interval, max(self.settings.max_buffer_size, min_length * self.settings.sufficient_data_multiplier))
                 if new_data is not None and len(new_data) >= min_length:
                     self.data_buffers[symbol] = new_data
                     self.logger.info(f"Updated buffer for {symbol} with {len(new_data)} candles")
@@ -128,11 +142,13 @@ class FeatureCache:
             self.logger.error(f"Error ensuring sufficient data for {symbol}: {e}")
             return False
 
-    async def _initialize_single_buffer(self, symbol: str, limit: int = 300):
+    async def _initialize_single_buffer(self, symbol: str, limit: int = None):
         """Helper method to initialize a single buffer."""
+        if limit is None:
+            limit = self.settings.buffer_initialization_limit
         try:
             historical_data = await self.get_historical_data(symbol, self.interval, limit)
-            if historical_data is not None and len(historical_data) >= 100:
+            if historical_data is not None and len(historical_data) >= self.settings.healthy_buffer_threshold:
                 self.data_buffers[symbol] = historical_data.copy()
                 # Track the timestamp of the latest candle rather than the
                 # current time so that downstream logic only triggers when a
@@ -146,8 +162,10 @@ class FeatureCache:
             self.logger.error(f"Error initializing buffer for {symbol}: {e}")
             self.data_buffers[symbol] = pd.DataFrame()
 
-    def get_buffer_data(self, symbol: str, min_length: int = 250) -> Optional[pd.DataFrame]:
+    def get_buffer_data(self, symbol: str, min_length: int = None) -> Optional[pd.DataFrame]:
         """Get buffer data for feature engineering with minimum length validation."""
+        if min_length is None:
+            min_length = self.settings.min_data_length
         try:
             if symbol not in self.data_buffers:
                 self.logger.warning(f"No buffer data for {symbol}")
@@ -187,17 +205,17 @@ class FeatureCache:
                             # To:
                             if symbol in self.data_buffers and not self.data_buffers[symbol].empty:
                                     self.data_buffers[symbol] = pd.concat([self.data_buffers[symbol], new_row])
-                            if len(self.data_buffers[symbol]) > 500:
-                                    self.data_buffers[symbol] = self.data_buffers[symbol].tail(500)
+                            if len(self.data_buffers[symbol]) > self.settings.max_buffer_size:
+                                    self.data_buffers[symbol] = self.data_buffers[symbol].tail(self.settings.max_buffer_size)
                             else:
                                 self.data_buffers[symbol] = new_row
                             # Use the candle timestamp as the last update marker
                             self.last_update[symbol] = latest_timestamp
                             self.logger.info(f"Updated {symbol} buffer via API: {latest_candle['close']:.2f}")
-                await asyncio.sleep(60)
+                await asyncio.sleep(self.settings.websocket_sleep_seconds)
             except Exception as e:
                 self.logger.error(f"Error in periodic data update: {e}")
-                await asyncio.sleep(60)
+                await asyncio.sleep(self.settings.websocket_sleep_seconds)
 
     def get_latest_price(self, symbol: str) -> Optional[float]:
         """Get the latest price for a symbol."""
@@ -294,11 +312,14 @@ class FeatureCache:
 class BitvavoDataCollector:
     """Collects real-time and historical data from Bitvavo API."""
 
-    def __init__(self, api_key: str, api_secret: str, interval: str = "15m"):
+    def __init__(self, api_key: str, api_secret: str, interval: str = "15m", settings: TradingSettings = None):
+        if settings is None:
+            settings = TradingSettings()
+        self.settings = settings
         self.api_key = api_key
         self.api_secret = api_secret
-        self.base_url = "https://api.bitvavo.com/v2"
-        self.ws_url = "wss://ws.bitvavo.com/v2"
+        self.base_url = settings.bitvavo_base_url
+        self.ws_url = settings.bitvavo_ws_url
 
         # Candle interval used for both REST and WebSocket calls
         self.interval = interval
@@ -356,11 +377,11 @@ class BitvavoDataCollector:
         for endpoint in endpoints_to_try:
             for s in alt_symbols:
                 try:
-                    await asyncio.sleep(random.uniform(0.2, 0.6))  # Random delay
+                    await asyncio.sleep(random.uniform(self.settings.api_retry_delay_min, self.settings.api_retry_delay_max))  # Random delay
                     params = {'market': s, 'interval': interval, 'limit': limit}
                     self.logger.debug(f"Trying endpoint: {endpoint} with symbol: {s}")
                     
-                    response = await self.session.get(endpoint, params=params, timeout=20)
+                    response = await self.session.get(endpoint, params=params, timeout=self.settings.api_timeout_seconds)
                     
                     if response.status_code == 200:
                         data = response.json()
@@ -434,7 +455,7 @@ class BitvavoDataCollector:
             url = f"{self.base_url}/ticker/price"
             params = {'market': symbol}
 
-            response = requests.get(url, params=params, timeout=5)
+            response = requests.get(url, params=params, timeout=self.settings.price_api_timeout_seconds)
             response.raise_for_status()
 
             data = response.json()
@@ -558,8 +579,8 @@ class BitvavoDataCollector:
                             self.data_buffers[symbol] = pd.concat(
                                 [self.data_buffers[symbol], new_row]
                             )
-                            if len(self.data_buffers[symbol]) > 500:
-                                self.data_buffers[symbol] = self.data_buffers[symbol].tail(500)
+                            if len(self.data_buffers[symbol]) > self.settings.max_buffer_size:
+                                self.data_buffers[symbol] = self.data_buffers[symbol].tail(self.settings.max_buffer_size)
 
                         # Update last_update using candle timestamp so repeated
                         # updates for the same candle don't trigger extra predictions
@@ -576,13 +597,13 @@ class BitvavoDataCollector:
         try:
             if symbol not in self.data_buffers:
                 self.logger.info(f"No buffer for {symbol}, initializing...")
-                await self.initialize_buffers([symbol], min_length * 2)
+                await self.initialize_buffers([symbol], min_length * self.settings.sufficient_data_multiplier)
                 return len(self.data_buffers.get(symbol, pd.DataFrame())) >= min_length
 
             current_length = len(self.data_buffers[symbol])
             if current_length < min_length:
                 self.logger.info(f"Fetching more data for {symbol}: current={current_length}, needed={min_length}")
-                new_data = await self.get_historical_data(symbol, self.interval, max(500, min_length * 2))
+                new_data = await self.get_historical_data(symbol, self.interval, max(self.settings.max_buffer_size, min_length * self.settings.sufficient_data_multiplier))
 
                 if new_data is not None and len(new_data) >= min_length:
                     self.data_buffers[symbol] = new_data
@@ -636,8 +657,8 @@ class BitvavoDataCollector:
                                 self.data_buffers[symbol] = latest_data 
                             
                             # Trim buffer to max size 
-                            if len(self.data_buffers[symbol]) > 500: 
-                                self.data_buffers[symbol] = self.data_buffers[symbol].tail(500) 
+                            if len(self.data_buffers[symbol]) > self.settings.max_buffer_size: 
+                                self.data_buffers[symbol] = self.data_buffers[symbol].tail(self.settings.max_buffer_size) 
                             
                             # Record the timestamp of the candle rather than
                             # the current time so main loop only triggers on
@@ -650,4 +671,4 @@ class BitvavoDataCollector:
             except Exception as e: 
                 self.logger.error(f"Error in periodic data update: {e}") 
                 
-            await asyncio.sleep(60)  # Wait for 60 seconds before next check
+            await asyncio.sleep(self.settings.websocket_sleep_seconds)  # Wait before next check
