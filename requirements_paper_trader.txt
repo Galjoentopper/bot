@@ -2,12 +2,13 @@
 
 # Core dependencies
 pandas>=1.5.0
-numpy>=1.21.0
+numpy>=1.21.0,<2.0  # Keep < 2.0 for pandas-ta compatibility
 scipy>=1.9.0
 scikit-learn>=1.1.0
 
 # Machine Learning (Python 3.12 compatible)
 tensorflow>=2.16.1
+tf_keras>=2.19.0  # For legacy Keras compatibility
 xgboost>=2.0.0
 catboost>=1.2.0
 joblib>=1.2.0

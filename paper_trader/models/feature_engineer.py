@@ -4,6 +4,11 @@ import logging
 import numpy as np
 import pandas as pd
 from typing import Optional, List
+
+# Fix pandas-ta compatibility with NumPy 2.x
+if not hasattr(np, 'NaN'):
+    np.NaN = np.nan
+
 import pandas_ta as ta
 # import talib  # Commented out - not available on Windows without special installation
 

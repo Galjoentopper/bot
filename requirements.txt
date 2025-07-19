@@ -3,13 +3,14 @@
 # Compatible with Jupyter and existing packages
 
 # ===== CORE DATA SCIENCE =====
-numpy>=1.22.4,<2.0
+numpy>=1.22.4,<2.0  # Keep < 2.0 for pandas-ta compatibility
 pandas>=2.0.0
 scipy>=1.11.0
 scikit-learn>=1.3.0
 
 # ===== MACHINE LEARNING =====
 tensorflow>=2.15.0
+tf_keras>=2.19.0  # For legacy Keras compatibility with older models
 # GPU support for TensorFlow (optional, for CUDA-enabled systems)
 tensorflow[and-cuda]>=2.15.0  # Alternative: use this for automatic CUDA setup
 # OR manually install CUDA packages:

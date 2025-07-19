@@ -20,6 +20,49 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent))
 from config.settings import TradingSettings
 
+# Flag to track if we need to use legacy Keras
+_USE_LEGACY_KERAS = False
+
+def _enable_legacy_keras():
+    """Enable legacy Keras for compatibility with older models."""
+    global _USE_LEGACY_KERAS
+    if not _USE_LEGACY_KERAS:
+        try:
+            os.environ['TF_USE_LEGACY_KERAS'] = '1'
+            # Re-import TensorFlow to pick up the environment variable
+            import importlib
+            importlib.reload(tf)
+            _USE_LEGACY_KERAS = True
+            logging.getLogger(__name__).info("Enabled legacy Keras for model compatibility")
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Failed to enable legacy Keras: {e}")
+
+def _load_model_with_fallback(model_path: str, custom_objects: dict = None):
+    """Load a Keras model with fallback to legacy Keras if needed."""
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # First attempt with current Keras
+        model = tf.keras.models.load_model(model_path, compile=False, custom_objects=custom_objects)
+        logger.debug(f"Loaded model {model_path} with current Keras")
+        return model
+    except Exception as e:
+        # Check if it's a deserialization issue that might be fixed with legacy Keras
+        if "could not be deserialized" in str(e) or "keras.src.engine.functional" in str(e):
+            logger.info(f"Current Keras failed for {model_path}, trying legacy Keras: {e}")
+            try:
+                # Enable legacy Keras and try again
+                _enable_legacy_keras()
+                model = tf.keras.models.load_model(model_path, compile=False, custom_objects=custom_objects)
+                logger.info(f"Successfully loaded {model_path} with legacy Keras")
+                return model
+            except Exception as e2:
+                logger.warning(f"Legacy Keras also failed for {model_path}: {e2}")
+                raise e2
+        else:
+            # Re-raise original exception for other types of errors
+            raise e
+
 # Standalone directional loss function for proper serialization
 @tf.keras.utils.register_keras_serializable(package="Custom", name="directional_loss")
 def directional_loss(y_true, y_pred):
@@ -98,12 +141,12 @@ class WindowBasedModelLoader:
                                 ),
                             }
                         try:
-                            # Attempt to load with compile=False first, as it's more robust
-                            model = tf.keras.models.load_model(str(lstm_file), compile=False, custom_objects=custom_objects)
+                            # Use the fallback loading method that tries legacy Keras if needed
+                            model = _load_model_with_fallback(str(lstm_file), custom_objects=custom_objects)
                             # Then, compile the model with the custom loss function
                             model.compile(optimizer='adam', loss=directional_loss, metrics=['mae'])
                             self.lstm_models[symbol][window_num] = model
-                            self.logger.info(f"Loaded LSTM model {lstm_file} with compile=False and re-compiled.")
+                            self.logger.info(f"Loaded LSTM model {lstm_file} with fallback loader and re-compiled.")
                         except Exception as e:
                             self.logger.warning(f"Failed to load LSTM model {lstm_file}. Error: {e}")
                             # If that fails, try loading from separate files as a last resort
