@@ -4,6 +4,12 @@ import logging
 from datetime import datetime
 from typing import Dict, Optional
 
+# Import settings for configuration
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from config.settings import TradingSettings
+
 class SignalGenerator:
     """Generates trading signals based on model predictions and portfolio constraints."""
     
@@ -15,7 +21,11 @@ class SignalGenerator:
                  max_positions_per_symbol: int = 1,
                  position_cooldown_minutes: int = 5,
                  data_collector=None,
-                 max_daily_trades_per_symbol: int = 50):
+                 max_daily_trades_per_symbol: int = 50,
+                 settings: TradingSettings = None):
+        if settings is None:
+            settings = TradingSettings()
+        self.settings = settings
         self.max_positions = max_positions
         self.max_positions_per_symbol = max_positions_per_symbol
         self.base_position_size = base_position_size
@@ -43,11 +53,11 @@ class SignalGenerator:
 
     def calculate_position_size(self, confidence: float, signal_strength: str) -> float:
         """Calculate dynamic position size based on confidence and signal strength."""
-        confidence_multiplier = max(0.7, min(1.0, confidence))
+        confidence_multiplier = max(self.settings.confidence_multiplier_min, min(self.settings.confidence_multiplier_max, confidence))
         strength_multipliers = {
-            'VERY_STRONG': 1.2,
-            'STRONG': 1.0,
-            'MODERATE': 0.8,
+            'VERY_STRONG': self.settings.very_strong_signal_multiplier,
+            'STRONG': self.settings.strong_signal_multiplier,
+            'MODERATE': self.settings.moderate_signal_multiplier,
             'WEAK': 0.5,
             'NEUTRAL': 0.3
         }
@@ -159,7 +169,7 @@ class SignalGenerator:
             sma_short = recent_data['close'].rolling(5).mean().iloc[-1]
             sma_long = recent_data['close'].rolling(20).mean().iloc[-1]
             trend_strength = abs(sma_short - sma_long) / sma_long
-            return trend_strength > 0.005
+            return trend_strength > self.settings.trend_strength_threshold
         except Exception as e:
             self.logger.error(f"Market condition check failed for {symbol}: {e}")
             return False
