@@ -105,6 +105,13 @@ class TradingSettings:
     # Model Configuration
     price_prediction_multiplier: float = float(os.getenv('PRICE_PREDICTION_MULTIPLIER', '0.002'))
     
+    # Trade Entry Threshold Configuration
+    enable_strict_entry_conditions: bool = os.getenv('ENABLE_STRICT_ENTRY_CONDITIONS', 'True') == 'True'
+    max_prediction_uncertainty: float = float(os.getenv('MAX_PREDICTION_UNCERTAINTY', '0.3'))
+    min_ensemble_agreement_count: int = int(os.getenv('MIN_ENSEMBLE_AGREEMENT_COUNT', '2'))
+    min_volume_ratio_threshold: float = float(os.getenv('MIN_VOLUME_RATIO_THRESHOLD', '0.8'))
+    strong_signal_confidence_boost: float = float(os.getenv('STRONG_SIGNAL_CONFIDENCE_BOOST', '0.85'))
+    
     def __post_init__(self):
         """Initialize symbols list from environment variable."""
         if self.symbols is None:

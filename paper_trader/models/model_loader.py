@@ -395,9 +395,7 @@ class WindowBasedEnsemblePredictor:
             # Enhanced signal classification
             signal_strength = self._classify_enhanced_signal(price_change_pct, avg_confidence, market_volatility)
             
-            # Check if prediction meets minimum thresholds
-            meets_threshold = self._meets_trading_threshold(avg_confidence, signal_strength)
-            
+            # Prepare result data first
             result = {
                 'symbol': symbol,
                 'current_price': current_price,
@@ -406,7 +404,6 @@ class WindowBasedEnsemblePredictor:
                 'confidence': avg_confidence,
                 'uncertainty': uncertainty,
                 'signal_strength': signal_strength,
-                'meets_threshold': meets_threshold,
                 'optimal_window': optimal_window,
                 'market_volatility': market_volatility,
                 'individual_predictions': predictions,
@@ -414,6 +411,10 @@ class WindowBasedEnsemblePredictor:
                 'model_details': model_details,
                 'timestamp': pd.Timestamp.now()
             }
+            
+            # Check if prediction meets minimum thresholds (pass result for strict conditions)
+            meets_threshold = self._meets_trading_threshold(avg_confidence, signal_strength, result)
+            result['meets_threshold'] = meets_threshold
             
             self.logger.debug(
                 f"Enhanced prediction for {symbol}: {price_change_pct:.4f}% change, "
@@ -690,10 +691,38 @@ class WindowBasedEnsemblePredictor:
         else:
             return "NEUTRAL"
     
-    def _meets_trading_threshold(self, confidence: float, signal_strength: str) -> bool:
+    def _meets_trading_threshold(self, confidence: float, signal_strength: str, prediction_data: dict = None) -> bool:
         """Determine if prediction meets minimum trading thresholds."""
         signal_score = self.signal_hierarchy.get(signal_strength, 0)
         min_signal_score = self.signal_hierarchy.get(self.min_signal_strength, 3)
         
-        return (confidence >= self.min_confidence_threshold and
-                signal_score >= min_signal_score)
+        # Basic threshold check
+        meets_basic = (confidence >= self.min_confidence_threshold and
+                      signal_score >= min_signal_score)
+        
+        if not meets_basic:
+            return False
+        
+        # Additional strict entry conditions if enabled
+        if hasattr(self.settings, 'enable_strict_entry_conditions') and self.settings.enable_strict_entry_conditions:
+            if prediction_data:
+                # Check prediction uncertainty
+                uncertainty = prediction_data.get('uncertainty', 0.0)
+                if uncertainty > getattr(self.settings, 'max_prediction_uncertainty', 0.3):
+                    return False
+                
+                # Check ensemble agreement count
+                individual_predictions = prediction_data.get('individual_predictions', {})
+                model_count = len(individual_predictions)
+                min_agreement = getattr(self.settings, 'min_ensemble_agreement_count', 2)
+                if model_count < min_agreement:
+                    return False
+                
+                # Apply confidence boost for high-confidence predictions
+                confidence_boost_threshold = getattr(self.settings, 'strong_signal_confidence_boost', 0.85)
+                if confidence >= confidence_boost_threshold:
+                    # Allow MODERATE signals if confidence is very high
+                    if signal_strength in ['MODERATE', 'STRONG', 'VERY_STRONG']:
+                        return True
+        
+        return meets_basic

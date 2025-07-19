@@ -121,6 +121,10 @@ class SignalGenerator:
             if not self._check_market_conditions(symbol):
                 return None
 
+            # Check strict entry conditions if enabled
+            if not self._check_strict_entry_conditions(symbol, prediction):
+                return None
+
             # Generate buy signal if expected gain exceeds threshold
             if price_change_pct > self.min_expected_gain_pct:
                 return self._generate_buy_signal(symbol, current_price, prediction, portfolio)
@@ -172,6 +176,54 @@ class SignalGenerator:
             return trend_strength > self.settings.trend_strength_threshold
         except Exception as e:
             self.logger.error(f"Market condition check failed for {symbol}: {e}")
+            return False
+
+    def _check_strict_entry_conditions(self, symbol: str, prediction: dict) -> bool:
+        """Check strict entry conditions if enabled in settings."""
+        if not self.settings.enable_strict_entry_conditions:
+            return True
+            
+        try:
+            # Check prediction uncertainty threshold
+            uncertainty = prediction.get('uncertainty', 0.0)
+            if uncertainty > self.settings.max_prediction_uncertainty:
+                self.logger.debug(f"Prediction uncertainty too high for {symbol}: {uncertainty:.3f}")
+                return False
+            
+            # Check ensemble agreement - count how many models made predictions
+            individual_predictions = prediction.get('individual_predictions', {})
+            model_count = len(individual_predictions)
+            if model_count < self.settings.min_ensemble_agreement_count:
+                self.logger.debug(f"Not enough model agreement for {symbol}: {model_count}/{self.settings.min_ensemble_agreement_count}")
+                return False
+            
+            # Check volume conditions if data available
+            if self.data_collector:
+                recent_data = self.data_collector.get_buffer_data(symbol, 20)
+                if recent_data is not None and len(recent_data) >= 20:
+                    recent_volume = recent_data['volume'].iloc[-1]
+                    avg_volume = recent_data['volume'].rolling(10).mean().iloc[-1]
+                    volume_ratio = recent_volume / avg_volume if avg_volume > 0 else 1.0
+                    
+                    if volume_ratio < self.settings.min_volume_ratio_threshold:
+                        self.logger.debug(f"Volume too low for {symbol}: {volume_ratio:.3f}")
+                        return False
+            
+            # Apply confidence boost for very confident predictions
+            confidence = prediction.get('confidence', 0.0)
+            signal_strength = prediction.get('signal_strength', 'WEAK')
+            
+            # If confidence is very high, we can accept slightly weaker signals
+            if confidence >= self.settings.strong_signal_confidence_boost:
+                # Allow MODERATE signals if confidence is very high
+                if signal_strength in ['MODERATE', 'STRONG', 'VERY_STRONG']:
+                    self.logger.debug(f"High confidence boost applied for {symbol}")
+                    return True
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error checking strict entry conditions for {symbol}: {e}")
             return False
     
     def _generate_buy_signal(self, symbol: str, current_price: float, 
