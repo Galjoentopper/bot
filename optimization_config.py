@@ -80,7 +80,7 @@ OPTIMIZATION_PRESETS = {
             min_trades=20,
             save_top_n=10
         ),
-        'symbols': ['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR'],
+        'symbols': ['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR'],
         'description': 'Comprehensive grid search (2-4 hours)'
     },
     
@@ -108,7 +108,7 @@ OPTIMIZATION_PRESETS = {
             min_trades=15,
             save_top_n=12
         ),
-        'symbols': ['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR'],
+        'symbols': ['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR'],
         'description': 'Aggressive profit maximization strategy'
     },
     
@@ -149,7 +149,7 @@ OPTIMIZATION_PRESETS = {
             min_trades=30,  # Statistically significant sample size
             save_top_n=15
         ),
-        'symbols': ['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR'],  # Diversified asset base
+        'symbols': ['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR'],  # Full 5-symbol diversified asset base
         'description': 'Research-based optimization with statistical rigor and risk-adjusted metrics (2-3 hours)'
     }
 }
@@ -393,7 +393,7 @@ def example_aggressive_multi():
     return run_custom_optimization(
         method='random_search',
         objective='total_return',
-        symbols=['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR'],
+        symbols=['BTCEUR', 'ETHEUR', 'ADAEUR', 'SOLEUR', 'XRPEUR'],
         parameter_space='aggressive_space',
         n_iterations=100
     )
