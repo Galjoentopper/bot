@@ -69,35 +69,47 @@ class SignalGenerator:
                        portfolio) -> Optional[Dict]:
         """Generate trading signal based on prediction and portfolio state."""
         try:
+            # Comprehensive logging for trading decision process
+            self.logger.info(f"=== TRADING DECISION ANALYSIS FOR {symbol} ===")
+            self.logger.info(f"Current price: {current_price}")
+            self.logger.info(f"Prediction data: {prediction}")
+            
             # Check if we already have too many positions for this symbol
             current_per_symbol = len(portfolio.positions.get(symbol, []))
+            self.logger.info(f"Current positions for {symbol}: {current_per_symbol}/{self.max_positions_per_symbol}")
             if current_per_symbol >= self.max_positions_per_symbol:
-                self.logger.debug(
-                    f"Maximum positions for {symbol} reached ({current_per_symbol}/{self.max_positions_per_symbol})"
+                self.logger.warning(
+                    f"❌ REJECTED: Maximum positions for {symbol} reached ({current_per_symbol}/{self.max_positions_per_symbol})"
                 )
                 return None
 
             # Cooldown after closing a position
             last_closed = getattr(portfolio, 'last_closed_time', {}).get(symbol)
-            if last_closed and (datetime.now() - last_closed).total_seconds() < self.position_cooldown_minutes * 60:
-                self.logger.debug(f"Cooldown active for {symbol}")
-                return None
+            if last_closed:
+                cooldown_remaining = self.position_cooldown_minutes * 60 - (datetime.now() - last_closed).total_seconds()
+                self.logger.info(f"Cooldown check for {symbol}: {cooldown_remaining:.0f}s remaining")
+                if cooldown_remaining > 0:
+                    self.logger.warning(f"❌ REJECTED: Cooldown active for {symbol} ({cooldown_remaining:.0f}s remaining)")
+                    return None
 
             # Limit daily trades per symbol
             if self.max_daily_trades_per_symbol and hasattr(portfolio, 'trades'):
                 today_trades = [t for t in portfolio.trades if t.symbol == symbol and (datetime.now() - t.exit_time).total_seconds() < 86400]
+                self.logger.info(f"Daily trades for {symbol}: {len(today_trades)}/{self.max_daily_trades_per_symbol}")
                 if len(today_trades) >= self.max_daily_trades_per_symbol:
-                    self.logger.debug(f"Daily trade limit reached for {symbol}")
+                    self.logger.warning(f"❌ REJECTED: Daily trade limit reached for {symbol} ({len(today_trades)}/{self.max_daily_trades_per_symbol})")
                     return None
             
             # Check portfolio constraints
             total_positions = sum(len(p) for p in portfolio.positions.values())
+            self.logger.info(f"Total portfolio positions: {total_positions}/{self.max_positions}")
             if total_positions >= self.max_positions:
-                self.logger.debug(f"Maximum positions ({self.max_positions}) reached")
+                self.logger.warning(f"❌ REJECTED: Maximum positions ({self.max_positions}) reached")
                 return None
             
             # Validate prediction quality
             if not self._is_prediction_valid(prediction):
+                self.logger.warning(f"❌ REJECTED: Invalid prediction data for {symbol}")
                 return None
             
             # Determine signal direction
@@ -105,31 +117,49 @@ class SignalGenerator:
             confidence = prediction['confidence']
             signal_strength = prediction['signal_strength']
             
+            self.logger.info(f"Signal analysis - Price change: {price_change_pct:.4f}, Confidence: {confidence:.3f}, Strength: {signal_strength}")
+            
             # Check if signal meets minimum requirements
+            self.logger.info(f"Confidence threshold check: {confidence:.3f} >= {self.min_confidence}")
             if confidence < self.min_confidence:
-                self.logger.debug(f"Confidence too low for {symbol}: {confidence:.3f}")
+                self.logger.warning(f"❌ REJECTED: Confidence too low for {symbol}: {confidence:.3f} < {self.min_confidence}")
                 return None
             
             min_strength_value = self.signal_hierarchy.get(self.min_signal_strength, 3)
             signal_strength_value = self.signal_hierarchy.get(signal_strength, 0)
+            self.logger.info(f"Signal strength check: {signal_strength}({signal_strength_value}) >= {self.min_signal_strength}({min_strength_value})")
             
             if signal_strength_value < min_strength_value:
-                self.logger.debug(f"Signal strength too low for {symbol}: {signal_strength}")
+                self.logger.warning(f"❌ REJECTED: Signal strength too low for {symbol}: {signal_strength}({signal_strength_value}) < {self.min_signal_strength}({min_strength_value})")
                 return None
             
             # Check market conditions before generating a signal
-            if not self._check_market_conditions(symbol):
+            market_conditions_ok = self._check_market_conditions(symbol)
+            self.logger.info(f"Market conditions check: {market_conditions_ok}")
+            if not market_conditions_ok:
+                self.logger.warning(f"❌ REJECTED: Unfavorable market conditions for {symbol}")
                 return None
 
             # Check strict entry conditions if enabled
-            if not self._check_strict_entry_conditions(symbol, prediction):
+            strict_conditions_ok = self._check_strict_entry_conditions(symbol, prediction)
+            self.logger.info(f"Strict entry conditions check: {strict_conditions_ok}")
+            if not strict_conditions_ok:
+                self.logger.warning(f"❌ REJECTED: Failed strict entry conditions for {symbol}")
                 return None
 
-            # Generate buy signal if expected gain exceeds threshold
+            # Check expected gain threshold
+            self.logger.info(f"Expected gain check: {price_change_pct:.4f} > {self.min_expected_gain_pct:.4f}")
             if price_change_pct > self.min_expected_gain_pct:
-                return self._generate_buy_signal(symbol, current_price, prediction, portfolio)
+                self.logger.info(f"✅ APPROVED: Generating BUY signal for {symbol}")
+                signal = self._generate_buy_signal(symbol, current_price, prediction, portfolio)
+                if signal:
+                    self.logger.info(f"✅ SIGNAL GENERATED: {signal}")
+                return signal
+            else:
+                self.logger.warning(f"❌ REJECTED: Expected gain too low for {symbol}: {price_change_pct:.4f} <= {self.min_expected_gain_pct:.4f}")
             
             # No signal for neutral or negative predictions in this strategy
+            self.logger.info(f"=== NO SIGNAL GENERATED FOR {symbol} ===")
             return None
             
         except Exception as e:
@@ -160,20 +190,31 @@ class SignalGenerator:
     def _check_market_conditions(self, symbol: str) -> bool:
         """Check if market conditions are favorable for trading."""
         if not self.data_collector:
+            self.logger.info(f"No data collector available, skipping market conditions check for {symbol}")
             return True
         try:
             recent_data = self.data_collector.get_buffer_data(symbol, 20)
             if recent_data is None or len(recent_data) < 20:
+                self.logger.warning(f"Insufficient recent data for market conditions check: {len(recent_data) if recent_data is not None else 0}/20 candles")
                 return False
 
             volatility = recent_data['close'].pct_change().std()
+            self.logger.info(f"Market volatility for {symbol}: {volatility:.4f} (max: 0.03)")
             if volatility > 0.03:
+                self.logger.warning(f"Market too volatile for {symbol}: {volatility:.4f} > 0.03")
                 return False
 
             sma_short = recent_data['close'].rolling(5).mean().iloc[-1]
             sma_long = recent_data['close'].rolling(20).mean().iloc[-1]
             trend_strength = abs(sma_short - sma_long) / sma_long
-            return trend_strength > self.settings.trend_strength_threshold
+            self.logger.info(f"Trend strength for {symbol}: {trend_strength:.4f} (min: {self.settings.trend_strength_threshold})")
+            
+            if trend_strength <= self.settings.trend_strength_threshold:
+                self.logger.warning(f"Trend strength too weak for {symbol}: {trend_strength:.4f} <= {self.settings.trend_strength_threshold}")
+                return False
+            
+            self.logger.info(f"Market conditions favorable for {symbol}")
+            return True
         except Exception as e:
             self.logger.error(f"Market condition check failed for {symbol}: {e}")
             return False
@@ -181,20 +222,25 @@ class SignalGenerator:
     def _check_strict_entry_conditions(self, symbol: str, prediction: dict) -> bool:
         """Check strict entry conditions if enabled in settings."""
         if not self.settings.enable_strict_entry_conditions:
+            self.logger.info(f"Strict entry conditions disabled - PASS")
             return True
             
         try:
+            self.logger.info(f"Checking strict entry conditions for {symbol}")
+            
             # Check prediction uncertainty threshold
             uncertainty = prediction.get('uncertainty', 0.0)
+            self.logger.info(f"Prediction uncertainty: {uncertainty:.3f} (max: {self.settings.max_prediction_uncertainty})")
             if uncertainty > self.settings.max_prediction_uncertainty:
-                self.logger.debug(f"Prediction uncertainty too high for {symbol}: {uncertainty:.3f}")
+                self.logger.warning(f"Prediction uncertainty too high for {symbol}: {uncertainty:.3f} > {self.settings.max_prediction_uncertainty}")
                 return False
             
             # Check ensemble agreement - count how many models made predictions
             individual_predictions = prediction.get('individual_predictions', {})
             model_count = len(individual_predictions)
+            self.logger.info(f"Ensemble model agreement: {model_count}/{self.settings.min_ensemble_agreement_count} models")
             if model_count < self.settings.min_ensemble_agreement_count:
-                self.logger.debug(f"Not enough model agreement for {symbol}: {model_count}/{self.settings.min_ensemble_agreement_count}")
+                self.logger.warning(f"Not enough model agreement for {symbol}: {model_count}/{self.settings.min_ensemble_agreement_count}")
                 return False
             
             # Check volume conditions if data available
@@ -204,9 +250,10 @@ class SignalGenerator:
                     recent_volume = recent_data['volume'].iloc[-1]
                     avg_volume = recent_data['volume'].rolling(10).mean().iloc[-1]
                     volume_ratio = recent_volume / avg_volume if avg_volume > 0 else 1.0
+                    self.logger.info(f"Volume ratio: {volume_ratio:.3f} (min: {self.settings.min_volume_ratio_threshold})")
                     
                     if volume_ratio < self.settings.min_volume_ratio_threshold:
-                        self.logger.debug(f"Volume too low for {symbol}: {volume_ratio:.3f}")
+                        self.logger.warning(f"Volume too low for {symbol}: {volume_ratio:.3f} < {self.settings.min_volume_ratio_threshold}")
                         return False
             
             # Apply confidence boost for very confident predictions
@@ -217,9 +264,10 @@ class SignalGenerator:
             if confidence >= self.settings.strong_signal_confidence_boost:
                 # Allow MODERATE signals if confidence is very high
                 if signal_strength in ['MODERATE', 'STRONG', 'VERY_STRONG']:
-                    self.logger.debug(f"High confidence boost applied for {symbol}")
+                    self.logger.info(f"High confidence boost applied for {symbol}: {confidence:.3f} >= {self.settings.strong_signal_confidence_boost}")
                     return True
             
+            self.logger.info(f"All strict entry conditions passed for {symbol}")
             return True
             
         except Exception as e:
