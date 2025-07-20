@@ -4,8 +4,92 @@ import logging
 import numpy as np
 import pandas as pd
 from typing import Optional, List
-import pandas_ta as ta
+# import pandas_ta as ta  # Temporarily disabled due to numpy compatibility issues
 # import talib  # Commented out - not available on Windows without special installation
+
+# Simple technical indicators implementation as fallback
+class TechnicalIndicators:
+    """Fallback technical indicators implementation"""
+    
+    @staticmethod
+    def rsi(prices, length=14):
+        """Calculate RSI"""
+        delta = prices.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=length).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=length).mean()
+        rs = gain / loss
+        return 100 - (100 / (1 + rs))
+    
+    @staticmethod
+    def macd(prices, fast=12, slow=26, signal=9):
+        """Calculate MACD"""
+        ema_fast = prices.ewm(span=fast).mean()
+        ema_slow = prices.ewm(span=slow).mean()
+        macd = ema_fast - ema_slow
+        signal_line = macd.ewm(span=signal).mean()
+        histogram = macd - signal_line
+        # Return as DataFrame to match pandas_ta format
+        result = pd.DataFrame({
+            'MACD_12_26_9': macd,
+            'MACDh_12_26_9': histogram,
+            'MACDs_12_26_9': signal_line
+        })
+        return result
+    
+    @staticmethod
+    def bbands(prices, length=20, std=2):
+        """Calculate Bollinger Bands"""
+        sma = prices.rolling(window=length).mean()
+        std_dev = prices.rolling(window=length).std()
+        upper_band = sma + (std_dev * std)
+        lower_band = sma - (std_dev * std)
+        # Return as DataFrame to match pandas_ta format
+        result = pd.DataFrame({
+            'BBL_20_2.0': lower_band,
+            'BBM_20_2.0': sma,
+            'BBU_20_2.0': upper_band,
+            'BBB_20_2.0': (upper_band - lower_band) / sma,
+            'BBP_20_2.0': (prices - lower_band) / (upper_band - lower_band)
+        })
+        return result
+    
+    @staticmethod
+    def atr(high, low, close, length=14):
+        """Calculate ATR"""
+        tr1 = high - low
+        tr2 = abs(high - close.shift())
+        tr3 = abs(low - close.shift())
+        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        return true_range.rolling(window=length).mean()
+    
+    @staticmethod
+    def roc(prices, length=10):
+        """Calculate Rate of Change"""
+        return ((prices - prices.shift(length)) / prices.shift(length)) * 100
+    
+    @staticmethod
+    def stoch(high, low, close, k=14, d=3):
+        """Calculate Stochastic Oscillator"""
+        lowest_low = low.rolling(window=k).min()
+        highest_high = high.rolling(window=k).max()
+        k_percent = 100 * ((close - lowest_low) / (highest_high - lowest_low))
+        d_percent = k_percent.rolling(window=d).mean()
+        # Return as DataFrame to match pandas_ta format
+        result = pd.DataFrame({
+            'STOCHk_14_3_3': k_percent,
+            'STOCHd_14_3_3': d_percent
+        })
+        return result
+    
+    @staticmethod
+    def willr(high, low, close, length=14):
+        """Calculate Williams %R"""
+        highest_high = high.rolling(window=length).max()
+        lowest_low = low.rolling(window=length).min()
+        return -100 * ((highest_high - close) / (highest_high - lowest_low))
+
+# Use fallback implementation
+ta = TechnicalIndicators()
 
 # Feature order used during model training for LSTM scaling
 LSTM_FEATURES: List[str] = [

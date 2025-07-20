@@ -101,7 +101,65 @@ except Exception as e:  # pragma: no cover - safe fallback
     print(f"⚠️ GPU configuration warning: {e}")
 
 # Technical Analysis
-import pandas_ta as ta
+# import pandas_ta as ta  # Temporarily disabled due to numpy compatibility issues
+
+# Simple technical indicators implementation as fallback
+class TechnicalIndicators:
+    """Fallback technical indicators implementation"""
+    
+    @staticmethod
+    def rsi(prices, length=14):
+        """Calculate RSI"""
+        delta = prices.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=length).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=length).mean()
+        rs = gain / loss
+        return 100 - (100 / (1 + rs))
+    
+    @staticmethod
+    def macd(prices, fast=12, slow=26, signal=9):
+        """Calculate MACD"""
+        ema_fast = prices.ewm(span=fast).mean()
+        ema_slow = prices.ewm(span=slow).mean()
+        macd = ema_fast - ema_slow
+        signal_line = macd.ewm(span=signal).mean()
+        histogram = macd - signal_line
+        # Return as DataFrame to match pandas_ta format
+        result = pd.DataFrame({
+            'MACD_12_26_9': macd,
+            'MACDh_12_26_9': histogram,
+            'MACDs_12_26_9': signal_line
+        })
+        return result
+    
+    @staticmethod
+    def bbands(prices, length=20, std=2):
+        """Calculate Bollinger Bands"""
+        sma = prices.rolling(window=length).mean()
+        std_dev = prices.rolling(window=length).std()
+        upper_band = sma + (std_dev * std)
+        lower_band = sma - (std_dev * std)
+        # Return as DataFrame to match pandas_ta format
+        result = pd.DataFrame({
+            'BBL_20_2.0': lower_band,
+            'BBM_20_2.0': sma,
+            'BBU_20_2.0': upper_band,
+            'BBB_20_2.0': (upper_band - lower_band) / sma,
+            'BBP_20_2.0': (prices - lower_band) / (upper_band - lower_band)
+        })
+        return result
+    
+    @staticmethod
+    def atr(high, low, close, length=14):
+        """Calculate ATR"""
+        tr1 = high - low
+        tr2 = abs(high - close.shift())
+        tr3 = abs(low - close.shift())
+        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        return true_range.rolling(window=length).mean()
+
+# Use fallback implementation
+ta = TechnicalIndicators()
 
 # Visualization
 import matplotlib.pyplot as plt
