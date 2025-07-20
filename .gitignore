@@ -104,3 +104,19 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Environment files (contains sensitive API keys)
+.env
+.env.local
+.env.*.local
+
+# Trading bot specific
+models/*.pkl
+models/*.h5
+data/*.csv
+logs/*.log
+results/*.json
+
+# VS Code settings (optional - remove if you want to share settings)
+.vscode/
+!.vscode/settings.json
