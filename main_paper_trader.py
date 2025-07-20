@@ -56,6 +56,10 @@ class PaperTrader:
         self.is_running = False
         
         self.logger.info("Paper Trader initialized")
+        self.trading_logger.info("=== PAPER TRADER STARTING ===")
+        self.trading_logger.info(f"Settings: MIN_CONFIDENCE={self.settings.min_confidence_threshold}, MIN_SIGNAL={self.settings.min_signal_strength}")
+        self.trading_logger.info(f"Symbols: {self.settings.symbols}")
+        self.trading_logger.info(f"Capital: €{self.settings.initial_capital}, Max positions: {self.settings.max_positions}")
 
     async def debug_data_pipeline(self, symbol: str): 
         """Debug the data pipeline to identify issues.""" 
@@ -282,18 +286,26 @@ class PaperTrader:
         log_dir = Path('paper_trader/logs')
         log_dir.mkdir(parents=True, exist_ok=True)
         
-        # Use a dedicated debug log file
-        log_file_path = log_dir / 'debug.log'
+        # Use dedicated log files
+        debug_log_file = log_dir / 'debug.log'
+        trading_decisions_log_file = log_dir / 'trading_decisions.log'
 
         # Configure logging
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(log_file_path, mode='w'),  # Overwrite log file each run
+                logging.FileHandler(debug_log_file, mode='w'),  # Overwrite log file each run
                 logging.StreamHandler(sys.stdout)
             ]
         )
+        
+        # Create a separate logger for trading decisions
+        self.trading_logger = logging.getLogger('trading_decisions')
+        self.trading_logger.setLevel(logging.INFO)
+        trading_handler = logging.FileHandler(trading_decisions_log_file, mode='a')  # Append mode
+        trading_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        self.trading_logger.addHandler(trading_handler)
         
         self.logger = logging.getLogger(__name__)
         
@@ -427,9 +439,12 @@ class PaperTrader:
     async def process_symbol(self, symbol: str) -> bool:
         """Process trading signals for a single symbol."""
         try:
+            self.trading_logger.info(f"🔍 PROCESSING SYMBOL: {symbol}")
+            
             # Skip if no models for this symbol
             if (symbol not in self.model_loader.lstm_models and
                 symbol not in self.model_loader.xgb_models):
+                self.trading_logger.warning(f"❌ NO MODELS AVAILABLE for {symbol}")
                 return False
 
             # Refresh latest market price to avoid stale data
@@ -437,19 +452,20 @@ class PaperTrader:
             
             # Ensure we have sufficient data before proceeding
             if not await self.data_collector.ensure_sufficient_data(symbol, min_length=500):
-                self.logger.warning(f"Could not get sufficient data for {symbol}, skipping")
+                self.trading_logger.warning(f"❌ INSUFFICIENT DATA for {symbol} (need 500+ candles)")
                 return False
 
             # Fetch latest data from buffer for feature engineering
             data = self.data_collector.get_buffer_data(symbol, min_length=500)
             if data is None or len(data) < 500:
-                self.logger.warning(f"Insufficient buffer data for {symbol}, skipping.")
+                self.trading_logger.warning(f"❌ INSUFFICIENT BUFFER DATA for {symbol}: {len(data) if data is not None else 0}/500")
                 return False
             
             # Feature engineering
             features_df = self.feature_engineer.engineer_features(data)
             if features_df is None or len(features_df) < self.settings.sequence_length:
-                self.logger.warning(f"Insufficient features for {symbol}")
+                actual_features = len(features_df) if features_df is not None else 0
+                self.trading_logger.warning(f"❌ INSUFFICIENT FEATURES for {symbol}: {actual_features}/{self.settings.sequence_length}")
                 return False
             
             # Refresh and get current price using buffer first for consistency
@@ -458,8 +474,10 @@ class PaperTrader:
             if current_price is None:
                 current_price = await self.data_collector.get_current_price(symbol)
             if current_price is None:
-                self.logger.warning(f"Could not get current price for {symbol}")
+                self.trading_logger.warning(f"❌ COULD NOT GET CURRENT PRICE for {symbol}")
                 return False
+            
+            self.trading_logger.info(f"📊 DATA READY for {symbol}: {len(data)} candles, {len(features_df)} features, price: €{current_price}")
             
             # Calculate market volatility for enhanced prediction
             price_data = features_df['close'].tail(20)  # Use last 20 periods
@@ -470,10 +488,11 @@ class PaperTrader:
                 symbol, features_df, market_volatility, current_price
             )
             if prediction_result is None:
+                self.trading_logger.warning(f"❌ PREDICTION FAILED for {symbol}")
                 return False
 
             # Log prediction result for debugging
-            self.logger.info(f"Prediction for {symbol}: {prediction_result}")
+            self.trading_logger.info(f"🧠 PREDICTION for {symbol}: {prediction_result}")
 
             # Broadcast prediction via WebSocket
             if self.ws_server:
@@ -489,12 +508,13 @@ class PaperTrader:
                 prediction_result['signal_strength'],
                 prediction_result
             ):
-                self.logger.debug(f"Prediction for {symbol} doesn't meet trading thresholds")
+                self.trading_logger.warning(f"❌ PREDICTION THRESHOLD NOT MET for {symbol}")
                 return False
             
             # Check if we already have too many positions for this symbol
             current_positions = self.portfolio_manager.positions.get(symbol, [])
             if len(current_positions) >= self.settings.max_positions_per_symbol:
+                self.trading_logger.warning(f"❌ MAX POSITIONS REACHED for {symbol}: {len(current_positions)}/{self.settings.max_positions_per_symbol}")
                 return False  # Skip if limit reached
             
             # Generate signal
@@ -506,6 +526,7 @@ class PaperTrader:
             )
             
             if signal and signal['action'] == 'BUY':
+                self.trading_logger.info(f"💰 EXECUTING BUY SIGNAL for {symbol}")
                 # Execute buy signal
                 success = self.portfolio_manager.open_position(
                     symbol=symbol,
@@ -518,6 +539,7 @@ class PaperTrader:
                 )
                 
                 if success:
+                    self.trading_logger.info(f"✅ POSITION OPENED for {symbol}: {signal}")
                     # Send Telegram notification
                     await self.telegram_notifier.send_position_opened(
                         symbol=symbol,
@@ -532,11 +554,16 @@ class PaperTrader:
                     
                     self.logger.info(f"Opened position for {symbol}")
                     return True
+                else:
+                    self.trading_logger.error(f"❌ FAILED TO OPEN POSITION for {symbol}")
+            else:
+                self.trading_logger.info(f"🚫 NO SIGNAL GENERATED for {symbol}")
             
             return False
             
         except Exception as e:
             self.logger.error(f"Error processing {symbol}: {e}")
+            self.trading_logger.error(f"❌ ERROR PROCESSING {symbol}: {e}")
             return False
     
     async def check_exit_conditions(self):
@@ -689,23 +716,27 @@ class PaperTrader:
                             hold_time_hours=hold_time
                         )
 
-    async def check_entry_opportunities(self, symbol: str, prediction_result: dict):
+    async def check_entry_opportunities(self, symbol: str, prediction_result: dict) -> bool:
         """Check for new entry opportunities based on prediction."""
         if not prediction_result:
-            return
+            self.trading_logger.warning(f"❌ No prediction for {symbol} - skipping entry check")
+            return False
 
         if not self.predictor._meets_trading_threshold(
             prediction_result['confidence'], prediction_result['signal_strength'], prediction_result
         ):
-            return
+            self.trading_logger.warning(f"❌ Prediction threshold not met for {symbol}")
+            return False
 
         current_positions = self.portfolio_manager.positions.get(symbol, [])
         if len(current_positions) >= self.settings.max_positions_per_symbol:
-            return
+            self.trading_logger.warning(f"❌ Max positions reached for {symbol}: {len(current_positions)}/{self.settings.max_positions_per_symbol}")
+            return False
 
         current_price = await self.data_collector.get_current_price(symbol)
         if current_price is None:
-            return
+            self.trading_logger.warning(f"❌ Could not get current price for {symbol}")
+            return False
 
         signal = self.signal_generator.generate_signal(
             symbol=symbol,
@@ -715,6 +746,7 @@ class PaperTrader:
         )
 
         if signal and signal['action'] == 'BUY':
+            self.trading_logger.info(f"💰 Executing BUY signal for {symbol}")
             success = self.portfolio_manager.open_position(
                 symbol=symbol,
                 entry_price=current_price,
@@ -726,6 +758,7 @@ class PaperTrader:
             )
 
             if success:
+                self.trading_logger.info(f"✅ POSITION OPENED for {symbol}: {signal}")
                 await self.telegram_notifier.send_position_opened(
                     symbol=symbol,
                     entry_price=current_price,
@@ -736,16 +769,57 @@ class PaperTrader:
                     signal_strength=prediction_result['signal_strength'],
                     position_value=signal['position_value']
                 )
+                return True
+            else:
+                self.trading_logger.error(f"❌ Failed to open position for {symbol}")
+        else:
+            self.trading_logger.info(f"🚫 No signal generated for {symbol}")
+        
+        return False
 
     async def run_trading_cycle(self):
         """Enhanced trading cycle with prediction monitoring."""
+        self.trading_logger.info("🔄 STARTING TRADING CYCLE")
+        total_symbols = 0
+        successful_trades = 0
+        failed_signals = 0
+        
         for symbol in self.settings.symbols:
+            total_symbols += 1
             try:
+                self.trading_logger.info(f"🔍 Analyzing {symbol}...")
                 prediction_result = await self.get_prediction_for_symbol(symbol)
+                
+                if prediction_result:
+                    self.trading_logger.info(f"📊 Got prediction for {symbol}: {prediction_result}")
+                else:
+                    self.trading_logger.warning(f"❌ No prediction available for {symbol}")
+                    failed_signals += 1
+                    continue
+                
                 await self.check_existing_positions(symbol, prediction_result)
-                await self.check_entry_opportunities(symbol, prediction_result)
+                
+                entry_result = await self.check_entry_opportunities(symbol, prediction_result)
+                if entry_result:
+                    successful_trades += 1
+                else:
+                    failed_signals += 1
+                    
             except Exception as e:
                 self.logger.error(f"Error in trading cycle for {symbol}: {e}")
+                self.trading_logger.error(f"❌ ERROR in trading cycle for {symbol}: {e}")
+                failed_signals += 1
+        
+        # Get current portfolio status
+        total_positions = sum(len(positions) for positions in self.portfolio_manager.positions.values())
+        available_capital = self.portfolio_manager.get_available_capital()
+        
+        self.trading_logger.info(f"🔄 TRADING CYCLE COMPLETE:")
+        self.trading_logger.info(f"   📊 Symbols analyzed: {total_symbols}")
+        self.trading_logger.info(f"   ✅ Successful trades: {successful_trades}")
+        self.trading_logger.info(f"   ❌ Failed signals: {failed_signals}")
+        self.trading_logger.info(f"   💼 Active positions: {total_positions}")
+        self.trading_logger.info(f"   💰 Available capital: €{available_capital:.2f}")
     
     async def send_hourly_update(self):
         """Send hourly portfolio update."""
@@ -772,6 +846,19 @@ class PaperTrader:
         """Main trading loop."""
         try:
             self.logger.info("Starting Paper Trader...")
+            self.trading_logger.info("🚀 PAPER TRADER STARTING UP")
+            
+            # Log current settings for verification
+            self.trading_logger.info("⚙️ CURRENT SETTINGS:")
+            self.trading_logger.info(f"   📊 Min Confidence: {self.settings.min_confidence_threshold}")
+            self.trading_logger.info(f"   💪 Min Signal Strength: {self.settings.min_signal_strength}")
+            self.trading_logger.info(f"   📈 Min Expected Gain: {self.settings.min_expected_gain_pct}")
+            self.trading_logger.info(f"   🔒 Strict Entry Conditions: {self.settings.enable_strict_entry_conditions}")
+            self.trading_logger.info(f"   🎯 Max Prediction Uncertainty: {self.settings.max_prediction_uncertainty}")
+            self.trading_logger.info(f"   🤝 Min Ensemble Agreement: {self.settings.min_ensemble_agreement_count}")
+            self.trading_logger.info(f"   📊 Trend Strength Threshold: {self.settings.trend_strength_threshold}")
+            self.trading_logger.info(f"   💰 Initial Capital: €{self.settings.initial_capital}")
+            self.trading_logger.info(f"   📋 Symbols: {self.settings.symbols}")
             
             # Initialize components
             await self.initialize()
@@ -813,10 +900,15 @@ class PaperTrader:
                 self.last_prediction_time[symbol] = self.data_collector.last_update.get(symbol)
 
             self.logger.info("Paper Trader is now running...")
+            self.trading_logger.info("✅ PAPER TRADER READY FOR TRADING")
 
             # Main trading loop
+            cycle_count = 0
             while self.is_running:
                 try:
+                    cycle_count += 1
+                    self.trading_logger.info(f"🔄 CYCLE #{cycle_count}")
+                    
                     await self.run_trading_cycle()
 
                     # Send hourly updates
@@ -835,11 +927,13 @@ class PaperTrader:
                     break
                 except Exception as e:
                     self.logger.error(f"Error in main loop: {e}")
+                    self.trading_logger.error(f"❌ MAIN LOOP ERROR: {e}")
                     await self.telegram_notifier.send_error_alert(str(e), "Main Loop")
                     await asyncio.sleep(60)  # Wait 1 minute before retrying
         
         except Exception as e:
             self.logger.error(f"Critical error in Paper Trader: {e}")
+            self.trading_logger.error(f"🚨 CRITICAL ERROR: {e}")
             await self.telegram_notifier.send_error_alert(str(e), "System")
             raise
         
