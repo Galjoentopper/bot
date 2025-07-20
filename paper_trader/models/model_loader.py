@@ -57,12 +57,16 @@ def create_comprehensive_custom_objects():
     
     custom_objects = {}
     
-    # Add all standard Keras classes
+    # Add all standard Keras classes with legacy module path compatibility
     keras_classes = {
-        # Models
+        # Models - handle both current and legacy module paths
         'Functional': tf.keras.Model,
         'Sequential': tf.keras.Sequential,
         'Model': tf.keras.Model,
+        # Legacy Keras module paths
+        'keras.src.engine.functional.Functional': tf.keras.Model,
+        'keras.engine.network.Functional': tf.keras.Model,
+        'keras.models.Functional': tf.keras.Model,
         
         # Core layers
         'Dense': tf.keras.layers.Dense,
@@ -71,6 +75,7 @@ def create_comprehensive_custom_objects():
         
         # Convolutional layers
         'Conv1D': tf.keras.layers.Conv1D,
+        'ConviD': tf.keras.layers.Conv1D,  # Handle typo from error message
         'Conv2D': tf.keras.layers.Conv2D,
         'MaxPooling1D': tf.keras.layers.MaxPooling1D,
         'MaxPooling2D': tf.keras.layers.MaxPooling2D,
@@ -326,7 +331,13 @@ def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = No
     if custom_objects:
         default_custom_objects.update(custom_objects)
     
-    # Strategy 1: Direct loading with comprehensive custom objects
+    # Strategy 1: Load weights into new architecture (most robust for version conflicts)
+    # Move this first since it's most likely to work for cross-version models
+    model = load_model_weights_only(str(model_path))
+    if model:
+        return model
+    
+    # Strategy 2: Direct loading with comprehensive custom objects
     try:
         model = tf.keras.models.load_model(
             str(model_path), 
@@ -337,15 +348,38 @@ def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = No
     except Exception as e:
         pass  # Silently continue to next strategy
     
-    # Strategy 2: Load weights into new architecture (most robust for version conflicts)
-    model = load_model_weights_only(str(model_path))
-    if model:
-        return model
-    
     # Strategy 3: Try loading with custom object scope
     try:
         with tf.keras.utils.custom_object_scope(default_custom_objects):
             model = tf.keras.models.load_model(str(model_path), compile=False)
+        return model
+    except Exception as e:
+        pass
+    
+    # Strategy 4: Handle keras.src.engine.functional module issue specifically
+    try:
+        # Temporarily monkey-patch the missing module
+        import sys
+        import types
+        
+        # Create fake modules to handle the missing keras.src.engine.functional
+        if 'keras' not in sys.modules:
+            sys.modules['keras'] = types.ModuleType('keras')
+        if 'keras.src' not in sys.modules:
+            sys.modules['keras.src'] = types.ModuleType('keras.src')
+        if 'keras.src.engine' not in sys.modules:
+            sys.modules['keras.src.engine'] = types.ModuleType('keras.src.engine')
+        if 'keras.src.engine.functional' not in sys.modules:
+            functional_module = types.ModuleType('keras.src.engine.functional')
+            functional_module.Functional = tf.keras.Model
+            sys.modules['keras.src.engine.functional'] = functional_module
+        
+        # Now try loading again
+        model = tf.keras.models.load_model(
+            str(model_path), 
+            compile=False, 
+            custom_objects=default_custom_objects
+        )
         return model
     except Exception as e:
         pass
