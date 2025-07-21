@@ -104,3 +104,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Test files and demos (exclude from PR)
+test_*.py
+demo_*.py
+*_test.py
+*_demo.py
