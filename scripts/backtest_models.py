@@ -532,7 +532,7 @@ class ModelBacktester:
         
         return execution_price, slippage_amount, fees
     
-    def backtest_symbol(self, symbol: str) -> Dict:
+    def backtest_symbol(self, symbol: str, progress_callback=None) -> Dict:
         """Backtest a single symbol using walk-forward validation"""
         print(f"\nBacktesting {symbol}...")
         
@@ -552,10 +552,18 @@ class ModelBacktester:
         start_date = data.index[0]
         end_date = data.index[-1]
         
+        # Calculate total expected windows for progress tracking
+        total_months = ((end_date - start_date).days // 30)
+        estimated_windows = max(1, (total_months - self.config.train_months) // self.config.slide_months)
+        
         window_num = 1
         current_date = start_date
         
         while current_date < end_date:
+            # Update progress callback if available
+            if progress_callback:
+                progress_callback(symbol, window_num, estimated_windows, None, None)
+            
             # Define training and testing periods
             train_start = current_date
             train_end = train_start + timedelta(days=30 * self.config.train_months)
@@ -591,7 +599,7 @@ class ModelBacktester:
             # Simulate trading for this window
             window_trades, window_capital = self.simulate_trading_window(
                 test_data, lstm_model, xgb_model, scaler,
-                symbol, capital, positions, window_num
+                symbol, capital, positions, window_num, progress_callback, estimated_windows
             )
             
             trades.extend(window_trades)
@@ -619,16 +627,24 @@ class ModelBacktester:
     
     def simulate_trading_window(self, data: pd.DataFrame, lstm_model, xgb_model, scaler,
                               symbol: str, initial_capital: float, positions: List[Trade],
-                              window_num: int) -> Tuple[List[Trade], float]:
+                              window_num: int, progress_callback=None, total_windows=None) -> Tuple[List[Trade], float]:
         """Simulate trading for a single window"""
         capital = initial_capital
         window_trades = []
         trades_this_hour = 0
         last_trade_hour = None
         
+        total_steps = len(data) - self.config.sequence_length
+        progress_update_frequency = max(1, total_steps // 20)  # Update 20 times per window
+        
         for i in range(self.config.sequence_length, len(data)):
             current_time = data.index[i]
             current_price = data['close'].iloc[i]
+            
+            # Update progress periodically
+            current_step = i - self.config.sequence_length + 1
+            if progress_callback and (current_step % progress_update_frequency == 0 or current_step == total_steps):
+                progress_callback(symbol, window_num, total_windows, current_step, total_steps)
             
             # Reset hourly trade counter
             if last_trade_hour is None or current_time.hour != last_trade_hour:
@@ -948,16 +964,20 @@ class ModelBacktester:
             return fc_files[0]  # Return the first available feature columns
         return None
     
-    def run_backtest(self, symbols: List[str] = None) -> Dict:
+    def run_backtest(self, symbols: List[str] = None, progress_callback=None) -> Dict:
         """Run backtest for all specified symbols"""
         if symbols is None:
             symbols = ['ADAEUR', 'BTCEUR', 'ETHEUR', 'SOLEUR']
         
         all_results = {}
         
-        for symbol in symbols:
+        for symbol_idx, symbol in enumerate(symbols):
             try:
-                results = self.backtest_symbol(symbol)
+                if progress_callback:
+                    # Estimate total windows for this symbol (rough estimate)
+                    progress_callback(symbol, 1, "~60", None, None)
+                
+                results = self.backtest_symbol(symbol, progress_callback)
                 all_results[symbol] = results
                 
                 # Save and plot results
