@@ -110,3 +110,7 @@ dmypy.json
 
 # Optimization results (generated files)
 optimization_results/
+
+# Test files and temporary directories  
+/tmp/
+test_*.py
