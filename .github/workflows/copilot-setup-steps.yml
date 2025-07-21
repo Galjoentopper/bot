@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  setup-python-environment:
-    name: Setup Python ML/Trading Bot Environment
+  copilot-setup-steps:
+    name: Copilot Setup - Python ML/Trading Bot Environment
     runs-on: ubuntu-latest
     timeout-minutes: 30
     
