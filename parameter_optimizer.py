@@ -154,6 +154,9 @@ class ParameterOptimizer:
         for k, v in params.items():
             if hasattr(cfg, k):
                 setattr(cfg, k, v)
+        
+        # Suppress verbose output during optimization to avoid spam
+        cfg.verbose = False
 
         backtester = ModelBacktester(cfg)
         try:
