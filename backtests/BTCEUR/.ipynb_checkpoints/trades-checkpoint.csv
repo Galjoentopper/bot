@@ -1,2 +1,0 @@
-entry_time,exit_time,direction,entry_price,exit_price,position_size,pnl,confidence,exit_reason,fees,slippage
-2022-05-18 06:00:00,2022-05-18 12:00:00,BUY,28554.485959999995,28232.51922,0.39078201062927176,-239.3928203729505,0.5236378312110901,STOP_LOSS,113.57401035999999,56.78674
