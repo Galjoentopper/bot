@@ -14,7 +14,7 @@ from typing import Dict, List, Any
 
 import numpy as np
 import psutil
-from tqdm import tqdm
+# Removed tqdm import as we're using simple print statements instead
 
 # Import the backtesting engine
 from scripts.backtest_models import ModelBacktester, BacktestConfig
@@ -71,42 +71,37 @@ class ParameterOptimizer:
         best_score = float('-inf')
         best_params = None
         
-        # Create progress bar
-        with tqdm(total=total_combos, desc="Optimizing", 
-                 bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]") as pbar:
+        # Simple progress tracking without progress bar
+        for i, params in enumerate(combos):
+            param_combo_num = i + 1
+            param_summary = f"buy_th={params.get('buy_threshold', 'N/A'):.2f}" if 'buy_threshold' in params else "params"
             
-            for i, params in enumerate(combos):
-                # Update progress bar with current parameter info
-                param_summary = f"buy_th={params.get('buy_threshold', 'N/A'):.2f}" if 'buy_threshold' in params else "params"
-                pbar.set_postfix_str(f"Current: {param_summary}")
+            # Print progress every 10 combinations or on first/last
+            if param_combo_num == 1 or param_combo_num % 10 == 0 or param_combo_num == total_combos:
+                print(f"Parameter combination {param_combo_num}/{total_combos} - {param_summary}")
+            
+            try:
+                result = self._evaluate_params(params, symbols, param_combo_num, total_combos)
                 
-                try:
-                    result = self._evaluate_params(params, symbols, pbar)
+                if result:
+                    results.append(result)
                     
-                    if result:
-                        results.append(result)
-                        
-                        # Track best result for real-time updates
-                        if result['objective_value'] > best_score:
-                            best_score = result['objective_value']
-                            best_params = result['params']
-                            
-                            # Update progress bar with new best score
-                            pbar.set_description(f"Optimizing (Best: {best_score:.4f})")
-                    
-                    # Memory monitoring every 10 iterations
-                    if (i + 1) % 10 == 0:
-                        current_memory = process.memory_info().rss / 1024 / 1024
-                        memory_change = current_memory - initial_memory
-                        pbar.set_postfix_str(f"{param_summary}, Mem: +{memory_change:.1f}MB")
-                        
-                except Exception as e:
-                    # Enhanced error handling
-                    error_msg = f"Error evaluating {param_summary}: {str(e)[:50]}..."
-                    pbar.set_postfix_str(error_msg)
-                    tqdm.write(f"⚠️  {error_msg}")
+                    # Track best result for real-time updates
+                    if result['objective_value'] > best_score:
+                        best_score = result['objective_value']
+                        best_params = result['params']
+                        print(f"🏆 New best {self.config.objective}: {best_score:.4f} at combination {param_combo_num}")
                 
-                pbar.update(1)
+                # Memory monitoring every 10 iterations
+                if param_combo_num % 10 == 0:
+                    current_memory = process.memory_info().rss / 1024 / 1024
+                    memory_change = current_memory - initial_memory
+                    print(f"Memory usage: {current_memory:.1f} MB (Δ{memory_change:+.1f} MB)")
+                    
+            except Exception as e:
+                # Enhanced error handling
+                error_msg = f"Error evaluating {param_summary}: {str(e)[:50]}..."
+                print(f"⚠️  {error_msg}")
 
         # Final performance summary
         end_time = time.time()
@@ -149,7 +144,7 @@ class ParameterOptimizer:
         return all_combos
 
     # ------------------------------------------------------------------
-    def _evaluate_params(self, params: Dict[str, Any], symbols: List[str], progress_bar=None) -> Dict[str, Any] | None:
+    def _evaluate_params(self, params: Dict[str, Any], symbols: List[str], param_combo_num: int, total_combos: int) -> Dict[str, Any] | None:
         cfg = deepcopy(self.base_config)
         for k, v in params.items():
             if hasattr(cfg, k):
@@ -160,11 +155,8 @@ class ParameterOptimizer:
 
         backtester = ModelBacktester(cfg)
         try:
-            # Pass progress information to backtester for intermediate updates
-            if progress_bar:
-                progress_bar.set_postfix_str(f"Backtesting {len(symbols)} symbol(s)...")
-            
-            run_results = backtester.run_backtest(symbols, progress_callback=self._create_progress_callback(progress_bar, symbols))
+            # Pass simple progress information for window tracking
+            run_results = backtester.run_backtest(symbols, progress_callback=self._create_progress_callback(param_combo_num, total_combos, symbols))
         except Exception as exc:  # pragma: no cover - runtime failure
             # Enhanced error reporting with context
             param_summary = f"buy_th={params.get('buy_threshold', 'N/A')}, symbols={len(symbols)}"
@@ -191,25 +183,19 @@ class ParameterOptimizer:
             "total_trades": total_trades,
         }
 
-    def _create_progress_callback(self, progress_bar, symbols):
+    def _create_progress_callback(self, param_combo_num, total_combos, symbols):
         """Create a progress callback function for the backtester"""
-        if not progress_bar:
-            return None
-            
         def progress_callback(symbol, window_num, total_windows, current_step=None, total_steps=None):
             """Callback to update progress during backtesting"""
             symbol_idx = symbols.index(symbol) if symbol in symbols else 0
             symbol_progress = f"{symbol_idx + 1}/{len(symbols)}"
-            window_progress = f"W{window_num}/{total_windows}" if total_windows else f"W{window_num}"
             
-            if current_step and total_steps:
-                step_progress = f"({current_step}/{total_steps})"
-                progress_bar.set_postfix_str(f"Symbol {symbol_progress}, {window_progress} {step_progress}")
+            # Display simple window counter as requested - format: "window X/Y"
+            if isinstance(total_windows, (int, float)):
+                print(f"Parameter {param_combo_num}/{total_combos}, Symbol {symbol_progress}, Window {window_num}/{int(total_windows)}")
             else:
-                progress_bar.set_postfix_str(f"Symbol {symbol_progress}, {window_progress}")
-            
-            # Force refresh the display
-            progress_bar.refresh()
+                # Handle cases where total_windows is a string like "~60"
+                print(f"Parameter {param_combo_num}/{total_combos}, Symbol {symbol_progress}, Window {window_num}/{total_windows}")
             
         return progress_callback
 
