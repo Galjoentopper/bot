@@ -185,8 +185,17 @@ class ParameterOptimizer:
 
     def _create_progress_callback(self, param_combo_num, total_combos, symbols):
         """Create a progress callback function for the backtester"""
+        last_reported_window = {}  # Track last reported window per symbol to avoid spam
+        
         def progress_callback(symbol, window_num, total_windows, current_step=None, total_steps=None):
             """Callback to update progress during backtesting"""
+            # Only report once per window to avoid spam
+            symbol_key = f"{symbol}_{window_num}"
+            if symbol_key in last_reported_window:
+                return
+                
+            last_reported_window[symbol_key] = True
+            
             symbol_idx = symbols.index(symbol) if symbol in symbols else 0
             symbol_progress = f"{symbol_idx + 1}/{len(symbols)}"
             
