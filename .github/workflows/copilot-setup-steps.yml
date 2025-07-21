@@ -1,6 +1,6 @@
 name: Copilot Setup - Python ML Environment
 
-on:
+"on":
   workflow_dispatch:  # Manual trigger for Copilot
   push:
     branches: [ main, master, develop ]
