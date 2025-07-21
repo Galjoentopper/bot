@@ -17,6 +17,10 @@ Supported pairs: BTCEUR, ETHEUR, ADAEUR, SOLEUR, XRPEUR
 
 import os
 import random
+import sys
+
+# Add parent directory to path to enable relative imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Disable CUDA graphs to prevent CUDA_ERROR_GRAPH_EXEC_UPDATE_FAILURE
 # Commenting out XLA flag that causes 'Unknown flags' error
@@ -209,8 +213,8 @@ class HybridModelTrainer:
 
     def __init__(
         self,
-        data_dir: str = "data",
-        models_dir: str = "models",
+        data_dir: str = None,
+        models_dir: str = None,
         train_months: int = 12,
         test_months: int = 1,
         step_months: int = 1,
@@ -218,8 +222,10 @@ class HybridModelTrainer:
         seed: int = 42,
         warm_start: bool = True,
     ):
-        self.data_dir = data_dir
-        self.models_dir = models_dir
+        # Set default paths to repository root directories
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.data_dir = data_dir if data_dir is not None else os.path.join(repo_root, "data")
+        self.models_dir = models_dir if models_dir is not None else os.path.join(repo_root, "models")
         self.symbols = symbols or ["BTCEUR", "ETHEUR", "ADAEUR", "SOLEUR", "XRPEUR"]
         self.seed = seed
         self.warm_start = warm_start
@@ -2130,15 +2136,15 @@ Examples:
     parser.add_argument(
         "--data-dir",
         type=str,
-        default="data",
-        help="Directory containing price data (default: data)",
+        default=None,
+        help="Directory containing price data (default: data relative to repository root)",
     )
 
     parser.add_argument(
         "--models-dir",
         type=str,
-        default="models",
-        help="Directory to save models (default: models)",
+        default=None,
+        help="Directory to save models (default: models relative to repository root)",
     )
 
     parser.add_argument(
