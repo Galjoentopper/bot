@@ -280,15 +280,19 @@ class ModelBacktester:
                     scaler = pickle.load(f)
 
                 if hasattr(scaler, 'scale_') and scaler.scale_ is not None:
-                    print(f"    ✅ Loaded fitted scaler for {symbol} window {window_num}")
+                    if self.config.verbose:
+                        print(f"    ✅ Loaded fitted scaler for {symbol} window {window_num}")
                     return scaler
                 else:
-                    print(f"    ⚠️ Loaded scaler is not fitted, will create new one")
+                    if self.config.verbose:
+                        print(f"    ⚠️ Loaded scaler is not fitted, will create new one")
 
             except Exception as e:
-                print(f"    ❌ Failed to load scaler {scaler_path}: {e}")
+                if self.config.verbose:
+                    print(f"    ❌ Failed to load scaler {scaler_path}: {e}")
         else:
-            print(f"    ⚠️ Scaler file not found: {scaler_path}")
+            if self.config.verbose:
+                print(f"    ⚠️ Scaler file not found: {scaler_path}")
 
         return self._create_fitted_scaler(symbol)
 
@@ -340,9 +344,10 @@ class ModelBacktester:
                     if len(feature_data) > 50:
                         scaler = StandardScaler()
                         scaler.fit(feature_data.values)
-                        print(
-                            f"    ✅ Created fitted scaler using {len(feature_data)} historical samples"
-                        )
+                        if self.config.verbose:
+                            print(
+                                f"    ✅ Created fitted scaler using {len(feature_data)} historical samples"
+                            )
                         return scaler
 
         except Exception as e:
@@ -580,7 +585,7 @@ class ModelBacktester:
                 continue
             
             # Allow running with just XGBoost if LSTM is not available
-            if lstm_model is None:
+            if lstm_model is None and self.config.verbose:
                 print(f"    ⚠️ LSTM model not available for window {window_num}, using XGBoost-only mode...")
             
             # Simulate trading for this window
@@ -674,7 +679,7 @@ class ModelBacktester:
                 signal = self.generate_signal(xgb_prob, lstm_delta)
                 
                 # Debug signal generation (only print occasionally to avoid spam)
-                if i % 2000 == 0:  # Print every 2000 iterations
+                if i % 2000 == 0 and self.config.verbose:  # Print every 2000 iterations
                     print(f"      Debug at {current_time}: XGB_prob={xgb_prob:.3f}, LSTM_delta={lstm_delta:.6f}, Signal={signal}")
                     print(f"        Thresholds: buy={self.config.buy_threshold}, sell={self.config.sell_threshold}, lstm_delta={self.config.lstm_delta_threshold}")
                 
