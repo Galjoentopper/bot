@@ -254,6 +254,8 @@ PARAMETER_SPACES = {
 
 def run_preset_optimization(preset_name: str, custom_symbols: list = None):
     """Run optimization using a predefined preset"""
+    import psutil
+    import time
     
     if preset_name not in OPTIMIZATION_PRESETS:
         available = ', '.join(OPTIMIZATION_PRESETS.keys())
@@ -261,11 +263,24 @@ def run_preset_optimization(preset_name: str, custom_symbols: list = None):
     
     preset = OPTIMIZATION_PRESETS[preset_name]
     
-    print(f"🚀 Running optimization preset: '{preset_name}'")
+    # Performance monitoring setup
+    start_time = time.time()
+    process = psutil.Process()
+    initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+    
+    print("=" * 70)
+    print(f"🚀 OPTIMIZATION PRESET: '{preset_name.upper()}'")
+    print("=" * 70)
     print(f"📝 Description: {preset['description']}")
+    print(f"⚙️  Method: {preset['config'].method}")
+    print(f"🎯 Objective: {preset['config'].objective}")
+    print(f"🔄 Iterations: {getattr(preset['config'], 'n_iterations', 'All combinations')}")
+    print(f"💾 System Memory: {psutil.virtual_memory().available / 1024 / 1024 / 1024:.1f} GB available")
+    print(f"🖥️  CPU Cores: {psutil.cpu_count()} ({psutil.cpu_count(logical=False)} physical)")
     
     # Use custom symbols if provided
     symbols = custom_symbols or preset['symbols']
+    print(f"📊 Target Symbols: {', '.join(symbols)} ({len(symbols)} total)")
     
     # Enhanced scientific validation for scientific_optimized preset
     if preset_name == 'scientific_optimized':
@@ -280,21 +295,47 @@ def run_preset_optimization(preset_name: str, custom_symbols: list = None):
         print("   • Realistic transaction cost modeling")
         print("=" * 50)
     
+    print(f"\n⏰ Starting optimization at {time.strftime('%H:%M:%S')}")
+    print("-" * 70)
+    
     # Create optimizer
     optimizer = ParameterOptimizer(preset['config'])
     
     # Customize parameter space based on preset
     if preset_name == 'conservative':
         optimizer.grid_space = PARAMETER_SPACES['conservative_space']
+        print("📋 Using conservative parameter space")
     elif preset_name == 'aggressive':
         optimizer.grid_space = PARAMETER_SPACES['aggressive_space']
+        print("📋 Using aggressive parameter space")
     elif preset_name in ['smart_search', 'comprehensive']:
         optimizer.grid_space = PARAMETER_SPACES['focused_space']
+        print("📋 Using focused parameter space")
     elif preset_name == 'scientific_optimized':
         optimizer.grid_space = PARAMETER_SPACES['research_based_space']
+        print("📋 Using research-based parameter space")
     
     # Run optimization
-    results = optimizer.run_optimization(symbols)
+    try:
+        results = optimizer.run_optimization(symbols)
+    except KeyboardInterrupt:
+        print("\n⚠️  Optimization interrupted by user")
+        return []
+    except Exception as e:
+        print(f"\n❌ Optimization failed: {e}")
+        return []
+    
+    # Final performance summary
+    end_time = time.time()
+    duration = end_time - start_time
+    final_memory = process.memory_info().rss / 1024 / 1024
+    
+    print("\n" + "=" * 70)
+    print("🎉 OPTIMIZATION COMPLETED")
+    print("=" * 70)
+    print(f"⏱️  Total Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
+    print(f"💾 Memory Usage: {final_memory:.1f} MB (Δ{final_memory-initial_memory:+.1f} MB)")
+    print(f"✅ Valid Results: {len(results)} configurations found")
     
     # Enhanced reporting for scientific preset
     if preset_name == 'scientific_optimized' and results:
@@ -324,6 +365,21 @@ def run_preset_optimization(preset_name: str, custom_symbols: list = None):
         print(f"   • Risk per Trade: {params.get('risk_per_trade', 0)*100:.1f}%")
         print(f"   • Confidence Threshold: {params.get('buy_threshold', 0):.2f}")
         print("=" * 50)
+    elif results:
+        # Standard result summary for other presets
+        print(f"\n🏆 Best Result: {preset['config'].objective} = {results[0]['objective_value']:.4f}")
+        print(f"🔢 Total Trades: {results[0]['total_trades']}")
+        
+        # Show key parameters
+        best_params = results[0]['params']
+        key_params = ['buy_threshold', 'sell_threshold', 'risk_per_trade', 'stop_loss_pct']
+        print("🎯 Key Parameters:")
+        for param in key_params:
+            if param in best_params:
+                print(f"   {param}: {best_params[param]}")
+    
+    print(f"\n📁 Results saved to 'optimization_results/' directory")
+    print("=" * 70)
     
     return results
 
@@ -337,8 +393,26 @@ def run_custom_optimization(
     n_jobs: int = 4
 ):
     """Run custom optimization with specified parameters"""
+    import psutil
+    import time
     
     symbols = symbols or ['BTCEUR', 'ETHEUR']
+    
+    # Performance monitoring setup
+    start_time = time.time()
+    process = psutil.Process()
+    initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+    
+    print("=" * 70)
+    print("🎯 CUSTOM OPTIMIZATION")
+    print("=" * 70)
+    print(f"⚙️  Method: {method}")
+    print(f"🏆 Objective: {objective}")
+    print(f"📊 Symbols: {', '.join(symbols)} ({len(symbols)} total)")
+    print(f"🔧 Parameter space: {parameter_space}")
+    print(f"🔄 Iterations: {n_iterations if method != 'grid_search' else 'All combinations'}")
+    print(f"⚡ Parallel jobs: {n_jobs}")
+    print(f"💾 Available Memory: {psutil.virtual_memory().available / 1024 / 1024 / 1024:.1f} GB")
     
     # Create custom configuration
     config = OptimizationConfig(
@@ -350,11 +424,8 @@ def run_custom_optimization(
         save_top_n=10
     )
     
-    print("🎯 Running custom optimization:")
-    print(f"   Method: {method}")
-    print(f"   Objective: {objective}")
-    print(f"   Symbols: {symbols}")
-    print(f"   Parameter space: {parameter_space}")
+    print(f"\n⏰ Starting optimization at {time.strftime('%H:%M:%S')}")
+    print("-" * 70)
     
     # Create optimizer
     optimizer = ParameterOptimizer(config)
@@ -362,9 +433,46 @@ def run_custom_optimization(
     # Set custom parameter space
     if parameter_space in PARAMETER_SPACES:
         optimizer.grid_space = PARAMETER_SPACES[parameter_space]
+        print(f"📋 Using {parameter_space} parameter ranges")
+    else:
+        print(f"⚠️  Unknown parameter space '{parameter_space}', using default")
     
     # Run optimization
-    results = optimizer.run_optimization(symbols)
+    try:
+        results = optimizer.run_optimization(symbols)
+    except KeyboardInterrupt:
+        print("\n⚠️  Optimization interrupted by user")
+        return []
+    except Exception as e:
+        print(f"\n❌ Optimization failed: {e}")
+        return []
+    
+    # Final performance summary
+    end_time = time.time()
+    duration = end_time - start_time
+    final_memory = process.memory_info().rss / 1024 / 1024
+    
+    print("\n" + "=" * 70)
+    print("🎉 CUSTOM OPTIMIZATION COMPLETED")
+    print("=" * 70)
+    print(f"⏱️  Total Duration: {duration:.1f} seconds ({duration/60:.1f} minutes)")
+    print(f"💾 Memory Usage: {final_memory:.1f} MB (Δ{final_memory-initial_memory:+.1f} MB)")
+    print(f"✅ Valid Results: {len(results)} configurations found")
+    
+    if results:
+        print(f"\n🏆 Best Result: {objective} = {results[0]['objective_value']:.4f}")
+        print(f"🔢 Total Trades: {results[0]['total_trades']}")
+        
+        # Show key parameters
+        best_params = results[0]['params']
+        key_params = ['buy_threshold', 'sell_threshold', 'risk_per_trade', 'stop_loss_pct']
+        print("🎯 Key Parameters:")
+        for param in key_params:
+            if param in best_params:
+                print(f"   {param}: {best_params[param]}")
+    
+    print(f"\n📁 Results saved to 'optimization_results/' directory")
+    print("=" * 70)
     
     return results
 

@@ -6,12 +6,15 @@ import itertools
 import json
 import os
 import random
+import time
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Any
 
 import numpy as np
+import psutil
+from tqdm import tqdm
 
 # Import the backtesting engine
 from scripts.backtest_models import ModelBacktester, BacktestConfig
@@ -48,12 +51,79 @@ class ParameterOptimizer:
     # ------------------------------------------------------------------
     def run_optimization(self, symbols: List[str]) -> List[Dict[str, Any]]:
         """Run optimization over the defined parameter space."""
+        # Initialize performance tracking
+        start_time = time.time()
+        process = psutil.Process()
+        initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+        
+        print(f"\n🚀 Starting optimization with {self.config.method}")
+        print(f"📊 Target symbols: {', '.join(symbols)}")
+        print(f"🎯 Optimization objective: {self.config.objective}")
+        print(f"💾 Initial memory usage: {initial_memory:.1f} MB")
+        
         combos = self._generate_parameter_sets()
+        total_combos = len(combos)
+        
+        print(f"🔍 Total parameter combinations to evaluate: {total_combos}")
+        print(f"⚡ Minimum trades required: {self.config.min_trades}")
+        
         results = []
-        for params in combos:
-            result = self._evaluate_params(params, symbols)
-            if result:
-                results.append(result)
+        best_score = float('-inf')
+        best_params = None
+        
+        # Create progress bar
+        with tqdm(total=total_combos, desc="Optimizing", 
+                 bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]") as pbar:
+            
+            for i, params in enumerate(combos):
+                # Update progress bar with current parameter info
+                param_summary = f"buy_th={params.get('buy_threshold', 'N/A'):.2f}" if 'buy_threshold' in params else "params"
+                pbar.set_postfix_str(f"Current: {param_summary}")
+                
+                try:
+                    result = self._evaluate_params(params, symbols)
+                    
+                    if result:
+                        results.append(result)
+                        
+                        # Track best result for real-time updates
+                        if result['objective_value'] > best_score:
+                            best_score = result['objective_value']
+                            best_params = result['params']
+                            
+                            # Update progress bar with new best score
+                            pbar.set_description(f"Optimizing (Best: {best_score:.4f})")
+                    
+                    # Memory monitoring every 10 iterations
+                    if (i + 1) % 10 == 0:
+                        current_memory = process.memory_info().rss / 1024 / 1024
+                        memory_change = current_memory - initial_memory
+                        pbar.set_postfix_str(f"{param_summary}, Mem: +{memory_change:.1f}MB")
+                        
+                except Exception as e:
+                    # Enhanced error handling
+                    error_msg = f"Error evaluating {param_summary}: {str(e)[:50]}..."
+                    pbar.set_postfix_str(error_msg)
+                    tqdm.write(f"⚠️  {error_msg}")
+                
+                pbar.update(1)
+
+        # Final performance summary
+        end_time = time.time()
+        duration = end_time - start_time
+        final_memory = process.memory_info().rss / 1024 / 1024
+        
+        print(f"\n📈 Optimization completed!")
+        print(f"⏱️  Total time: {duration:.1f} seconds ({duration/60:.1f} minutes)")
+        print(f"💾 Final memory usage: {final_memory:.1f} MB (Δ{final_memory-initial_memory:+.1f} MB)")
+        print(f"✅ Valid results: {len(results)}/{total_combos} ({len(results)/total_combos*100:.1f}%)")
+        
+        if results:
+            print(f"🏆 Best {self.config.objective}: {best_score:.4f}")
+            if best_params:
+                key_params = ['buy_threshold', 'sell_threshold', 'risk_per_trade']
+                best_summary = {k: v for k, v in best_params.items() if k in key_params}
+                print(f"🎯 Best parameters preview: {best_summary}")
 
         # Sort by objective descending
         results.sort(key=lambda x: x["objective_value"], reverse=True)
@@ -89,7 +159,10 @@ class ParameterOptimizer:
         try:
             run_results = backtester.run_backtest(symbols)
         except Exception as exc:  # pragma: no cover - runtime failure
-            print(f"Error evaluating params {params}: {exc}")
+            # Enhanced error reporting with context
+            param_summary = f"buy_th={params.get('buy_threshold', 'N/A')}, symbols={len(symbols)}"
+            error_type = type(exc).__name__
+            print(f"❌ {error_type} evaluating params ({param_summary}): {str(exc)[:100]}")
             return None
 
         metrics = [res["performance"] for res in run_results.values() if res.get("performance")]
@@ -125,11 +198,45 @@ class ParameterOptimizer:
     # ------------------------------------------------------------------
     def _save_results(self, results: List[Dict[str, Any]]):
         if not results:
+            print("⚠️  No valid results to save")
             return
+            
         os.makedirs("optimization_results", exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         file_path = os.path.join("optimization_results", f"optimization_{timestamp}.json")
+        
         top_n = results[: self.config.save_top_n]
+        
+        # Add metadata to saved results
+        save_data = {
+            "metadata": {
+                "timestamp": timestamp,
+                "method": self.config.method,
+                "objective": self.config.objective,
+                "total_results": len(results),
+                "saved_count": len(top_n),
+                "min_trades": self.config.min_trades
+            },
+            "results": top_n
+        }
+        
         with open(file_path, "w") as f:
-            json.dump(top_n, f, indent=2)
-        print(f"Saved top {len(top_n)} results to {file_path}")
+            json.dump(save_data, f, indent=2)
+            
+        print(f"💾 Saved top {len(top_n)} results to {file_path}")
+        
+        # Display summary of top results
+        if top_n:
+            print(f"\n📊 Top {min(3, len(top_n))} Results Summary:")
+            print("-" * 60)
+            for i, result in enumerate(top_n[:3], 1):
+                obj_val = result['objective_value']
+                trades = result['total_trades']
+                key_params = result['params']
+                buy_th = key_params.get('buy_threshold', 'N/A')
+                sell_th = key_params.get('sell_threshold', 'N/A')
+                risk = key_params.get('risk_per_trade', 'N/A')
+                
+                print(f"#{i}: {self.config.objective}={obj_val:.4f}, trades={trades}")
+                print(f"    buy_th={buy_th}, sell_th={sell_th}, risk={risk}")
+                print()
