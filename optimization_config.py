@@ -261,8 +261,11 @@ def run_preset_optimization(preset_name: str, custom_symbols: list = None):
     
     preset = OPTIMIZATION_PRESETS[preset_name]
     
-    print(f"🚀 Running optimization preset: '{preset_name}'")
+    print("🚀 ENHANCED OPTIMIZATION SYSTEM")
+    print("=" * 50)
+    print(f"🎯 Running optimization preset: '{preset_name}'")
     print(f"📝 Description: {preset['description']}")
+    print("🔧 Loading optimization engine with progress tracking...")
     
     # Use custom symbols if provided
     symbols = custom_symbols or preset['symbols']
@@ -280,18 +283,30 @@ def run_preset_optimization(preset_name: str, custom_symbols: list = None):
         print("   • Realistic transaction cost modeling")
         print("=" * 50)
     
+    print(f"\n🔄 Initializing optimizer with enhanced progress tracking...")
+    print(f"📈 Target symbols: {', '.join(symbols)}")
+    print(f"🎪 Optimization method: {preset['config'].method}")
+    print(f"🎯 Objective function: {preset['config'].objective}")
+    
     # Create optimizer
     optimizer = ParameterOptimizer(preset['config'])
     
     # Customize parameter space based on preset
     if preset_name == 'conservative':
+        print("🛡️  Loading conservative parameter space...")
         optimizer.grid_space = PARAMETER_SPACES['conservative_space']
     elif preset_name == 'aggressive':
+        print("⚡ Loading aggressive parameter space...")
         optimizer.grid_space = PARAMETER_SPACES['aggressive_space']
     elif preset_name in ['smart_search', 'comprehensive']:
+        print("🎯 Loading focused parameter space...")
         optimizer.grid_space = PARAMETER_SPACES['focused_space']
     elif preset_name == 'scientific_optimized':
+        print("🔬 Loading research-based parameter space...")
         optimizer.grid_space = PARAMETER_SPACES['research_based_space']
+    
+    print("✅ Optimizer initialized successfully!")
+    print("🚀 Starting optimization process...\n")
     
     # Run optimization
     results = optimizer.run_optimization(symbols)
@@ -350,18 +365,29 @@ def run_custom_optimization(
         save_top_n=10
     )
     
-    print("🎯 Running custom optimization:")
-    print(f"   Method: {method}")
-    print(f"   Objective: {objective}")
-    print(f"   Symbols: {symbols}")
-    print(f"   Parameter space: {parameter_space}")
+    print("🎯 CUSTOM OPTIMIZATION SETUP")
+    print("=" * 50)
+    print("🎯 Running custom optimization with enhanced tracking:")
+    print(f"   📊 Method: {method}")
+    print(f"   🎪 Objective: {objective}")
+    print(f"   📈 Symbols: {symbols}")
+    print(f"   🔧 Parameter space: {parameter_space}")
+    print(f"   🔢 Iterations: {n_iterations}")
+    print(f"   ⚙️  Parallel jobs: {n_jobs}")
+    
+    print(f"\n🔄 Initializing custom optimizer...")
     
     # Create optimizer
     optimizer = ParameterOptimizer(config)
     
     # Set custom parameter space
     if parameter_space in PARAMETER_SPACES:
+        print(f"✅ Loading parameter space: {parameter_space}")
         optimizer.grid_space = PARAMETER_SPACES[parameter_space]
+    else:
+        print(f"⚠️  Unknown parameter space '{parameter_space}', using default")
+    
+    print("🚀 Starting custom optimization process...\n")
     
     # Run optimization
     results = optimizer.run_optimization(symbols)
@@ -416,6 +442,14 @@ def example_scientific_optimization():
 if __name__ == "__main__":
     import argparse
     
+    # Display startup banner
+    print("🤖 ENHANCED PARAMETER OPTIMIZATION SYSTEM")
+    print("=" * 60)
+    print("🚀 Advanced optimization with real-time progress tracking")
+    print("📊 Memory monitoring and performance analytics")
+    print("🎯 Comprehensive error handling and status updates")
+    print("=" * 60)
+    
     parser = argparse.ArgumentParser(description='Run paper trader optimization')
     parser.add_argument('--preset', type=str, 
                        choices=list(OPTIMIZATION_PRESETS.keys()),
@@ -440,23 +474,46 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    # Run optimization
+    print(f"\n🔧 CONFIGURATION LOADED")
+    print("-" * 30)
     if args.preset:
-        print(f"🚀 Running preset optimization: {args.preset}")
-        results = run_preset_optimization(args.preset, args.symbols)
+        print(f"   🎯 Preset: {args.preset}")
     else:
-        print("🎯 Running custom optimization")
-        results = run_custom_optimization(
-            method=args.method,
-            objective=args.objective,
-            symbols=args.symbols,
-            parameter_space=args.param_space,
-            n_iterations=args.iterations,
-            n_jobs=args.jobs
-        )
+        print(f"   🔧 Method: {args.method}")
+        print(f"   📊 Objective: {args.objective}")
+        print(f"   🧮 Parameter space: {args.param_space}")
+        print(f"   🔄 Iterations: {args.iterations}")
+    print(f"   📈 Symbols: {', '.join(args.symbols)}")
+    print(f"   ⚙️  Parallel jobs: {args.jobs}")
     
-    print("\n🎉 Optimization completed!")
-    print("📁 Check 'optimization_results/' directory for detailed results")
+    # Run optimization
+    try:
+        if args.preset:
+            print(f"\n🚀 Running preset optimization: {args.preset}")
+            results = run_preset_optimization(args.preset, args.symbols)
+        else:
+            print("\n🎯 Running custom optimization")
+            results = run_custom_optimization(
+                method=args.method,
+                objective=args.objective,
+                symbols=args.symbols,
+                parameter_space=args.param_space,
+                n_iterations=args.iterations,
+                n_jobs=args.jobs
+            )
+        
+        print("\n🎉 OPTIMIZATION SUCCESSFULLY COMPLETED!")
+        print("📁 Check 'optimization_results/' directory for detailed results")
+        print("=" * 60)
+        
+    except KeyboardInterrupt:
+        print("\n\n⏹️  Optimization interrupted by user")
+        print("💾 Partial results may be available in 'optimization_results/' directory")
+    except Exception as e:
+        print(f"\n\n❌ Optimization failed with error: {str(e)}")
+        print(f"🔍 Error type: {type(e).__name__}")
+        print("💡 Please check your configuration and data availability")
+        raise
 
 
 # =============================================================================
