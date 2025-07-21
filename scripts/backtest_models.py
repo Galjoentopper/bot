@@ -65,6 +65,9 @@ class BacktestConfig:
         # same length here to avoid shape mismatches at inference time.
         self.sequence_length = 96
         self.price_change_threshold = 0.002
+        
+        # Output control
+        self.verbose = True  # Control detailed output during backtesting
 
 class TechnicalIndicators:
     """Calculate technical indicators for features"""
@@ -162,22 +165,26 @@ class ModelBacktester:
                             # Recompile with current TensorFlow version
                             lstm_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
                         except Exception as e2:
-                            print(f"    LSTM model loading failed for window {window_num}: {e1}")
-                            print(f"    Alternative loading also failed: {e2}")
+                            if self.config.verbose:
+                                print(f"    LSTM model loading failed for window {window_num}: {e1}")
+                                print(f"    Alternative loading also failed: {e2}")
                             lstm_model = None
 
-                    if lstm_model is not None:
+                    if lstm_model is not None and self.config.verbose:
                         print(f"    LSTM model loaded successfully for window {window_num}")
                 except Exception as e:
-                    print(f"    LSTM model loading failed for window {window_num}: {e}")
+                    if self.config.verbose:
+                        print(f"    LSTM model loading failed for window {window_num}: {e}")
                     lstm_model = None
             else:
-                print(f"    LSTM model file not found: {lstm_path}")
+                if self.config.verbose:
+                    print(f"    LSTM model file not found: {lstm_path}")
                 # Try to find any available LSTM model for this symbol
                 lstm_fallback_path = self._find_fallback_model(symbol, 'lstm', '.keras')
                 if lstm_fallback_path:
                     try:
-                        print(f"    Trying fallback LSTM model: {lstm_fallback_path}")
+                        if self.config.verbose:
+                            print(f"    Trying fallback LSTM model: {lstm_fallback_path}")
                         import tensorflow as tf
                         from tensorflow.keras.models import load_model
                         from train_hybrid_models import directional_loss
@@ -185,9 +192,11 @@ class ModelBacktester:
                             lstm_fallback_path,
                             custom_objects={"directional_loss": directional_loss}
                         )
-                        print(f"    ✅ Fallback LSTM model loaded successfully")
+                        if self.config.verbose:
+                            print(f"    ✅ Fallback LSTM model loaded successfully")
                     except Exception as e:
-                        print(f"    ❌ Fallback LSTM model loading failed: {e}")
+                        if self.config.verbose:
+                            print(f"    ❌ Fallback LSTM model loading failed: {e}")
                         lstm_model = None
 
             # Load XGBoost model
@@ -197,22 +206,28 @@ class ModelBacktester:
                 try:
                     xgb_model = xgb.XGBClassifier()
                     xgb_model.load_model(xgb_path)
-                    print(f"    XGBoost model loaded successfully for window {window_num}")
+                    if self.config.verbose:
+                        print(f"    XGBoost model loaded successfully for window {window_num}")
                 except Exception as e:
-                    print(f"    XGBoost model loading failed for window {window_num}: {e}")
+                    if self.config.verbose:
+                        print(f"    XGBoost model loading failed for window {window_num}: {e}")
                     xgb_model = None
             else:
-                print(f"    XGBoost model file not found: {xgb_path}")
+                if self.config.verbose:
+                    print(f"    XGBoost model file not found: {xgb_path}")
                 # Try to find any available XGBoost model for this symbol
                 xgb_fallback_path = self._find_fallback_model(symbol, 'xgboost', '.json')
                 if xgb_fallback_path:
                     try:
-                        print(f"    Trying fallback XGBoost model: {xgb_fallback_path}")
+                        if self.config.verbose:
+                            print(f"    Trying fallback XGBoost model: {xgb_fallback_path}")
                         xgb_model = xgb.XGBClassifier()
                         xgb_model.load_model(xgb_fallback_path)
-                        print(f"    ✅ Fallback XGBoost model loaded successfully")
+                        if self.config.verbose:
+                            print(f"    ✅ Fallback XGBoost model loaded successfully")
                     except Exception as e:
-                        print(f"    ❌ Fallback XGBoost model loading failed: {e}")
+                        if self.config.verbose:
+                            print(f"    ❌ Fallback XGBoost model loading failed: {e}")
                         xgb_model = None
 
             # Load or create fitted scaler - THIS IS THE KEY FIX
@@ -224,21 +239,27 @@ class ModelBacktester:
                 try:
                     with open(fc_path, 'rb') as f:
                         self.xgb_feature_columns[window_num] = pickle.load(f)
-                    print(f"    ✅ Loaded feature columns for window {window_num}")
+                    if self.config.verbose:
+                        print(f"    ✅ Loaded feature columns for window {window_num}")
                 except Exception as e:
-                    print(f"    ❌ Failed to load feature columns {fc_path}: {e}")
+                    if self.config.verbose:
+                        print(f"    ❌ Failed to load feature columns {fc_path}: {e}")
             else:
-                print(f"    ⚠️ Feature columns file not found: {fc_path}")
+                if self.config.verbose:
+                    print(f"    ⚠️ Feature columns file not found: {fc_path}")
                 # Try to find fallback feature columns
                 fc_fallback_path = self._find_fallback_feature_columns(symbol)
                 if fc_fallback_path:
                     try:
-                        print(f"    Trying fallback feature columns: {fc_fallback_path}")
+                        if self.config.verbose:
+                            print(f"    Trying fallback feature columns: {fc_fallback_path}")
                         with open(fc_fallback_path, 'rb') as f:
                             self.xgb_feature_columns[window_num] = pickle.load(f)
-                        print(f"    ✅ Fallback feature columns loaded successfully")
+                        if self.config.verbose:
+                            print(f"    ✅ Fallback feature columns loaded successfully")
                     except Exception as e:
-                        print(f"    ❌ Fallback feature columns loading failed: {e}")
+                        if self.config.verbose:
+                            print(f"    ❌ Fallback feature columns loading failed: {e}")
 
             return lstm_model, xgb_model, scaler
 
@@ -403,18 +424,22 @@ class ModelBacktester:
         feature_data = data[lstm_features].fillna(method="ffill").dropna()
 
         if len(feature_data) == 0:
-            print("    ❌ No valid data for LSTM sequences")
+            if self.config.verbose:
+                print("    ❌ No valid data for LSTM sequences")
             return np.array([])
 
         if not hasattr(scaler, 'scale_') or scaler.scale_ is None:
-            print("    ⚠️ Scaler not fitted, fitting on available data...")
+            if self.config.verbose:
+                print("    ⚠️ Scaler not fitted, fitting on available data...")
             scaler.fit(feature_data.values)
 
         try:
             scaled_data = scaler.transform(feature_data.values)
-            print(f"    ✅ Successfully scaled {len(feature_data)} data points")
+            if self.config.verbose:
+                print(f"    ✅ Successfully scaled {len(feature_data)} data points")
         except Exception as e:
-            print(f"    ❌ Scaling failed: {e}, using unscaled data")
+            if self.config.verbose:
+                print(f"    ❌ Scaling failed: {e}, using unscaled data")
             scaled_data = feature_data.values
 
         sequences = []
@@ -422,10 +447,12 @@ class ModelBacktester:
             sequences.append(scaled_data[i-self.config.sequence_length:i])
 
         if len(sequences) == 0:
-            print(f"    ❌ Not enough data for sequences (need {self.config.sequence_length + 1}+)")
+            if self.config.verbose:
+                print(f"    ❌ Not enough data for sequences (need {self.config.sequence_length + 1}+)")
             return np.array([])
 
-        print(f"    ✅ Created {len(sequences)} LSTM sequences")
+        if self.config.verbose:
+            print(f"    ✅ Created {len(sequences)} LSTM sequences")
         return np.array(sequences)
     
     def get_xgb_features(self, data: pd.DataFrame, lstm_delta: float, window_num: int) -> np.ndarray:
