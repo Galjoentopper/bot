@@ -81,7 +81,7 @@ class ParameterOptimizer:
                 pbar.set_postfix_str(f"Current: {param_summary}")
                 
                 try:
-                    result = self._evaluate_params(params, symbols)
+                    result = self._evaluate_params(params, symbols, pbar)
                     
                     if result:
                         results.append(result)
@@ -149,7 +149,7 @@ class ParameterOptimizer:
         return all_combos
 
     # ------------------------------------------------------------------
-    def _evaluate_params(self, params: Dict[str, Any], symbols: List[str]) -> Dict[str, Any] | None:
+    def _evaluate_params(self, params: Dict[str, Any], symbols: List[str], progress_bar=None) -> Dict[str, Any] | None:
         cfg = deepcopy(self.base_config)
         for k, v in params.items():
             if hasattr(cfg, k):
@@ -160,7 +160,11 @@ class ParameterOptimizer:
 
         backtester = ModelBacktester(cfg)
         try:
-            run_results = backtester.run_backtest(symbols)
+            # Pass progress information to backtester for intermediate updates
+            if progress_bar:
+                progress_bar.set_postfix_str(f"Backtesting {len(symbols)} symbol(s)...")
+            
+            run_results = backtester.run_backtest(symbols, progress_callback=self._create_progress_callback(progress_bar, symbols))
         except Exception as exc:  # pragma: no cover - runtime failure
             # Enhanced error reporting with context
             param_summary = f"buy_th={params.get('buy_threshold', 'N/A')}, symbols={len(symbols)}"
@@ -186,6 +190,28 @@ class ParameterOptimizer:
             "objective_value": objective_value,
             "total_trades": total_trades,
         }
+
+    def _create_progress_callback(self, progress_bar, symbols):
+        """Create a progress callback function for the backtester"""
+        if not progress_bar:
+            return None
+            
+        def progress_callback(symbol, window_num, total_windows, current_step=None, total_steps=None):
+            """Callback to update progress during backtesting"""
+            symbol_idx = symbols.index(symbol) if symbol in symbols else 0
+            symbol_progress = f"{symbol_idx + 1}/{len(symbols)}"
+            window_progress = f"W{window_num}/{total_windows}" if total_windows else f"W{window_num}"
+            
+            if current_step and total_steps:
+                step_progress = f"({current_step}/{total_steps})"
+                progress_bar.set_postfix_str(f"Symbol {symbol_progress}, {window_progress} {step_progress}")
+            else:
+                progress_bar.set_postfix_str(f"Symbol {symbol_progress}, {window_progress}")
+            
+            # Force refresh the display
+            progress_bar.refresh()
+            
+        return progress_callback
 
     # ------------------------------------------------------------------
     def _extract_objective(self, metrics: Dict[str, Any]) -> float:
