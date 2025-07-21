@@ -36,7 +36,7 @@ A Python program that collects historical 15-minute OHLCV data for cryptocurrenc
 
 2. **Run the Data Collector**:
    ```bash
-   python binance_data_collector.py
+   python binance_data_collection.py
    ```
 
 ## Output Structure

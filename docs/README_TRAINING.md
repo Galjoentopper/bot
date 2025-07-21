@@ -27,7 +27,7 @@ This directory contains a comprehensive machine learning pipeline for training c
 
 ```
 trade_bot_2.0/
-├── 📊 data/                          # SQLite databases (from binance_data_collector.py)
+├── 📊 data/                          # SQLite databases (from binance_data_collection.py)
 │   ├── btceur_15m.db
 │   ├── etheur_15m.db
 │   ├── adaeur_15m.db
@@ -63,7 +63,7 @@ pip install -r requirements_ml.txt
 Make sure you've run the data collector first:
 
 ```bash
-python binance_data_collector.py
+python binance_data_collection.py
 ```
 
 ## 🚀 Usage
@@ -345,7 +345,7 @@ lstm_sequence_length = 30  # instead of 96
 #### 3. No Data Available
 ```bash
 # Ensure data collector has run
-python binance_data_collector.py
+python binance_data_collection.py
 
 # Check data directory
 ls data/

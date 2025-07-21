@@ -63,7 +63,7 @@ bot/
 ├── main_paper_trader.py              # Main trading application
 ├── train_hybrid_models.py            # ML model training
 ├── run_backtest.py                   # Backtesting system
-└── binance_data_collector.py         # Historical data collection
+└── binance_data_collection.py         # Historical data collection
 ```
 
 ## 🔧 Configuration
@@ -87,15 +87,14 @@ Detailed documentation is available in the `docs/` folder:
 
 ## 🧪 Testing
 
-Run the test suite:
+Check the functionality with the main scripts:
 ```bash
-python -m pytest tests/
+python main_paper_trader.py
 ```
 
-Run specific test modules:
+Run the enhanced paper trader:
 ```bash
-python test_bot_fixes.py
-python test_trading_decisions.py
+python enhanced_main_paper_trader.py
 ```
 
 ## 🛡️ Risk Management
