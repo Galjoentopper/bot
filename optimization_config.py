@@ -261,7 +261,7 @@ def run_preset_optimization(preset_name: str, custom_symbols: list = None):
     
     preset = OPTIMIZATION_PRESETS[preset_name]
     
-    print(f"🚀 Running optimization preset: '{preset_name}'")
+    print(f"\n🚀 Running optimization preset: '{preset_name}'")
     print(f"📝 Description: {preset['description']}")
     
     # Use custom symbols if provided
@@ -286,12 +286,16 @@ def run_preset_optimization(preset_name: str, custom_symbols: list = None):
     # Customize parameter space based on preset
     if preset_name == 'conservative':
         optimizer.grid_space = PARAMETER_SPACES['conservative_space']
+        print("🛡️  Using conservative parameter space (lower risk, higher confidence)")
     elif preset_name == 'aggressive':
         optimizer.grid_space = PARAMETER_SPACES['aggressive_space']
+        print("⚡ Using aggressive parameter space (higher risk, lower confidence)")
     elif preset_name in ['smart_search', 'comprehensive']:
         optimizer.grid_space = PARAMETER_SPACES['focused_space']
+        print("🎯 Using focused parameter space (narrow ranges around promising values)")
     elif preset_name == 'scientific_optimized':
         optimizer.grid_space = PARAMETER_SPACES['research_based_space']
+        print("🔬 Using research-based parameter space (scientifically validated ranges)")
     
     # Run optimization
     results = optimizer.run_optimization(symbols)
@@ -320,9 +324,23 @@ def run_preset_optimization(preset_name: str, custom_symbols: list = None):
             print(f"   {param}: {value}")
         
         print("\n📊 Parameter Validation:")
-        print(f"   • Stop Loss / Take Profit Ratio: {params.get('stop_loss_pct', 0) / params.get('take_profit_pct', 1):.2f}")
+        stop_loss = params.get('stop_loss_pct', 0)
+        take_profit = params.get('take_profit_pct', 1)
+        if take_profit > 0:
+            ratio = stop_loss / take_profit
+            print(f"   • Stop Loss / Take Profit Ratio: {ratio:.2f}")
         print(f"   • Risk per Trade: {params.get('risk_per_trade', 0)*100:.1f}%")
         print(f"   • Confidence Threshold: {params.get('buy_threshold', 0):.2f}")
+        print("=" * 50)
+    
+    # Enhanced general reporting for all presets
+    elif results:
+        print(f"\n🎉 OPTIMIZATION COMPLETE - {preset_name.upper()}")
+        print("=" * 50)
+        best_result = results[0]
+        print(f"🏆 Best {preset['config'].objective}: {best_result['objective_value']:.4f}")
+        print(f"📊 Total trades: {best_result['total_trades']}")
+        print(f"💾 Top {min(len(results), preset['config'].save_top_n)} results saved")
         print("=" * 50)
     
     return results
@@ -350,11 +368,15 @@ def run_custom_optimization(
         save_top_n=10
     )
     
-    print("🎯 Running custom optimization:")
-    print(f"   Method: {method}")
-    print(f"   Objective: {objective}")
-    print(f"   Symbols: {symbols}")
-    print(f"   Parameter space: {parameter_space}")
+    print("\n🎯 Running custom optimization:")
+    print("=" * 40)
+    print(f"   🔍 Method: {method}")
+    print(f"   📊 Objective: {objective}")
+    print(f"   💰 Symbols: {', '.join(symbols)}")
+    print(f"   🎛️  Parameter space: {parameter_space}")
+    print(f"   🔢 Iterations: {n_iterations if method in ['random_search', 'bayesian'] else 'All combinations'}")
+    print(f"   ⚡ Parallel jobs: {n_jobs}")
+    print("=" * 40)
     
     # Create optimizer
     optimizer = ParameterOptimizer(config)
@@ -362,9 +384,29 @@ def run_custom_optimization(
     # Set custom parameter space
     if parameter_space in PARAMETER_SPACES:
         optimizer.grid_space = PARAMETER_SPACES[parameter_space]
+        print(f"✅ Using parameter space: {parameter_space}")
+    else:
+        available = ', '.join(PARAMETER_SPACES.keys())
+        print(f"⚠️  Warning: Unknown parameter space '{parameter_space}'. Using default.")
+        print(f"💡 Available spaces: {available}")
     
     # Run optimization
     results = optimizer.run_optimization(symbols)
+    
+    # Enhanced results summary
+    if results:
+        print(f"\n🎉 CUSTOM OPTIMIZATION COMPLETE")
+        print("=" * 50)
+        best_result = results[0]
+        print(f"🏆 Best {objective}: {best_result['objective_value']:.4f}")
+        print(f"📊 Total trades: {best_result['total_trades']}")
+        print(f"💾 Top {min(len(results), config.save_top_n)} results saved")
+        
+        # Show parameter summary
+        print(f"\n🎯 Best parameters:")
+        for param, value in best_result['params'].items():
+            print(f"   {param}: {value}")
+        print("=" * 50)
     
     return results
 
