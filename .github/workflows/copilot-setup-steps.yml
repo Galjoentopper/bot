@@ -1,0 +1,200 @@
+name: Copilot Setup - Python ML Environment
+
+"on":
+  workflow_dispatch:  # Manual trigger for Copilot
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+permissions:
+  contents: read
+
+jobs:
+  copilot-setup-steps:
+    name: Setup Python ML/Trading Bot Environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    strategy:
+      matrix:
+        python-version: ["3.10"]  # Optimal for ML packages
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Get pip cache dir
+      id: pip-cache
+      run: |
+        echo "dir=$(pip cache dir)" >> $GITHUB_OUTPUT
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ${{ steps.pip-cache.outputs.dir }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install system dependencies for ML packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          libhdf5-dev \
+          libssl-dev \
+          libffi-dev \
+          libxml2-dev \
+          libxslt-dev \
+          libblas-dev \
+          liblapack-dev \
+          gfortran \
+          pkg-config
+          
+    - name: Upgrade pip and install build tools
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install --upgrade pip-tools
+        
+    - name: Install requirements with error handling
+      run: |
+        set -e
+        echo "Installing Python dependencies from requirements.txt..."
+        
+        # First, try installing without CUDA support to avoid conflicts
+        sed 's/tensorflow\[and-cuda\]>=2.15.0/tensorflow>=2.15.0/' requirements.txt > requirements_no_cuda.txt
+        
+        # Install core dependencies first (retry on failure)
+        for i in {1..3}; do
+          echo "Attempt $i: Installing core ML dependencies..."
+          if pip install -r requirements_no_cuda.txt --timeout=300; then
+            echo "✅ Core dependencies installed successfully"
+            break
+          else
+            echo "❌ Attempt $i failed, retrying..."
+            if [ $i -eq 3 ]; then
+              echo "❌ Failed to install dependencies after 3 attempts"
+              exit 1
+            fi
+            sleep 10
+          fi
+        done
+        
+        # Clean up temporary file
+        rm requirements_no_cuda.txt
+        
+    - name: Install additional Paper Trader dependencies
+      run: |
+        echo "Installing additional Paper Trader dependencies..."
+        if [ -f "requirements_paper_trader.txt" ]; then
+          pip install -r requirements_paper_trader.txt --timeout=300
+          echo "✅ Paper Trader dependencies installed"
+        else
+          echo "ℹ️ No requirements_paper_trader.txt found, skipping"
+        fi
+        
+    - name: Verify ML package installations
+      run: |
+        echo "Verifying critical ML package installations..."
+        python -c "
+        import sys
+        packages = [
+            'numpy', 'pandas', 'scipy', 'sklearn',
+            'tensorflow', 'xgboost', 'catboost',
+            'matplotlib', 'seaborn', 'pandas_ta'
+        ]
+        
+        failed = []
+        for pkg in packages:
+            try:
+                __import__(pkg)
+                print(f'✅ {pkg} imported successfully')
+            except ImportError as e:
+                print(f'❌ {pkg} failed to import: {e}')
+                failed.append(pkg)
+        
+        if failed:
+            print(f'Failed packages: {failed}')
+            sys.exit(1)
+        else:
+            print('🎉 All critical ML packages verified successfully!')
+        "
+        
+    - name: Check TensorFlow GPU support (informational)
+      run: |
+        echo "Checking TensorFlow GPU support..."
+        python -c "
+        import tensorflow as tf
+        print(f'TensorFlow version: {tf.__version__}')
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            print(f'GPUs available: {len(gpus)}')
+            for gpu in gpus:
+                print(f'  - {gpu}')
+        else:
+            print('No GPUs detected (expected in CI environment)')
+        "
+        
+    - name: Display environment info for Copilot
+      run: |
+        echo "=== Python Environment Summary for GitHub Copilot ==="
+        echo "Python version: $(python --version)"
+        echo "Pip version: $(pip --version)"
+        echo ""
+        echo "Key ML packages installed:"
+        pip list | grep -E "(tensorflow|torch|xgboost|catboost|sklearn|pandas|numpy|scipy|matplotlib|seaborn)" || echo "Some packages not found"
+        echo ""
+        echo "Total packages installed: $(pip list | wc -l)"
+        echo ""
+        echo "Environment setup complete! 🚀"
+        echo "Copilot can now work with this ML/Trading bot project."
+        
+    - name: Run basic import tests
+      run: |
+        echo "Running basic import tests for project modules..."
+        python -c "
+        import sys
+        from pathlib import Path
+        
+        # Add current directory to path
+        sys.path.insert(0, str(Path.cwd()))
+        
+        # Test basic project imports
+        try:
+            # Test if we can import from paper_trader package
+            from paper_trader.config import settings
+            print('✅ paper_trader.config.settings imported')
+        except ImportError as e:
+            print(f'ℹ️ paper_trader.config.settings not available: {e}')
+        
+        try:
+            # Test basic data science workflow
+            import pandas as pd
+            import numpy as np
+            import tensorflow as tf
+            
+            # Create sample data
+            data = pd.DataFrame({
+                'price': np.random.randn(100).cumsum() + 100,
+                'volume': np.random.randint(1000, 10000, 100)
+            })
+            print(f'✅ Created sample DataFrame with {len(data)} rows')
+            print('✅ Basic ML workflow test passed')
+            
+        except Exception as e:
+            print(f'❌ Basic workflow test failed: {e}')
+            sys.exit(1)
+        "
+        
+    - name: Cache validation
+      run: |
+        echo "Validating pip cache for future runs..."
+        pip cache info
+        echo "Cache directory contents:"
+        ls -la ${{ steps.pip-cache.outputs.dir }} | head -10 || echo "Cache directory empty"
