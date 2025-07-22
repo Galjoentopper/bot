@@ -73,8 +73,48 @@ python binance_data_collection.py
 ```bash
 # Train models for all cryptocurrency pairs
 python train_hybrid_models.py
-# Train with a fixed random seed for reproducible results
+
+# Train with a fixed random seed for reproducible results  
 python train_hybrid_models.py --seed 123
+```
+
+### Command-Line Options
+
+The training script supports various command-line flags to customize the training process:
+
+| Flag | Description | Options/Values | Default |
+|------|-------------|----------------|---------|
+| `--symbols` | Specific symbols to train | `BTCEUR`, `ETHEUR`, `ADAEUR`, `SOLEUR`, `XRPEUR` | All symbols |
+| `--train-months` | Training window size in months | Any positive integer | `3` |
+| `--test-months` | Test window size in months | Any positive integer | `1` |
+| `--step-months` | Rolling window step size in months | Any positive integer | `1` |
+| `--data-dir` | Directory containing price data | Any valid path | `data/` (relative to repo root) |
+| `--models-dir` | Directory to save trained models | Any valid path | `models/` (relative to repo root) |
+| `--no-warm-start` | Train each window from scratch | No value needed (flag only) | Warm start enabled |
+| `--seed` | Random seed for reproducibility | Any integer | `42` |
+
+### Usage Examples
+
+```bash
+# Train only specific symbols
+python train_hybrid_models.py --symbols BTCEUR ETHEUR
+
+# Custom training configuration
+python train_hybrid_models.py --train-months 6 --test-months 2 --step-months 1
+
+# Use custom data location
+python train_hybrid_models.py --data-dir /path/to/data --models-dir /path/to/models
+
+# Disable warm start for fresh training
+python train_hybrid_models.py --no-warm-start --seed 42
+
+# Comprehensive example
+python train_hybrid_models.py \
+    --symbols BTCEUR ETHEUR ADAEUR \
+    --train-months 4 \
+    --test-months 1 \
+    --step-months 1 \
+    --seed 123
 ```
 
 ### Walk-Forward Training Process

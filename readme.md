@@ -160,6 +160,13 @@ Script for collecting historical price data from Binance exchange for model trai
 python binance_data_collection.py
 ```
 
+### optimized_variables.py
+Scientific parameter optimization system that uses Bayesian optimization to find the best trading parameters.
+
+```bash
+python optimized_variables.py --symbols BTCEUR ETHEUR
+```
+
 ## 🛡️ Risk Management
 
 The system includes several risk management features:
