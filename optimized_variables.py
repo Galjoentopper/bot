@@ -379,7 +379,13 @@ class ScientificOptimizer:
     
     def _create_config_from_params(self, params: Dict[str, float]) -> BacktestConfig:
         """Create a BacktestConfig from parameter dictionary"""
+        # Start with base config to preserve verbose=False and other settings
         config = BacktestConfig()
+        
+        # Copy all settings from base_config
+        for attr_name in dir(self.base_config):
+            if not attr_name.startswith('_'):
+                setattr(config, attr_name, getattr(self.base_config, attr_name))
         
         # Apply all parameters
         all_params = {**self.param_space.fixed_params, **params}
