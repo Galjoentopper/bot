@@ -4,13 +4,11 @@ A sophisticated machine learning-powered cryptocurrency trading bot that uses en
 
 ## 🌟 Features
 
-- **🧠 Machine Learning**: Hybrid LSTM + XGBoost ensemble models for price prediction
-- **📊 Real-time Data**: Live data collection via Bitvavo WebSocket and REST API
-- **🛡️ Risk Management**: Advanced position sizing, stop-loss, take-profit, and trailing stops
-- **📱 Telegram Integration**: Real-time notifications and portfolio updates
-- **📈 Technical Analysis**: 20+ technical indicators for comprehensive market analysis
-- **🔄 Walk-Forward Validation**: Realistic backtesting with out-of-sample performance
-- **📋 Comprehensive Logging**: Detailed trade logging and performance metrics
+- **Machine Learning Prediction**: Ensemble model combining LSTM and XGBoost for price forecasting
+- **Real-time Trading**: Paper trading with Bitvavo API integration
+- **Advanced Risk Management**: Dynamic position sizing and stop-loss mechanisms
+- **Telegram Notifications**: Real-time alerts for trades and performance updates
+- **Performance Tracking**: Comprehensive logging and portfolio analysis
 
 ## 🚀 Quick Start
 
@@ -50,20 +48,49 @@ python main_paper_trader.py
 bot/
 ├── 📊 data/                          # Market data storage
 ├── 🧠 models/                        # Trained ML models
+│   ├── BTCEUR_lstm_model.h5          # LSTM model for BTC-EUR
+│   ├── BTCEUR_xgb_model.pkl          # XGBoost model for BTC-EUR
+│   ├── BTCEUR_scaler.pkl             # Feature scaler for BTC-EUR
+│   └── BTCEUR_feature_columns.pkl    # Feature column names
 ├── 📋 logs/                          # Performance metrics and logs
 ├── 🏗️ paper_trader/                  # Core trading system
 │   ├── config/                       # Configuration management
+│   │   ├── __init__.py
+│   │   └── settings.py               # Trading settings
 │   ├── data/                         # Data collection modules
+│   │   ├── __init__.py
+│   │   └── bitvavo_collector.py      # Real-time data collection
 │   ├── models/                       # ML model handlers
+│   │   ├── __init__.py
+│   │   ├── feature_engineer.py       # Technical indicators
+│   │   └── model_loader.py           # ML model integration
 │   ├── strategy/                     # Trading strategy logic
+│   │   ├── __init__.py
+│   │   ├── signal_generator.py       # Trading signal generation
+│   │   └── exit_manager.py           # Exit condition management
 │   ├── portfolio/                    # Portfolio management
-│   └── notifications/                # Telegram notifications
-├── 🧪 tests/                         # Test suites
+│   │   ├── __init__.py
+│   │   └── portfolio_manager.py      # Position and P&L tracking
+│   ├── notifications/                # Notification systems
+│   │   ├── __init__.py
+│   │   ├── telegram_notifier.py      # Telegram integration
+│   │   └── websocket_server.py       # Websocket notifications
+│   └── logs/                         # System logs
+│       ├── __init__.py
+│       ├── paper_trader.log          # System logs (auto-generated)
+│       ├── trades.csv                # Trade history (auto-generated)
+│       └── portfolio.csv             # Portfolio snapshots (auto-generated)
 ├── 📚 docs/                          # Detailed documentation
+│   ├── README_TRAINING.md            # ML model training guide
+│   ├── README_BACKTEST.md            # Backtesting guide
+│   ├── README_DATA_COLLECTOR.md      # Market data acquisition guide
+│   ├── README_OPTIMIZATION.md        # Parameter optimization guide
+│   └── README_paper_trader.md        # Live trading system details
 ├── main_paper_trader.py              # Main trading application
+├── enhanced_main_paper_trader.py     # Enhanced trading application
 ├── train_hybrid_models.py            # ML model training
 ├── run_backtest.py                   # Backtesting system
-└── binance_data_collection.py         # Historical data collection
+└── binance_data_collection.py        # Historical data collection
 ```
 
 ## 🔧 Configuration
@@ -85,49 +112,76 @@ Detailed documentation is available in the `docs/` folder:
 - **[Optimization](docs/README_OPTIMIZATION.md)**: Parameter optimization strategies
 - **[Paper Trader](docs/README_paper_trader.md)**: Live trading system details
 
-## 🧪 Testing
+## 🧪 Main Scripts
 
-Check the functionality with the main scripts:
+### main_paper_trader.py
+The primary script that orchestrates the entire paper trading system. It:
+- Initializes all trading components
+- Loads ML models
+- Starts real-time data collection from Bitvavo
+- Executes the 1-minute trading cycle
+- Manages portfolio and risk
+- Sends notifications via Telegram
+
 ```bash
 python main_paper_trader.py
 ```
 
-Run the enhanced paper trader:
+### enhanced_main_paper_trader.py
+An improved version of the paper trader with:
+- Enhanced performance monitoring
+- Circuit breakers for error handling
+- Data quality monitoring
+- Health monitoring systems
+- Improved notification management
+
 ```bash
 python enhanced_main_paper_trader.py
 ```
 
+### train_hybrid_models.py
+Script for training the hybrid machine learning models (LSTM + XGBoost) used for price prediction.
+
+```bash
+python train_hybrid_models.py
+```
+
+### run_backtest.py
+Comprehensive backtesting system to evaluate trading strategies using historical data.
+
+```bash
+python run_backtest.py
+```
+
+### binance_data_collection.py
+Script for collecting historical price data from Binance exchange for model training and backtesting.
+
+```bash
+python binance_data_collection.py
+```
+
 ## 🛡️ Risk Management
 
-The bot implements multiple layers of risk protection:
-
-- **Position Sizing**: Configurable position sizes with maximum limits
-- **Stop Loss**: Automatic stop-loss orders at configurable percentages
-- **Take Profit**: Profit-taking at predetermined levels
-- **Trailing Stops**: Dynamic stop-loss adjustment
-- **Time-based Exits**: Maximum holding period enforcement
-- **Daily Loss Limits**: Maximum daily loss thresholds
+The system includes several risk management features:
+- Dynamic position sizing based on volatility
+- Automated stop-loss mechanisms
+- Maximum position limits
+- Circuit breakers for technical failures
 
 ## 📊 Supported Cryptocurrencies
 
-Default supported pairs (configurable):
+The bot supports multiple cryptocurrency pairs on Bitvavo, including:
 - BTC-EUR
 - ETH-EUR
-- ADA-EUR
-- SOL-EUR
-- XRP-EUR
+- And other major pairs (configurable in settings)
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## ⚠️ Disclaimer
 
-This is educational software for paper trading only. Always conduct thorough testing before considering any real trading. Cryptocurrency trading involves significant risk.
+This software is for educational and research purposes only. Use at your own risk.
 
 ## 📄 License
 
