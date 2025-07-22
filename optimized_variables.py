@@ -600,26 +600,36 @@ class ScientificOptimizer:
         """Standard normal PDF"""
         return np.exp(-0.5 * x**2) / np.sqrt(2 * np.pi)
 
-# Add this to your optimization script to see raw model outputs
-def debug_model_outputs(symbol, days=7):
-    """Debug raw model outputs before thresholds are applied"""
-    from paper_trader.config.settings import TradingSettings
-    from paper_trader.data.bitvavo_collector import BitvavoDataCollector
-    from paper_trader.models.feature_engineer import FeatureEngineer
-    from paper_trader.models.model_loader import WindowBasedModelLoader, WindowBasedEnsemblePredictor
-    import pandas as pd
-    import asyncio
+    # Add this to your optimization script to see raw model outputs
+    def debug_model_outputs(symbol, days=7):
+        """Debug raw model outputs before thresholds are applied"""
+        from paper_trader.config.settings import TradingSettings
+        from paper_trader.data.bitvavo_collector import BitvavoDataCollector
+        from paper_trader.models.feature_engineer import FeatureEngineer
+        from paper_trader.models.model_loader import WindowBasedModelLoader, WindowBasedEnsemblePredictor
+        import pandas as pd
+        import asyncio
     
-    settings = TradingSettings()
-    data_collector = BitvavoDataCollector(settings)
-    feature_engineer = FeatureEngineer()
-    model_loader = WindowBasedModelLoader(settings)
-    predictor = WindowBasedEnsemblePredictor(model_loader, settings)
+        settings = TradingSettings()
+    
+    # Initialize data collector with proper API credentials
+        data_collector = BitvavoDataCollector(
+            api_key=settings.bitvavo_api_key,
+            api_secret=settings.bitvavo_api_secret,
+            interval=settings.candle_interval,
+            settings=settings
+        )
+    
+        feature_engineer = FeatureEngineer()
+        model_loader = WindowBasedModelLoader(settings.model_path)
+        predictor = WindowBasedEnsemblePredictor(
+            model_loader=model_loader,
+            settings=settings
+        )
     
     # Get historical data
-    print(f"Getting {days} days of historical data for {symbol}...")
-    asyncio.run(data_collector.initialize())
-    data = asyncio.run(data_collector.get_historical_data(symbol, limit=days*1440))  # days * minutes per day
+        print(f"Getting {days} days of historical data for {symbol}...")
+        data = asyncio.run(data_collector.get_historical_data(symbol, limit=days*1440))  # days * minutes per day
     
     if data is None or len(data) < 100:
         print(f"❌ Insufficient data for {symbol}: {len(data) if data is not None else 0} candles")
