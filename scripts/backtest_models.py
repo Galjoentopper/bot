@@ -49,14 +49,14 @@ class BacktestConfig:
         self.slippage = 0.001  # 0.1% slippage
         self.stop_loss_pct = 0.03  # 3% stop loss
         
-        # Signal thresholds - ULTRA-aggressive for maximum trades (even on weak predictions)
-        self.buy_threshold = 0.5001   # Extremely close to neutral - trade on ANY bias
-        self.sell_threshold = 0.4999  # Extremely close to neutral - trade on ANY bias
-        self.lstm_delta_threshold = 0.00001  # Ultra-sensitive - trade on tiny movements
+        # Signal thresholds - ULTRA-aggressive for maximum trades (trade on ANY deviation from neutral)
+        self.buy_threshold = 0.5   # EXACTLY neutral - any bias triggers trade
+        self.sell_threshold = 0.5  # EXACTLY neutral - any bias triggers trade
+        self.lstm_delta_threshold = 0.0000001  # NANO-sensitive - trade on noise
         
         # Neutral trading mode - trade even when models are uncertain/neutral
         self.neutral_trading_enabled = True
-        self.neutral_zone_size = 0.01  # Consider 0.49-0.51 as neutral and tradeable
+        self.neutral_zone_size = 0.02  # Consider 0.48-0.52 as neutral and tradeable
         
         # Adaptive thresholds for when trades are scarce
         self.min_trades_per_month = 20
@@ -586,17 +586,17 @@ class ModelBacktester:
         
         # NEW: NEUTRAL TRADING MODE - Trade on weak/neutral predictions
         # When predictions are very close to 0.5 (neutral), treat this as a trading opportunity
-        neutral_zone = 0.01  # Consider 0.49-0.51 as "neutral"
+        neutral_zone = 0.02  # Consider 0.48-0.52 as "neutral" (wider zone)
         is_neutral_prediction = abs(xgb_prob - 0.5) <= neutral_zone
         
         if is_neutral_prediction:
-            # For neutral predictions, use any tiny bias as a signal
-            if xgb_prob >= 0.5:  # Even tiny bias towards buy
+            # For neutral predictions, use any tiny bias as a signal, or create one if none exists
+            if xgb_prob >= 0.5:  # Any bias towards buy (including exactly 0.5)
                 stats['BUY'] += 1
                 stats.setdefault('neutral_buy_signals', 0)
                 stats['neutral_buy_signals'] += 1
                 return 'BUY'
-            else:  # Even tiny bias towards sell
+            else:  # Any bias towards sell
                 stats['SELL'] += 1
                 stats.setdefault('neutral_sell_signals', 0)
                 stats['neutral_sell_signals'] += 1
@@ -923,9 +923,11 @@ class ModelBacktester:
                 )
                 
                 # Enhanced debug signal generation (print more frequently for debugging)
-                if i % 500 == 0 and self.config.verbose:  # More frequent updates
-                    print(f"      Debug at {current_time}: XGB={xgb_prob:.3f}, LSTM={lstm_delta:.6f}, Signal={signal}")
+                if i % 100 == 0 and self.config.verbose:  # Much more frequent updates for debugging
+                    print(f"      Debug at {current_time}: XGB={xgb_prob:.4f}, LSTM={lstm_delta:.8f}, Signal={signal}")
                     print(f"        Trades: {trades_generated}/{target_trades_this_window} (deficit={trade_deficit:.1f}, aggr={aggressiveness_multiplier:.2f})")
+                    print(f"        Neutral zone check: {abs(xgb_prob - 0.5):.4f} <= 0.02 = {abs(xgb_prob - 0.5) <= 0.02}")
+                    print(f"        Position limits: {len(positions)}/{self.config.max_positions}, hour_trades: {trades_this_hour}/{self.config.max_trades_per_hour}")
                     
                 if signal in ['BUY', 'SELL']:
                     # Calculate stop loss

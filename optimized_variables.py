@@ -82,9 +82,9 @@ class ParameterSpace:
         elif optimization_mode == 'high_frequency':
             # ULTRA-aggressive parameters for 5+ trades per day target - trade on weak/neutral predictions
             self.param_bounds = {
-                'buy_threshold': (0.5001, 0.502),        # EXTREMELY close to neutral - trade on ANY bias
-                'sell_threshold': (0.498, 0.4999),       # EXTREMELY close to neutral - trade on ANY bias
-                'lstm_delta_threshold': (0.000001, 0.0001), # ULTRA-sensitive - trade on tiniest movements
+                'buy_threshold': (0.5, 0.5001),        # EXACTLY neutral to infinitesimally above
+                'sell_threshold': (0.4999, 0.5),       # EXACTLY neutral to infinitesimally below
+                'lstm_delta_threshold': (0.0000001, 0.00001), # NANO-sensitive - trade on noise
                 'risk_per_trade': (0.003, 0.015),        # Lower risk to enable more trades
                 'stop_loss_pct': (0.005, 0.02),          # Tighter stop loss for quick exits
                 'take_profit_pct': (0.008, 0.03),        # Smaller profit targets for quick wins
