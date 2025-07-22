@@ -97,7 +97,16 @@ LSTM_FEATURES: List[str] = [
     'volatility_20', 'atr_ratio', 'rsi', 'macd', 'bb_position',
     'volume_ratio', 'price_vs_ema9', 'price_vs_ema21',
     'buying_pressure', 'selling_pressure', 'spread_ratio',
-    'momentum_10', 'price_zscore_20'
+    'momentum_10', 'price_zscore_20',
+    # Jump-specific features
+    'volume_surge_5', 'volume_surge_10', 'volume_acceleration',
+    'momentum_acceleration', 'momentum_velocity', 'price_acceleration',
+    'volatility_breakout', 'atr_breakout', 'resistance_breakout',
+    'support_bounce', 'price_gap_up', 'momentum_convergence',
+    'squeeze_setup', 'squeeze_breakout',
+    # Market context features
+    'bull_market', 'market_momentum_alignment', 'market_stress',
+    'strong_trend', 'weak_trend'
 ]
 
 # Sequence length used during model training
@@ -322,6 +331,70 @@ class FeatureEngineer:
             # Volume regime
             volume_percentile = df['volume'].rolling(100).rank(pct=True)
             features['vol_regime'] = (volume_percentile > 0.8).astype(int)
+
+            # Jump-specific features for enhanced price jump detection
+            # Volume surge indicators
+            features['volume_surge_5'] = (df['volume'] / df['volume'].rolling(5).mean() > 2.0).astype(int)
+            features['volume_surge_10'] = (df['volume'] / df['volume'].rolling(10).mean() > 1.5).astype(int)
+            features['volume_acceleration'] = df['volume'].pct_change(1) - df['volume'].pct_change(2)
+            
+            # Momentum acceleration (detecting momentum buildup)
+            features['momentum_acceleration'] = features['momentum_10'].diff()
+            features['momentum_velocity'] = features['momentum_10'].pct_change()
+            features['price_acceleration'] = df['close'].pct_change().diff()
+            
+            # Volatility breakout signals
+            volatility_zscore = (features['volatility_20'] - features['volatility_20'].rolling(50).mean()) / features['volatility_20'].rolling(50).std()
+            features['volatility_breakout'] = (volatility_zscore > 1.5).astype(int)
+            features['atr_breakout'] = (features['atr'] > features['atr'].rolling(20).quantile(0.8)).astype(int)
+            
+            # Support/resistance breakout indicators  
+            features['resistance_breakout'] = (df['close'] > features['high_20'].shift(1)).astype(int)
+            features['support_bounce'] = (df['close'] > features['low_20'].shift(1) * 1.005).astype(int)
+            
+            # Price gap detection
+            features['price_gap_up'] = ((df['open'] - df['close'].shift(1)) / df['close'].shift(1) > 0.002).astype(int)
+            features['price_gap_down'] = ((df['close'].shift(1) - df['open']) / df['close'].shift(1) > 0.002).astype(int)
+            
+            # Multi-timeframe momentum convergence
+            short_momentum = df['close'].pct_change(3)
+            medium_momentum = df['close'].pct_change(7)
+            long_momentum = df['close'].pct_change(15)
+            features['momentum_convergence'] = ((short_momentum > 0) & (medium_momentum > 0) & (long_momentum > 0)).astype(int)
+            
+            # Squeeze breakout (low volatility followed by expansion)
+            bb_squeeze = features['bb_width'] < features['bb_width'].rolling(20).quantile(0.2)
+            features['squeeze_setup'] = bb_squeeze.astype(int)
+            features['squeeze_breakout'] = (bb_squeeze.shift(1) & (features['bb_width'] > features['bb_width'].shift(1) * 1.2)).astype(int)
+            
+            # Market context features for broader market sentiment
+            # Market regime detection
+            sma_200 = df['close'].rolling(200).mean()
+            features['bull_market'] = (df['close'] > sma_200).astype(int)
+            features['bear_market'] = (df['close'] < sma_200 * 0.95).astype(int)
+            
+            # Market momentum context
+            market_momentum_short = df['close'].pct_change(24)  # 6 hours
+            market_momentum_medium = df['close'].pct_change(96)  # 24 hours  
+            market_momentum_long = df['close'].pct_change(288)  # 72 hours
+            features['market_momentum_alignment'] = (
+                (market_momentum_short > 0) & 
+                (market_momentum_medium > 0) & 
+                (market_momentum_long > 0)
+            ).astype(int)
+            
+            # Market stress indicators
+            price_volatility_percentile = features['volatility_20'].rolling(200).rank(pct=True)
+            volume_volatility_percentile = df['volume'].rolling(200).rank(pct=True)
+            features['market_stress'] = (
+                (price_volatility_percentile > 0.8) | 
+                (volume_volatility_percentile > 0.8)
+            ).astype(int)
+            
+            # Trend strength context
+            trend_consistency = (df['close'] > df['close'].shift(1)).rolling(10).sum() / 10
+            features['strong_trend'] = (trend_consistency > 0.7).astype(int)
+            features['weak_trend'] = (trend_consistency < 0.3).astype(int)
 
             # Complex features - calculate after basic features are available
             # Update df_temp with all basic features first

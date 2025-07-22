@@ -147,10 +147,27 @@ class SignalGenerator:
                 self.logger.warning(f"❌ REJECTED: Failed strict entry conditions for {symbol}")
                 return None
 
-            # Check expected gain threshold
+            # Check expected gain threshold with jump-specific criteria
+            jump_probability = prediction.get('jump_probability', 0.0)
+            self.logger.info(f"Jump probability: {jump_probability:.3f}")
             self.logger.info(f"Expected gain check: {price_change_pct:.4f} > {self.min_expected_gain_pct:.4f}")
-            if price_change_pct > self.min_expected_gain_pct:
-                self.logger.info(f"✅ APPROVED: Generating BUY signal for {symbol}")
+            
+            # Enhanced criteria for jump detection
+            is_jump_candidate = (
+                price_change_pct > self.min_expected_gain_pct and 
+                (jump_probability > 0.5 or 
+                 prediction.get('jump_features_active', 0) > 3 or
+                 signal_strength in ['STRONG', 'VERY_STRONG'])
+            )
+            
+            if is_jump_candidate:
+                self.logger.info(f"✅ APPROVED: Generating JUMP-FOCUSED BUY signal for {symbol}")
+                signal = self._generate_jump_buy_signal(symbol, current_price, prediction, portfolio)
+                if signal:
+                    self.logger.info(f"✅ JUMP SIGNAL GENERATED: {signal}")
+                return signal
+            elif price_change_pct > self.min_expected_gain_pct:
+                self.logger.info(f"✅ APPROVED: Generating standard BUY signal for {symbol}")
                 signal = self._generate_buy_signal(symbol, current_price, prediction, portfolio)
                 if signal:
                     self.logger.info(f"✅ SIGNAL GENERATED: {signal}")
@@ -319,6 +336,67 @@ class SignalGenerator:
             
         except Exception as e:
             self.logger.error(f"Error generating buy signal for {symbol}: {e}")
+            return None
+            
+    def _generate_jump_buy_signal(self, symbol: str, current_price: float, 
+                                prediction: dict, portfolio) -> Dict:
+        """Generate a jump-focused buy signal with enhanced position sizing and risk management."""
+        try:
+            # Enhanced position sizing for jump opportunities
+            jump_probability = prediction.get('jump_probability', 0.0)
+            base_size_pct = self.calculate_position_size(
+                prediction['confidence'], prediction['signal_strength']
+            )
+            
+            # Increase position size for high-probability jumps (up to 1.5x)
+            jump_multiplier = 1.0 + (jump_probability * 0.5)
+            enhanced_size_pct = min(base_size_pct * jump_multiplier, self.max_position_size)
+            
+            available_capital = portfolio.get_available_capital()
+            adjusted_position_value = available_capital * enhanced_size_pct
+            quantity = adjusted_position_value / current_price
+            
+            # More aggressive targets for jump trades
+            jump_take_profit = max(self.take_profit_pct, 0.008)  # At least 0.8%
+            jump_stop_loss = min(self.stop_loss_pct, 0.006)     # Tighter stop at 0.6%
+            
+            # Adjust based on jump probability
+            if jump_probability > 0.7:
+                jump_take_profit *= 1.5  # Higher target for high-probability jumps
+                
+            take_profit_price = current_price * (1 + jump_take_profit)
+            stop_loss_price = current_price * (1 - jump_stop_loss)
+            
+            signal = {
+                'action': 'BUY',
+                'symbol': symbol,
+                'quantity': quantity,
+                'entry_price': current_price,
+                'take_profit': take_profit_price,
+                'stop_loss': stop_loss_price,
+                'position_size_pct': enhanced_size_pct,
+                'confidence': prediction['confidence'],
+                'signal_strength': prediction['signal_strength'],
+                'expected_return_pct': prediction['price_change_pct'],
+                'jump_probability': jump_probability,
+                'signal_type': 'JUMP_FOCUSED',
+                'risk_reward_ratio': jump_take_profit / jump_stop_loss,
+                'timestamp': datetime.now(),
+                'prediction_data': prediction
+            }
+            
+            self.logger.info(
+                f"Generated JUMP-FOCUSED BUY signal for {symbol}: "
+                f"qty={quantity:.6f}, price={current_price:.4f}, "
+                f"jump_prob={jump_probability:.3f}, "
+                f"enhanced_size={enhanced_size_pct:.3f}, "
+                f"tp={jump_take_profit:.3f}, sl={jump_stop_loss:.3f}"
+            )
+            
+            return signal
+            
+        except Exception as e:
+            self.logger.error(f"Error generating jump buy signal for {symbol}: {e}")
             return None
     
     def update_signal_parameters(self, **kwargs):
