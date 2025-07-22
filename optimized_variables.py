@@ -80,16 +80,16 @@ class ParameterSpace:
                 'max_positions': (8, 15),                # More positions
             }
         elif optimization_mode == 'high_frequency':
-            # ULTRA-aggressive parameters for 5+ trades per day target - trade on weak/neutral predictions
+            # ULTRA-aggressive parameters for 5+ trades per day target - near-neutral thresholds for maximum trades
             self.param_bounds = {
-                'buy_threshold': (0.5, 0.5001),        # EXACTLY neutral to infinitesimally above
-                'sell_threshold': (0.4999, 0.5),       # EXACTLY neutral to infinitesimally below
-                'lstm_delta_threshold': (0.0000001, 0.00001), # NANO-sensitive - trade on noise
-                'risk_per_trade': (0.003, 0.015),        # Lower risk to enable more trades
-                'stop_loss_pct': (0.005, 0.02),          # Tighter stop loss for quick exits
-                'take_profit_pct': (0.008, 0.03),        # Smaller profit targets for quick wins
-                'max_capital_per_trade': (0.02, 0.06),   # Smaller positions to enable more trades
-                'max_positions': (15, 30),               # Many positions allowed
+                'buy_threshold': (0.5001, 0.505),      # Near-neutral for maximum trades (any slight bullish bias)
+                'sell_threshold': (0.495, 0.4999),     # Near-neutral for maximum trades (any slight bearish bias) 
+                'lstm_delta_threshold': (0.0000001, 0.0001), # ULTRA-sensitive - trade on minimal signals
+                'risk_per_trade': (0.02, 0.05),        # Smaller risk for more frequent trades (2-5%)
+                'stop_loss_pct': (0.002, 0.015),       # Tighter stop loss (0.2-1.5%)
+                'take_profit_pct': (0.003, 0.02),      # Smaller take profit (0.3-2%) but > stop_loss
+                'max_capital_per_trade': (0.02, 0.05), # Smaller positions (2-5%) to enable more trades
+                'max_positions': (12, 20),             # High position limit for frequent trading
             }
         elif optimization_mode == 'profit_focused':
             self.param_bounds = {
@@ -114,11 +114,11 @@ class ParameterSpace:
                 'max_positions': (5, 12),                # Balanced diversification
             }
         
-        # Fixed parameters based on research and practical constraints
+        # Fixed parameters optimized for high-frequency trading
         self.fixed_params = {
             'trading_fee': 0.002,        # Realistic crypto trading fees
-            'slippage': 0.001,           # Conservative slippage estimate
-            'max_trades_per_hour': 10,   # Allow many trades per hour for high frequency
+            'slippage': 0.001,           # Conservative slippage estimate  
+            'max_trades_per_hour': 15,   # Allow frequent trades for high frequency (up to 1 every 4 minutes)
             'initial_capital': 10000.0,  # Standard starting capital
         }
         
@@ -197,14 +197,14 @@ class ScientificOptimizer:
         
         # Switch to ultra-aggressive parameter ranges that trade on any signal
         self.param_space.param_bounds = {
-            'buy_threshold': (0.5001, 0.502),          # ULTRA-low for maximum trades - any tiny bias
-            'sell_threshold': (0.498, 0.4999),          # ULTRA-high for maximum trades - any tiny bias
-            'lstm_delta_threshold': (0.000001, 0.0005),  # EXTREMELY sensitive - trade on noise
-            'risk_per_trade': (0.005, 0.02),          # Lower risk for more trades
-            'stop_loss_pct': (0.008, 0.03),          # Tighter stop loss
-            'take_profit_pct': (0.01, 0.05),         # Smaller targets for quick wins
-            'max_capital_per_trade': (0.03, 0.10),   # Smaller positions
-            'max_positions': (10, 20),                # Many positions allowed
+            'buy_threshold': (0.5001, 0.5005),        # ULTRA-near neutral for maximum trades
+            'sell_threshold': (0.4995, 0.4999),        # ULTRA-near neutral for maximum trades  
+            'lstm_delta_threshold': (0.00000001, 0.0001), # EXTREMELY sensitive - trade on tiny signals
+            'risk_per_trade': (0.01, 0.03),           # Lower risk for more trades
+            'stop_loss_pct': (0.001, 0.01),           # Very tight stop loss for quick exits
+            'take_profit_pct': (0.002, 0.015),        # Small targets but > stop_loss
+            'max_capital_per_trade': (0.015, 0.04),   # Very small positions
+            'max_positions': (15, 25),                # Many positions allowed
         }
         
         # Update bounds for optimization
@@ -219,13 +219,23 @@ class ScientificOptimizer:
             print(f"   LSTM delta threshold: {self.param_space.param_bounds['lstm_delta_threshold']}")
     
     def check_for_zero_trades_and_adapt(self):
-        """Check if we're getting zero trades and adapt if needed"""
-        if len(self.evaluation_results) >= 2:  # Check after just 2 evaluations for faster adaptation
+        """Check if we're getting zero trades and adapt if needed - now more responsive"""
+        if len(self.evaluation_results) >= 1:  # Check after just 1 evaluation for immediate adaptation
             # Count recent evaluations with zero trades (objective = -999)
-            recent_results = self.evaluation_results[-2:]
+            recent_results = self.evaluation_results[-1:]  # Check just the most recent result
             zero_trade_count = sum(1 for result in recent_results if result <= -990)
             
-            if zero_trade_count >= 1 and not self.aggressive_mode_enabled:  # Switch after just 1 zero-trade result
+            # Also check for very low trade frequency in recent results
+            low_frequency_count = 0
+            if len(self.evaluation_results) >= 2:
+                recent_more = self.evaluation_results[-2:]
+                for result in recent_more:
+                    # Consider anything below -500 as likely low frequency (partial penalty)
+                    if -900 <= result <= -500:
+                        low_frequency_count += 1
+            
+            # Switch to aggressive mode if we see zero trades OR multiple low frequency results
+            if (zero_trade_count >= 1 or low_frequency_count >= 2) and not self.aggressive_mode_enabled:
                 self.switch_to_aggressive_mode()
                 return True
         return False
@@ -477,16 +487,19 @@ class ScientificOptimizer:
         """Aggregate backtest results across symbols"""
         metrics = {}
         
-        # Collect all valid performance metrics
+        # Collect all valid performance metrics and trades
         valid_performances = []
+        all_trades = []
         for symbol, result in results.items():
             if result and 'performance' in result and result['performance']:
                 valid_performances.append(result['performance'])
+            if result and 'trades' in result and result['trades']:
+                all_trades.extend(result['trades'])
         
         if not valid_performances:
-            return {'total_trades': 0, 'total_return': -1, 'sharpe_ratio': -1, 'max_drawdown': -0.5}
+            return {'total_trades': 0, 'trades_per_day': 0, 'total_return': -1, 'sharpe_ratio': -1, 'max_drawdown': -0.5, 'win_rate': 0, 'profit_factor': 0}
         
-        # Aggregate metrics
+        # Aggregate basic metrics
         metrics['total_trades'] = sum(p.get('total_trades', 0) for p in valid_performances)
         metrics['total_return'] = np.mean([p.get('total_return', 0) for p in valid_performances])
         metrics['sharpe_ratio'] = np.mean([p.get('sharpe_ratio', 0) for p in valid_performances])
@@ -494,31 +507,61 @@ class ScientificOptimizer:
         metrics['win_rate'] = np.mean([p.get('win_rate', 0) for p in valid_performances])
         metrics['profit_factor'] = np.mean([p.get('profit_factor', 0) for p in valid_performances])
         
+        # Calculate trades per day based on actual trade data
+        if all_trades:
+            # Find the time span of all trades to calculate trades per day accurately
+            trade_times = []
+            for trade in all_trades:
+                if hasattr(trade, 'entry_time') and trade.entry_time:
+                    if isinstance(trade.entry_time, str):
+                        try:
+                            trade_times.append(pd.to_datetime(trade.entry_time))
+                        except:
+                            pass
+                    else:
+                        trade_times.append(trade.entry_time)
+            
+            if trade_times:
+                time_span_days = (max(trade_times) - min(trade_times)).days
+                if time_span_days > 0:
+                    metrics['trades_per_day'] = len(all_trades) / time_span_days
+                else:
+                    # If all trades on same day, assume 1 day
+                    metrics['trades_per_day'] = len(all_trades)
+            else:
+                # Fallback: assume backtest period is roughly proportional to data
+                # For typical backtesting periods, estimate trades per day
+                estimated_days = max(30, metrics['total_trades'] * 2)  # Conservative estimate
+                metrics['trades_per_day'] = metrics['total_trades'] / estimated_days
+        else:
+            metrics['trades_per_day'] = 0
+        
         return metrics
     
     def _calculate_objective(self, metrics: Dict[str, float]) -> float:
-        """Calculate objective value from metrics"""
+        """
+        Calculate objective value from metrics with explicit trades-per-day optimization
+        and improved win rate weighting for high-frequency trading
+        """
         total_trades = metrics.get('total_trades', 0)
+        trades_per_day = metrics.get('trades_per_day', 0)
+        win_rate = metrics.get('win_rate', 0)
         
-        # For high frequency trading, we need a minimum number of trades
-        # Target: 5+ trades per day, so for backtesting period we need proportional trades
-        min_trades_required = 1
+        # For high frequency trading, we need minimum trades per day
+        # Target: 5+ trades per day as specified in requirements
+        min_trades_per_day = 5
         
-        if total_trades < min_trades_required:
+        if total_trades == 0:
             if self.verbose:
-                print(f"      ❌ Insufficient trades ({total_trades}) - returning penalty")
+                print(f"      ❌ Zero trades - returning maximum penalty")
             return -999
-        elif total_trades < 3:
-            if self.verbose:
-                print(f"      ⚠️  Few trades ({total_trades}) but allowing evaluation with smaller penalty")
-            # Smaller penalty for few trades to encourage any trading
-            penalty_factor = 0.8  # 20% penalty for having very few trades
-        else:
-            penalty_factor = 1.0  # No penalty for sufficient trades
-            # Bonus for high trade frequency
-            if total_trades >= 10:
-                penalty_factor = 1.1  # 10% bonus for high frequency
         
+        if trades_per_day < 0.5:  # Less than 0.5 trades per day is very poor
+            if self.verbose:
+                print(f"      ❌ Very low frequency ({trades_per_day:.2f} trades/day) - returning penalty")
+            return -999
+        
+        # Calculate base objective based on selected optimization metric
         base_objective = 0
         if self.objective == 'sharpe_ratio':
             base_objective = metrics.get('sharpe_ratio', -999)
@@ -533,17 +576,78 @@ class ScientificOptimizer:
         else:
             base_objective = metrics.get('total_return', -999)  # Default to total return
         
-        # Apply penalty/bonus factor for trade frequency
-        return base_objective * penalty_factor if base_objective > -990 else base_objective
+        if base_objective <= -990:
+            return base_objective
+        
+        # High-frequency trading bonuses and penalties
+        frequency_multiplier = 1.0
+        
+        # Major bonus for achieving target frequency (5+ trades/day)
+        if trades_per_day >= min_trades_per_day:
+            frequency_multiplier = 1.3  # 30% bonus for hitting target
+            if self.verbose and trades_per_day >= 8:
+                print(f"      🚀 High frequency achieved ({trades_per_day:.1f} trades/day) - applying 30% bonus")
+        elif trades_per_day >= 3:  # Good frequency
+            frequency_multiplier = 1.2  # 20% bonus
+            if self.verbose:
+                print(f"      ✅ Good frequency ({trades_per_day:.1f} trades/day) - applying 20% bonus")
+        elif trades_per_day >= 1:  # Acceptable frequency  
+            frequency_multiplier = 1.1  # 10% bonus
+            if self.verbose:
+                print(f"      📈 Acceptable frequency ({trades_per_day:.1f} trades/day) - applying 10% bonus")
+        else:  # Low frequency penalty
+            frequency_multiplier = 0.8  # 20% penalty for low frequency
+            if self.verbose:
+                print(f"      ⚠️  Low frequency ({trades_per_day:.1f} trades/day) - applying 20% penalty")
+        
+        # Win rate bonus/penalty - critical for sustainable high-frequency trading
+        win_rate_multiplier = 1.0
+        if win_rate >= 0.6:  # Excellent win rate
+            win_rate_multiplier = 1.25  # 25% bonus
+        elif win_rate >= 0.5:  # Good win rate
+            win_rate_multiplier = 1.15  # 15% bonus
+        elif win_rate >= 0.4:  # Acceptable win rate
+            win_rate_multiplier = 1.0   # No penalty/bonus
+        elif win_rate >= 0.2:  # Poor win rate
+            win_rate_multiplier = 0.9   # 10% penalty
+        else:  # Very poor win rate (including 0%)
+            win_rate_multiplier = 0.7   # 30% penalty
+        
+        # Combined multiplier
+        final_multiplier = frequency_multiplier * win_rate_multiplier
+        
+        # Apply multiplier to base objective
+        final_objective = base_objective * final_multiplier
+        
+        if self.verbose and final_multiplier != 1.0:
+            print(f"      📊 Final multiplier: {final_multiplier:.2f} (freq: {frequency_multiplier:.2f}, win_rate: {win_rate_multiplier:.2f})")
+            print(f"      🎯 Final objective: {final_objective:.4f} (base: {base_objective:.4f})")
+        
+        return final_objective
     
     def _sample_random_params(self) -> Dict[str, float]:
-        """Sample random parameters from the parameter space"""
+        """Sample random parameters from the parameter space with validation"""
         params = {}
-        for param_name, (low, high) in self.param_space.param_bounds.items():
-            params[param_name] = random.uniform(low, high)
+        max_attempts = 50  # Prevent infinite loops
         
-        # Add fixed parameters
-        params.update(self.param_space.fixed_params)
+        for attempt in range(max_attempts):
+            # Sample all parameters
+            for param_name, (low, high) in self.param_space.param_bounds.items():
+                params[param_name] = random.uniform(low, high)
+            
+            # Add fixed parameters
+            params.update(self.param_space.fixed_params)
+            
+            # Validate take-profit > stop-loss for positive expectancy (key requirement)
+            if params.get('take_profit_pct', 0) > params.get('stop_loss_pct', 0):
+                return params  # Valid parameters
+            
+        # If we couldn't find valid params after many attempts, force fix the last attempt
+        if 'take_profit_pct' in params and 'stop_loss_pct' in params:
+            # Ensure take_profit is at least 20% larger than stop_loss
+            if params['take_profit_pct'] <= params['stop_loss_pct']:
+                params['take_profit_pct'] = params['stop_loss_pct'] * 1.2
+                
         return params
     
     def _params_to_array(self, params: Dict[str, float]) -> np.ndarray:
@@ -551,9 +655,21 @@ class ScientificOptimizer:
         return np.array([params[name] for name in self.param_space.param_names])
     
     def _array_to_params(self, arr: np.ndarray) -> Dict[str, float]:
-        """Convert numpy array to parameter dictionary"""
+        """Convert numpy array to parameter dictionary with validation"""
         params = dict(zip(self.param_space.param_names, arr))
         params.update(self.param_space.fixed_params)
+        
+        # Validate take-profit > stop-loss for positive expectancy
+        if 'take_profit_pct' in params and 'stop_loss_pct' in params:
+            if params['take_profit_pct'] <= params['stop_loss_pct']:
+                # Adjust take_profit to be at least 20% larger than stop_loss
+                params['take_profit_pct'] = params['stop_loss_pct'] * 1.2
+                # Ensure it stays within bounds
+                _, max_tp = self.param_space.param_bounds['take_profit_pct']
+                if params['take_profit_pct'] > max_tp:
+                    # If take_profit would exceed bounds, reduce stop_loss instead
+                    params['stop_loss_pct'] = params['take_profit_pct'] / 1.2
+                    
         return params
     
     def _optimize_acquisition(self) -> Dict[str, float]:
