@@ -28,6 +28,7 @@ class Trade:
     confidence: float
     position_size: float
     stop_loss: float
+    take_profit: float  # Added take profit field
     exit_time: Optional[datetime] = None
     exit_price: Optional[float] = None
     exit_reason: Optional[str] = None  # 'STOP_LOSS', 'TAKE_PROFIT', 'SIGNAL_EXIT', 'WINDOW_END'
@@ -48,6 +49,7 @@ class BacktestConfig:
         self.trading_fee = 0.002  # 0.2% per trade
         self.slippage = 0.001  # 0.1% slippage
         self.stop_loss_pct = 0.03  # 3% stop loss
+        self.take_profit_pct = 0.06  # 6% take profit
         
         # Signal thresholds - ULTRA-aggressive for maximum trades (trade on ANY deviation from neutral)
         self.buy_threshold = 0.5   # EXACTLY neutral - any bias triggers trade
@@ -950,19 +952,21 @@ class ModelBacktester:
                     print(f"        Position limits: {len(positions)}/{self.config.max_positions}, hour_trades: {trades_this_hour}/{self.config.max_trades_per_hour}")
                     
                 if signal in ['BUY', 'SELL']:
-                    # Calculate stop loss
+                    # Calculate stop loss and take profit
                     atr = data['atr'].iloc[i]
                     if signal == 'BUY':
                         stop_loss = current_price - (atr * 2)
+                        take_profit = current_price + (current_price * self.config.take_profit_pct)
                     else:
                         stop_loss = current_price + (atr * 2)
+                        take_profit = current_price - (current_price * self.config.take_profit_pct)
                     
                     # Calculate position size
                     position_size = self.calculate_position_size(capital, current_price, stop_loss)
                     
                     # Debug trade execution
                     if self.config.verbose and current_step % 100 == 0:
-                        print(f"      Trade execution debug: ATR={atr:.6f}, StopLoss={stop_loss:.2f}, PositionSize={position_size:.6f}")
+                        print(f"      Trade execution debug: ATR={atr:.6f}, StopLoss={stop_loss:.2f}, TakeProfit={take_profit:.2f}, PositionSize={position_size:.6f}")
                     
                     if position_size > 0:
                         # Execute trade
@@ -976,6 +980,7 @@ class ModelBacktester:
                             confidence=max(xgb_prob, 1-xgb_prob),
                             position_size=position_size,
                             stop_loss=stop_loss,
+                            take_profit=take_profit,
                             fees=fees,
                             slippage=slippage
                         )
@@ -988,7 +993,8 @@ class ModelBacktester:
                         
                         if self.config.verbose:
                             print(f"      ✅ TRADE EXECUTED: {signal} {symbol} at {current_time}")
-                            print(f"         Price: {execution_price:.2f}, Size: {position_size:.6f} shares, StopLoss: {stop_loss:.2f}")
+                            print(f"         Price: {execution_price:.2f}, Size: {position_size:.6f} shares")
+                            print(f"         StopLoss: {stop_loss:.2f}, TakeProfit: {take_profit:.2f}")
                             print(f"         Cost: {position_size * execution_price:.2f}, Fees: {fees:.2f}, Total: {position_size * execution_price + fees:.2f}")
                             print(f"         Capital: {old_capital:.2f} -> {capital:.2f} (change: {capital - old_capital:.2f})")
                     else:
@@ -1059,11 +1065,21 @@ class ModelBacktester:
                 should_exit = True
                 exit_reason = 'WINDOW_END'
             elif trade.direction == 'BUY':
-                if current_price <= trade.stop_loss:
+                # Check take profit first (positive outcome)
+                if current_price >= trade.take_profit:
+                    should_exit = True
+                    exit_reason = 'TAKE_PROFIT'
+                # Check stop loss
+                elif current_price <= trade.stop_loss:
                     should_exit = True
                     exit_reason = 'STOP_LOSS'
             elif trade.direction == 'SELL':
-                if current_price >= trade.stop_loss:
+                # Check take profit first (positive outcome) 
+                if current_price <= trade.take_profit:
+                    should_exit = True
+                    exit_reason = 'TAKE_PROFIT'
+                # Check stop loss
+                elif current_price >= trade.stop_loss:
                     should_exit = True
                     exit_reason = 'STOP_LOSS'
             
