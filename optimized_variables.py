@@ -81,16 +81,16 @@ class ParameterSpace:
             }
         elif optimization_mode == 'high_frequency':
             # Redesigned high-frequency parameters for 5+ trades per day target
-            # Ultra-sensitive thresholds but slightly away from pure neutral to avoid numerical issues
+            # EXTREMELY permissive thresholds to force trade generation
             self.param_bounds = {
-                'buy_threshold': (0.5001, 0.505),         # Very close to neutral but not exactly 0.5
-                'sell_threshold': (0.495, 0.4999),        # Very close to neutral but not exactly 0.5
-                'lstm_delta_threshold': (0.0001, 0.001),  # Ultra-sensitive but not nano-level
-                'risk_per_trade': (0.02, 0.05),           # 2-5% position sizes as specified
-                'stop_loss_pct': (0.002, 0.01),           # 0.2-1% stop loss for quick exits
-                'take_profit_pct': (0.005, 0.02),         # 0.5-2% take profit (always higher than stop loss)
-                'max_capital_per_trade': (0.02, 0.05),    # 2-5% of capital per trade
-                'max_positions': (12, 20),                # 12-20 positions as specified
+                'buy_threshold': (0.500001, 0.502),       # EXTREMELY close to neutral - trade on ANY tiny bias
+                'sell_threshold': (0.498, 0.499999),      # EXTREMELY close to neutral - trade on ANY tiny bias  
+                'lstm_delta_threshold': (0.00001, 0.0005), # Ultra-sensitive to capture any movement
+                'risk_per_trade': (0.01, 0.04),           # 1-4% position sizes for more trades
+                'stop_loss_pct': (0.001, 0.008),          # 0.1-0.8% stop loss for very quick exits
+                'take_profit_pct': (0.003, 0.015),        # 0.3-1.5% take profit (always higher than stop loss)
+                'max_capital_per_trade': (0.01, 0.04),    # 1-4% of capital per trade
+                'max_positions': (15, 25),                # 15-25 positions to allow high frequency
             }
         elif optimization_mode == 'profit_focused':
             self.param_bounds = {
@@ -119,7 +119,7 @@ class ParameterSpace:
         self.fixed_params = {
             'trading_fee': 0.002,        # Realistic crypto trading fees
             'slippage': 0.001,           # Conservative slippage estimate
-            'max_trades_per_hour': 10,   # Allow many trades per hour for high frequency
+            'max_trades_per_hour': 20,   # Allow MANY trades per hour for high frequency
             'initial_capital': 10000.0,  # Standard starting capital
         }
         
