@@ -541,6 +541,60 @@ class ModelBacktester:
         
         return 'HOLD'
     
+    def generate_signal_with_stats(self, xgb_prob: float, lstm_delta: float, stats: dict) -> str:
+        """Generate trading signal and update statistics"""
+        
+        # Primary method: Both models must agree (original logic but with debug)
+        primary_buy = (xgb_prob > self.config.buy_threshold and 
+                      lstm_delta > self.config.lstm_delta_threshold)
+        primary_sell = (xgb_prob < self.config.sell_threshold and 
+                       lstm_delta < -self.config.lstm_delta_threshold)
+        
+        if primary_buy:
+            stats['BUY'] += 1
+            stats['primary_signals'] += 1
+            return 'BUY'
+        elif primary_sell:
+            stats['SELL'] += 1
+            stats['primary_signals'] += 1
+            return 'SELL'
+        
+        # Secondary method: Either model can trigger (less restrictive)
+        # Use looser thresholds for secondary signals
+        secondary_buy_threshold = max(0.55, self.config.buy_threshold - 0.1)
+        secondary_sell_threshold = min(0.45, self.config.sell_threshold + 0.1)
+        secondary_lstm_threshold = max(0.005, self.config.lstm_delta_threshold * 0.5)
+        
+        secondary_buy = (xgb_prob > secondary_buy_threshold or 
+                        lstm_delta > secondary_lstm_threshold)
+        secondary_sell = (xgb_prob < secondary_sell_threshold or 
+                         lstm_delta < -secondary_lstm_threshold)
+        
+        if secondary_buy:
+            stats['BUY'] += 1
+            stats['secondary_signals'] += 1
+            return 'BUY'
+        elif secondary_sell:
+            stats['SELL'] += 1
+            stats['secondary_signals'] += 1
+            return 'SELL'
+        
+        # Tertiary method: Simple momentum-based fallback
+        # If LSTM shows strong directional movement, trade regardless of XGB
+        strong_lstm_threshold = 0.015
+        if abs(lstm_delta) > strong_lstm_threshold:
+            if lstm_delta > 0:
+                stats['BUY'] += 1
+                stats['tertiary_signals'] += 1
+                return 'BUY'
+            else:
+                stats['SELL'] += 1
+                stats['tertiary_signals'] += 1
+                return 'SELL'
+        
+        stats['HOLD'] += 1
+        return 'HOLD'
+    
     def calculate_position_size(self, capital: float, entry_price: float, stop_loss: float) -> float:
         """Calculate position size based on risk management"""
         risk_amount = capital * self.config.risk_per_trade
@@ -664,6 +718,9 @@ class ModelBacktester:
         trades_this_hour = 0
         last_trade_hour = None
         
+        # Signal generation counters for debugging
+        signal_stats = {'BUY': 0, 'SELL': 0, 'HOLD': 0, 'primary_signals': 0, 'secondary_signals': 0, 'tertiary_signals': 0}
+        
         total_steps = len(data) - self.config.sequence_length
         progress_update_frequency = max(1, total_steps // 20)  # Update 20 times per window
         
@@ -721,8 +778,8 @@ class ModelBacktester:
                     else:
                         raise xgb_error
                 
-                # Generate signal
-                signal = self.generate_signal(xgb_prob, lstm_delta)
+                # Generate signal with statistics tracking
+                signal = self.generate_signal_with_stats(xgb_prob, lstm_delta, signal_stats)
                 
                 # Enhanced debug signal generation (print more frequently for debugging)
                 if i % 1000 == 0 and self.config.verbose:  # Print every 1000 iterations for more visibility
@@ -783,11 +840,16 @@ class ModelBacktester:
         for trade in final_trades:
             capital += trade.pnl
         
-        # Debug output for trade generation
-        if self.config.verbose and len(window_trades) == 0:
-            print(f"        ⚠️  No trades generated in window {window_num}")
-        elif self.config.verbose:
-            print(f"        ✅ Generated {len(window_trades)} trades in window {window_num}")
+        # Debug output for trade generation with signal statistics
+        if self.config.verbose:
+            total_signals = signal_stats['BUY'] + signal_stats['SELL'] + signal_stats['HOLD']
+            if len(window_trades) == 0:
+                print(f"        ⚠️  No trades generated in window {window_num}")
+                print(f"        Signal stats: BUY={signal_stats['BUY']}, SELL={signal_stats['SELL']}, HOLD={signal_stats['HOLD']} (total={total_signals})")
+                print(f"        Signal types: Primary={signal_stats['primary_signals']}, Secondary={signal_stats['secondary_signals']}, Tertiary={signal_stats['tertiary_signals']}")
+            else:
+                print(f"        ✅ Generated {len(window_trades)} trades in window {window_num}")
+                print(f"        Signal stats: BUY={signal_stats['BUY']}, SELL={signal_stats['SELL']}, HOLD={signal_stats['HOLD']} (total={total_signals})")
         
         return window_trades, capital
     
