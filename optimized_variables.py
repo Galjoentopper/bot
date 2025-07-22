@@ -56,12 +56,12 @@ class ParameterSpace:
         Args:
             optimization_mode: 'conservative', 'balanced', 'aggressive', 'profit_focused'
         """
-        # Base parameter ranges - adjusted for better trade generation
+        # Base parameter ranges - EXTREMELY aggressive for 20+ trades per month target
         if optimization_mode == 'conservative':
             self.param_bounds = {
-                'buy_threshold': (0.55, 0.75),          # Lowered for more trades
-                'sell_threshold': (0.25, 0.45),          # Raised for more trades  
-                'lstm_delta_threshold': (0.001, 0.015),  # More sensitive
+                'buy_threshold': (0.502, 0.58),         # Nearly neutral for maximum trades
+                'sell_threshold': (0.42, 0.498),         # Nearly neutral for maximum trades
+                'lstm_delta_threshold': (0.0001, 0.005), # Ultra-sensitive
                 'risk_per_trade': (0.005, 0.015),        # Lower risk
                 'stop_loss_pct': (0.015, 0.035),         # Tighter stop loss
                 'take_profit_pct': (0.03, 0.08),         # Conservative targets
@@ -70,9 +70,9 @@ class ParameterSpace:
             }
         elif optimization_mode == 'aggressive':
             self.param_bounds = {
-                'buy_threshold': (0.45, 0.65),          # Much lower for more trades
-                'sell_threshold': (0.35, 0.55),          # Much higher for more trades
-                'lstm_delta_threshold': (0.001, 0.02),   # More sensitive
+                'buy_threshold': (0.501, 0.55),         # Nearly neutral for maximum trades
+                'sell_threshold': (0.45, 0.499),         # Nearly neutral for maximum trades
+                'lstm_delta_threshold': (0.0001, 0.003), # Ultra-sensitive
                 'risk_per_trade': (0.015, 0.035),        # Higher risk
                 'stop_loss_pct': (0.02, 0.05),           # Wider stop loss
                 'take_profit_pct': (0.04, 0.12),         # Aggressive targets
@@ -81,9 +81,9 @@ class ParameterSpace:
             }
         elif optimization_mode == 'profit_focused':
             self.param_bounds = {
-                'buy_threshold': (0.50, 0.70),          # Lowered for more trades
-                'sell_threshold': (0.30, 0.50),          # Raised for more trades
-                'lstm_delta_threshold': (0.001, 0.018),  # More sensitive
+                'buy_threshold': (0.502, 0.58),         # Nearly neutral for maximum trades
+                'sell_threshold': (0.42, 0.498),         # Nearly neutral for maximum trades
+                'lstm_delta_threshold': (0.0001, 0.005), # Ultra-sensitive
                 'risk_per_trade': (0.01, 0.025),         # Moderate risk
                 'stop_loss_pct': (0.018, 0.04),          # Balanced stop loss
                 'take_profit_pct': (0.035, 0.10),        # Profit-focused targets
@@ -92,9 +92,9 @@ class ParameterSpace:
             }
         else:  # balanced
             self.param_bounds = {
-                'buy_threshold': (0.50, 0.70),          # Lowered for more trades
-                'sell_threshold': (0.30, 0.50),          # Raised for more trades
-                'lstm_delta_threshold': (0.001, 0.018),  # More sensitive
+                'buy_threshold': (0.501, 0.57),         # Nearly neutral for maximum trades
+                'sell_threshold': (0.43, 0.499),         # Nearly neutral for maximum trades
+                'lstm_delta_threshold': (0.0001, 0.005), # Ultra-sensitive
                 'risk_per_trade': (0.01, 0.025),         # Moderate risk
                 'stop_loss_pct': (0.02, 0.04),           # Balanced stop loss
                 'take_profit_pct': (0.04, 0.09),         # Balanced targets
@@ -185,9 +185,9 @@ class ScientificOptimizer:
         
         # Switch to very aggressive parameter ranges
         self.param_space.param_bounds = {
-            'buy_threshold': (0.40, 0.60),          # Very low for maximum trades
-            'sell_threshold': (0.40, 0.60),          # Very high for maximum trades
-            'lstm_delta_threshold': (0.0001, 0.01),  # Extremely sensitive
+            'buy_threshold': (0.502, 0.55),          # Extremely low for maximum trades
+            'sell_threshold': (0.45, 0.498),          # Extremely high for maximum trades
+            'lstm_delta_threshold': (0.0001, 0.005),  # Ultra-sensitive
             'risk_per_trade': (0.01, 0.03),          # Moderate risk
             'stop_loss_pct': (0.015, 0.04),          # Balanced stop loss
             'take_profit_pct': (0.03, 0.08),         # Conservative targets for reliability

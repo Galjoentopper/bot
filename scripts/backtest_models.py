@@ -49,10 +49,14 @@ class BacktestConfig:
         self.slippage = 0.001  # 0.1% slippage
         self.stop_loss_pct = 0.03  # 3% stop loss
         
-        # Signal thresholds
-        self.buy_threshold = 0.6  # Lowered from 0.7 for more trades
-        self.sell_threshold = 0.4  # Raised from 0.3 for more trades
-        self.lstm_delta_threshold = 0.02  # Realistic for % changes (was 0.5)
+        # Signal thresholds - EXTREMELY aggressive for 20+ trades/month target
+        self.buy_threshold = 0.505   # Almost neutral for maximum trades
+        self.sell_threshold = 0.495  # Almost neutral for maximum trades 
+        self.lstm_delta_threshold = 0.0005  # Extremely sensitive
+        
+        # Adaptive thresholds for when trades are scarce
+        self.min_trades_per_month = 20
+        self.adaptive_mode = True
         
         # Walk-forward parameters
         self.train_months = 4
@@ -501,9 +505,9 @@ class ModelBacktester:
         return result
     
     def generate_signal(self, xgb_prob: float, lstm_delta: float) -> str:
-        """Generate trading signal based on model outputs with fallback methods"""
+        """Generate trading signal based on model outputs with multiple fallback methods"""
         
-        # Primary method: Both models must agree (original logic but with debug)
+        # PRIMARY: Both models must agree (original logic but more relaxed)
         primary_buy = (xgb_prob > self.config.buy_threshold and 
                       lstm_delta > self.config.lstm_delta_threshold)
         primary_sell = (xgb_prob < self.config.sell_threshold and 
@@ -514,11 +518,10 @@ class ModelBacktester:
         elif primary_sell:
             return 'SELL'
         
-        # Secondary method: Either model can trigger (less restrictive)
-        # Use looser thresholds for secondary signals
-        secondary_buy_threshold = max(0.55, self.config.buy_threshold - 0.1)
-        secondary_sell_threshold = min(0.45, self.config.sell_threshold + 0.1)
-        secondary_lstm_threshold = max(0.005, self.config.lstm_delta_threshold * 0.5)
+        # SECONDARY: Either model can trigger (relaxed thresholds)
+        secondary_buy_threshold = max(0.51, self.config.buy_threshold - 0.05)
+        secondary_sell_threshold = min(0.49, self.config.sell_threshold + 0.05)
+        secondary_lstm_threshold = max(0.003, self.config.lstm_delta_threshold * 0.4)
         
         secondary_buy = (xgb_prob > secondary_buy_threshold or 
                         lstm_delta > secondary_lstm_threshold)
@@ -530,10 +533,22 @@ class ModelBacktester:
         elif secondary_sell:
             return 'SELL'
         
-        # Tertiary method: Simple momentum-based fallback
-        # If LSTM shows strong directional movement, trade regardless of XGB
-        strong_lstm_threshold = 0.015
+        # TERTIARY: Strong momentum-based signals (more sensitive)
+        strong_lstm_threshold = 0.005  # Much lower for more trades
         if abs(lstm_delta) > strong_lstm_threshold:
+            if lstm_delta > 0:
+                return 'BUY'
+            else:
+                return 'SELL'
+        
+        # QUATERNARY: Very loose XGBoost signals
+        if xgb_prob > 0.505:  # Just slightly above neutral
+            return 'BUY'
+        elif xgb_prob < 0.495:  # Just slightly below neutral
+            return 'SELL'
+        
+        # QUINARY: Any detectable movement
+        if abs(lstm_delta) > 0.0005:  # Extremely sensitive
             if lstm_delta > 0:
                 return 'BUY'
             else:
@@ -541,14 +556,20 @@ class ModelBacktester:
         
         return 'HOLD'
     
-    def generate_signal_with_stats(self, xgb_prob: float, lstm_delta: float, stats: dict) -> str:
-        """Generate trading signal and update statistics"""
+    def generate_signal_with_adaptive_stats(self, xgb_prob: float, lstm_delta: float, 
+                                          stats: dict, aggressiveness_multiplier: float = 1.0) -> str:
+        """Generate trading signal with adaptive aggressiveness based on trade frequency"""
         
-        # Primary method: Both models must agree (original logic but with debug)
-        primary_buy = (xgb_prob > self.config.buy_threshold and 
-                      lstm_delta > self.config.lstm_delta_threshold)
-        primary_sell = (xgb_prob < self.config.sell_threshold and 
-                       lstm_delta < -self.config.lstm_delta_threshold)
+        # Apply aggressiveness multiplier to make thresholds more permissive when behind target
+        adaptive_buy_threshold = max(0.505, self.config.buy_threshold - (0.02 * aggressiveness_multiplier))
+        adaptive_sell_threshold = min(0.495, self.config.sell_threshold + (0.02 * aggressiveness_multiplier))
+        adaptive_lstm_threshold = max(0.0005, self.config.lstm_delta_threshold - (0.003 * aggressiveness_multiplier))
+        
+        # PRIMARY: Both models must agree (adaptive thresholds)
+        primary_buy = (xgb_prob > adaptive_buy_threshold and 
+                      lstm_delta > adaptive_lstm_threshold)
+        primary_sell = (xgb_prob < adaptive_sell_threshold and 
+                       lstm_delta < -adaptive_lstm_threshold)
         
         if primary_buy:
             stats['BUY'] += 1
@@ -559,11 +580,10 @@ class ModelBacktester:
             stats['primary_signals'] += 1
             return 'SELL'
         
-        # Secondary method: Either model can trigger (less restrictive)
-        # Use looser thresholds for secondary signals
-        secondary_buy_threshold = max(0.55, self.config.buy_threshold - 0.1)
-        secondary_sell_threshold = min(0.45, self.config.sell_threshold + 0.1)
-        secondary_lstm_threshold = max(0.005, self.config.lstm_delta_threshold * 0.5)
+        # SECONDARY: Either model can trigger (even more relaxed with aggressiveness)
+        secondary_buy_threshold = max(0.505, adaptive_buy_threshold - 0.03)
+        secondary_sell_threshold = min(0.495, adaptive_sell_threshold + 0.03)
+        secondary_lstm_threshold = max(0.0005, adaptive_lstm_threshold * 0.3)
         
         secondary_buy = (xgb_prob > secondary_buy_threshold or 
                         lstm_delta > secondary_lstm_threshold)
@@ -579,9 +599,101 @@ class ModelBacktester:
             stats['secondary_signals'] += 1
             return 'SELL'
         
-        # Tertiary method: Simple momentum-based fallback
-        # If LSTM shows strong directional movement, trade regardless of XGB
-        strong_lstm_threshold = 0.015
+        # TERTIARY: Strong momentum-based signals (adaptive sensitivity)
+        tertiary_threshold = max(0.0005, 0.005 - (0.002 * aggressiveness_multiplier))
+        if abs(lstm_delta) > tertiary_threshold:
+            if lstm_delta > 0:
+                stats['BUY'] += 1
+                stats['tertiary_signals'] += 1
+                return 'BUY'
+            else:
+                stats['SELL'] += 1
+                stats['tertiary_signals'] += 1
+                return 'SELL'
+        
+        # QUATERNARY: Very loose XGBoost signals (adaptive)
+        quaternary_buy_threshold = max(0.502, 0.505 - (0.001 * aggressiveness_multiplier))
+        quaternary_sell_threshold = min(0.498, 0.495 + (0.001 * aggressiveness_multiplier))
+        
+        if xgb_prob > quaternary_buy_threshold:
+            stats['BUY'] += 1
+            stats.setdefault('quaternary_signals', 0)
+            stats['quaternary_signals'] += 1
+            return 'BUY'
+        elif xgb_prob < quaternary_sell_threshold:
+            stats['SELL'] += 1
+            stats.setdefault('quaternary_signals', 0)
+            stats['quaternary_signals'] += 1
+            return 'SELL'
+        
+        # QUINARY: Any detectable movement (extremely aggressive when behind)
+        quinary_threshold = max(0.0001, 0.0005 - (0.0002 * aggressiveness_multiplier))
+        if abs(lstm_delta) > quinary_threshold:
+            if lstm_delta > 0:
+                stats['BUY'] += 1
+                stats.setdefault('quinary_signals', 0)
+                stats['quinary_signals'] += 1
+                return 'BUY'
+            else:
+                stats['SELL'] += 1
+                stats.setdefault('quinary_signals', 0)
+                stats['quinary_signals'] += 1
+                return 'SELL'
+        
+        # DESPERATION MODE: When very aggressive, any tiny movement triggers trades
+        if aggressiveness_multiplier > 2.0:
+            # Essentially random signal generation when far behind target
+            if xgb_prob > 0.5001:  # Extremely tiny threshold
+                stats['BUY'] += 1
+                stats.setdefault('desperation_signals', 0)
+                stats['desperation_signals'] += 1
+                return 'BUY'
+            elif xgb_prob < 0.4999:
+                stats['SELL'] += 1
+                stats.setdefault('desperation_signals', 0)
+                stats['desperation_signals'] += 1
+                return 'SELL'
+        
+        stats['HOLD'] += 1
+        return 'HOLD'
+        """Generate trading signal and update statistics with adaptive frequency targeting"""
+        
+        # PRIMARY: Both models must agree (relaxed thresholds)
+        primary_buy = (xgb_prob > self.config.buy_threshold and 
+                      lstm_delta > self.config.lstm_delta_threshold)
+        primary_sell = (xgb_prob < self.config.sell_threshold and 
+                       lstm_delta < -self.config.lstm_delta_threshold)
+        
+        if primary_buy:
+            stats['BUY'] += 1
+            stats['primary_signals'] += 1
+            return 'BUY'
+        elif primary_sell:
+            stats['SELL'] += 1
+            stats['primary_signals'] += 1
+            return 'SELL'
+        
+        # SECONDARY: Either model can trigger (relaxed thresholds)
+        secondary_buy_threshold = max(0.51, self.config.buy_threshold - 0.05)
+        secondary_sell_threshold = min(0.49, self.config.sell_threshold + 0.05)
+        secondary_lstm_threshold = max(0.003, self.config.lstm_delta_threshold * 0.4)
+        
+        secondary_buy = (xgb_prob > secondary_buy_threshold or 
+                        lstm_delta > secondary_lstm_threshold)
+        secondary_sell = (xgb_prob < secondary_sell_threshold or 
+                         lstm_delta < -secondary_lstm_threshold)
+        
+        if secondary_buy:
+            stats['BUY'] += 1
+            stats['secondary_signals'] += 1
+            return 'BUY'
+        elif secondary_sell:
+            stats['SELL'] += 1
+            stats['secondary_signals'] += 1
+            return 'SELL'
+        
+        # TERTIARY: Strong momentum-based signals (more sensitive)
+        strong_lstm_threshold = 0.005  # Much lower for more trades
         if abs(lstm_delta) > strong_lstm_threshold:
             if lstm_delta > 0:
                 stats['BUY'] += 1
@@ -590,6 +702,31 @@ class ModelBacktester:
             else:
                 stats['SELL'] += 1
                 stats['tertiary_signals'] += 1
+                return 'SELL'
+        
+        # QUATERNARY: Very loose XGBoost signals
+        if xgb_prob > 0.505:  # Just slightly above neutral
+            stats['BUY'] += 1
+            stats.setdefault('quaternary_signals', 0)
+            stats['quaternary_signals'] += 1
+            return 'BUY'
+        elif xgb_prob < 0.495:  # Just slightly below neutral
+            stats['SELL'] += 1
+            stats.setdefault('quaternary_signals', 0)
+            stats['quaternary_signals'] += 1
+            return 'SELL'
+        
+        # QUINARY: Any detectable movement (extremely aggressive)
+        if abs(lstm_delta) > 0.0005:  # Extremely sensitive
+            if lstm_delta > 0:
+                stats['BUY'] += 1
+                stats.setdefault('quinary_signals', 0)
+                stats['quinary_signals'] += 1
+                return 'BUY'
+            else:
+                stats['SELL'] += 1
+                stats.setdefault('quinary_signals', 0)
+                stats['quinary_signals'] += 1
                 return 'SELL'
         
         stats['HOLD'] += 1
@@ -712,17 +849,26 @@ class ModelBacktester:
     def simulate_trading_window(self, data: pd.DataFrame, lstm_model, xgb_model, scaler,
                               symbol: str, initial_capital: float, positions: List[Trade],
                               window_num: int, progress_callback=None, total_windows=None) -> Tuple[List[Trade], float]:
-        """Simulate trading for a single window"""
+        """Simulate trading for a single window with adaptive frequency targeting"""
         capital = initial_capital
         window_trades = []
         trades_this_hour = 0
         last_trade_hour = None
         
         # Signal generation counters for debugging
-        signal_stats = {'BUY': 0, 'SELL': 0, 'HOLD': 0, 'primary_signals': 0, 'secondary_signals': 0, 'tertiary_signals': 0}
+        signal_stats = {'BUY': 0, 'SELL': 0, 'HOLD': 0, 'primary_signals': 0, 
+                       'secondary_signals': 0, 'tertiary_signals': 0}
         
         total_steps = len(data) - self.config.sequence_length
         progress_update_frequency = max(1, total_steps // 20)  # Update 20 times per window
+        
+        # Adaptive frequency tracking - target 20+ trades per month
+        days_in_window = len(data) / (24 * 4)  # 15-min intervals: 4 per hour, 24 hours
+        target_trades_this_window = max(1, int((self.config.min_trades_per_month * days_in_window) / 30))
+        trades_generated = 0
+        
+        if self.config.verbose:
+            print(f"        🎯 Target trades for this window ({days_in_window:.1f} days): {target_trades_this_window}")
         
         for i in range(self.config.sequence_length, len(data)):
             current_time = data.index[i]
@@ -741,6 +887,7 @@ class ModelBacktester:
             # Check for exits first
             positions, exit_trades = self.check_exits(positions, current_time, current_price)
             window_trades.extend(exit_trades)
+            trades_generated += len(exit_trades)
             
             # Update capital from closed trades
             for trade in exit_trades:
@@ -750,6 +897,14 @@ class ModelBacktester:
             if (len(positions) >= self.config.max_positions or 
                 trades_this_hour >= self.config.max_trades_per_hour):
                 continue
+            
+            # Adaptive thresholds based on trade frequency
+            progress_ratio = current_step / total_steps
+            expected_trades_by_now = target_trades_this_window * progress_ratio
+            trade_deficit = max(0, expected_trades_by_now - trades_generated)
+            
+            # Become more aggressive if behind target
+            aggressiveness_multiplier = 1.0 + (trade_deficit * 0.1)  # 10% more aggressive per missing trade
             
             # Generate predictions
             try:
@@ -778,23 +933,16 @@ class ModelBacktester:
                     else:
                         raise xgb_error
                 
-                # Generate signal with statistics tracking
-                signal = self.generate_signal_with_stats(xgb_prob, lstm_delta, signal_stats)
+                # Generate signal with adaptive statistics tracking
+                signal = self.generate_signal_with_adaptive_stats(
+                    xgb_prob, lstm_delta, signal_stats, aggressiveness_multiplier
+                )
                 
                 # Enhanced debug signal generation (print more frequently for debugging)
-                if i % 1000 == 0 and self.config.verbose:  # Print every 1000 iterations for more visibility
-                    print(f"      Debug at {current_time}: XGB_prob={xgb_prob:.3f}, LSTM_delta={lstm_delta:.6f}, Signal={signal}")
-                    print(f"        Thresholds: buy={self.config.buy_threshold:.3f}, sell={self.config.sell_threshold:.3f}, lstm_delta={self.config.lstm_delta_threshold:.6f}")
+                if i % 500 == 0 and self.config.verbose:  # More frequent updates
+                    print(f"      Debug at {current_time}: XGB={xgb_prob:.3f}, LSTM={lstm_delta:.6f}, Signal={signal}")
+                    print(f"        Trades: {trades_generated}/{target_trades_this_window} (deficit={trade_deficit:.1f}, aggr={aggressiveness_multiplier:.2f})")
                     
-                    # Additional debug info about threshold proximity
-                    if signal == 'HOLD':
-                        buy_diff = self.config.buy_threshold - xgb_prob
-                        sell_diff = xgb_prob - self.config.sell_threshold  
-                        lstm_buy_diff = self.config.lstm_delta_threshold - lstm_delta
-                        lstm_sell_diff = lstm_delta + self.config.lstm_delta_threshold
-                        print(f"        Near buy? XGB_diff={buy_diff:.3f}, LSTM_diff={lstm_buy_diff:.6f}")
-                        print(f"        Near sell? XGB_diff={sell_diff:.3f}, LSTM_diff={lstm_sell_diff:.6f}")
-                
                 if signal in ['BUY', 'SELL']:
                     # Calculate stop loss
                     atr = data['atr'].iloc[i]
@@ -825,6 +973,7 @@ class ModelBacktester:
                         positions.append(trade)
                         capital -= (position_size * execution_price + fees)
                         trades_this_hour += 1
+                        trades_generated += 1
                         
             except Exception as e:
                 print(f"    Error generating signal at {current_time}: {e}")
@@ -835,21 +984,35 @@ class ModelBacktester:
         final_price = data['close'].iloc[-1]
         positions, final_trades = self.check_exits(positions, final_time, final_price, force_exit=True)
         window_trades.extend(final_trades)
+        trades_generated += len(final_trades)
         
         # Update capital from final trades
         for trade in final_trades:
             capital += trade.pnl
         
-        # Debug output for trade generation with signal statistics
+        # Debug output for trade generation with enhanced signal statistics
         if self.config.verbose:
             total_signals = signal_stats['BUY'] + signal_stats['SELL'] + signal_stats['HOLD']
-            if len(window_trades) == 0:
-                print(f"        ⚠️  No trades generated in window {window_num}")
+            print(f"        🎯 Trade target: {target_trades_this_window}, Generated: {trades_generated}")
+            
+            if trades_generated == 0:
+                print(f"        ⚠️  No trades generated in window {window_num} (TARGET MISSED)")
                 print(f"        Signal stats: BUY={signal_stats['BUY']}, SELL={signal_stats['SELL']}, HOLD={signal_stats['HOLD']} (total={total_signals})")
-                print(f"        Signal types: Primary={signal_stats['primary_signals']}, Secondary={signal_stats['secondary_signals']}, Tertiary={signal_stats['tertiary_signals']}")
+            elif trades_generated < target_trades_this_window:
+                print(f"        ⚠️  Generated {trades_generated} trades in window {window_num} (BELOW TARGET)")
+                print(f"        Signal stats: BUY={signal_stats['BUY']}, SELL={signal_stats['SELL']}, HOLD={signal_stats['HOLD']} (total={total_signals})")
             else:
-                print(f"        ✅ Generated {len(window_trades)} trades in window {window_num}")
+                print(f"        ✅ Generated {trades_generated} trades in window {window_num} (TARGET MET)")
                 print(f"        Signal stats: BUY={signal_stats['BUY']}, SELL={signal_stats['SELL']}, HOLD={signal_stats['HOLD']} (total={total_signals})")
+            
+            # Show signal tier breakdown
+            tier_stats = []
+            for tier in ['primary_signals', 'secondary_signals', 'tertiary_signals', 'quaternary_signals', 'quinary_signals']:
+                count = signal_stats.get(tier, 0)
+                if count > 0:
+                    tier_stats.append(f"{tier.replace('_signals', '').title()}={count}")
+            if tier_stats:
+                print(f"        Signal tiers: {', '.join(tier_stats)}")
         
         return window_trades, capital
     
