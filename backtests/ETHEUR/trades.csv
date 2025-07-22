@@ -1,0 +1,2 @@
+entry_time,exit_time,direction,entry_price,exit_price,position_size,pnl,confidence,exit_reason,fees,slippage
+2021-12-26 17:45:00,2021-12-27 08:45:00,BUY,3605.4218199999996,3567.44898,7.982087041985409,-317.44825571138085,0.5528792621760852,STOP_LOSS,14.3457416,7.17284
