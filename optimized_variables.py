@@ -54,9 +54,9 @@ class ParameterSpace:
         Initialize parameter space based on optimization mode
         
         Args:
-            optimization_mode: 'conservative', 'balanced', 'aggressive', 'profit_focused'
+            optimization_mode: 'conservative', 'balanced', 'aggressive', 'profit_focused', 'high_frequency'
         """
-        # Base parameter ranges - EXTREMELY aggressive for 20+ trades per month target
+        # Base parameter ranges optimized for different trading frequencies
         if optimization_mode == 'conservative':
             self.param_bounds = {
                 'buy_threshold': (0.502, 0.58),         # Nearly neutral for maximum trades
@@ -78,6 +78,18 @@ class ParameterSpace:
                 'take_profit_pct': (0.04, 0.12),         # Aggressive targets
                 'max_capital_per_trade': (0.08, 0.18),   # Larger positions
                 'max_positions': (8, 15),                # More positions
+            }
+        elif optimization_mode == 'high_frequency':
+            # ULTRA-aggressive parameters for 5+ trades per day target - trade on weak/neutral predictions
+            self.param_bounds = {
+                'buy_threshold': (0.5, 0.5001),        # EXACTLY neutral to infinitesimally above
+                'sell_threshold': (0.4999, 0.5),       # EXACTLY neutral to infinitesimally below
+                'lstm_delta_threshold': (0.0000001, 0.00001), # NANO-sensitive - trade on noise
+                'risk_per_trade': (0.003, 0.015),        # Lower risk to enable more trades
+                'stop_loss_pct': (0.005, 0.02),          # Tighter stop loss for quick exits
+                'take_profit_pct': (0.008, 0.03),        # Smaller profit targets for quick wins
+                'max_capital_per_trade': (0.02, 0.06),   # Smaller positions to enable more trades
+                'max_positions': (15, 30),               # Many positions allowed
             }
         elif optimization_mode == 'profit_focused':
             self.param_bounds = {
@@ -106,7 +118,7 @@ class ParameterSpace:
         self.fixed_params = {
             'trading_fee': 0.002,        # Realistic crypto trading fees
             'slippage': 0.001,           # Conservative slippage estimate
-            'max_trades_per_hour': 3,    # Prevent overtrading
+            'max_trades_per_hour': 10,   # Allow many trades per hour for high frequency
             'initial_capital': 10000.0,  # Standard starting capital
         }
         
@@ -183,16 +195,16 @@ class ScientificOptimizer:
         # Store original parameters for reference
         self.original_param_bounds = self.param_space.param_bounds.copy()
         
-        # Switch to very aggressive parameter ranges
+        # Switch to ultra-aggressive parameter ranges that trade on any signal
         self.param_space.param_bounds = {
-            'buy_threshold': (0.502, 0.55),          # Extremely low for maximum trades
-            'sell_threshold': (0.45, 0.498),          # Extremely high for maximum trades
-            'lstm_delta_threshold': (0.0001, 0.005),  # Ultra-sensitive
-            'risk_per_trade': (0.01, 0.03),          # Moderate risk
-            'stop_loss_pct': (0.015, 0.04),          # Balanced stop loss
-            'take_profit_pct': (0.03, 0.08),         # Conservative targets for reliability
-            'max_capital_per_trade': (0.05, 0.15),   # Balanced positions
-            'max_positions': (8, 15),                # More positions allowed
+            'buy_threshold': (0.5001, 0.502),          # ULTRA-low for maximum trades - any tiny bias
+            'sell_threshold': (0.498, 0.4999),          # ULTRA-high for maximum trades - any tiny bias
+            'lstm_delta_threshold': (0.000001, 0.0005),  # EXTREMELY sensitive - trade on noise
+            'risk_per_trade': (0.005, 0.02),          # Lower risk for more trades
+            'stop_loss_pct': (0.008, 0.03),          # Tighter stop loss
+            'take_profit_pct': (0.01, 0.05),         # Smaller targets for quick wins
+            'max_capital_per_trade': (0.03, 0.10),   # Smaller positions
+            'max_positions': (10, 20),                # Many positions allowed
         }
         
         # Update bounds for optimization
@@ -488,18 +500,24 @@ class ScientificOptimizer:
         """Calculate objective value from metrics"""
         total_trades = metrics.get('total_trades', 0)
         
-        # Very permissive trade requirement - just need at least 1 trade for valid evaluation
-        if total_trades < 1:
+        # For high frequency trading, we need a minimum number of trades
+        # Target: 5+ trades per day, so for backtesting period we need proportional trades
+        min_trades_required = 1
+        
+        if total_trades < min_trades_required:
             if self.verbose:
-                print(f"      ❌ No trades generated - returning penalty")
+                print(f"      ❌ Insufficient trades ({total_trades}) - returning penalty")
             return -999
         elif total_trades < 3:
             if self.verbose:
-                print(f"      ⚠️  Few trades ({total_trades}) but allowing evaluation with penalty")
-            # Small penalty for few trades but still allow evaluation
-            penalty_factor = 0.5  # 50% penalty for having very few trades
+                print(f"      ⚠️  Few trades ({total_trades}) but allowing evaluation with smaller penalty")
+            # Smaller penalty for few trades to encourage any trading
+            penalty_factor = 0.8  # 20% penalty for having very few trades
         else:
             penalty_factor = 1.0  # No penalty for sufficient trades
+            # Bonus for high trade frequency
+            if total_trades >= 10:
+                penalty_factor = 1.1  # 10% bonus for high frequency
         
         base_objective = 0
         if self.objective == 'sharpe_ratio':
@@ -515,7 +533,7 @@ class ScientificOptimizer:
         else:
             base_objective = metrics.get('total_return', -999)  # Default to total return
         
-        # Apply penalty factor for few trades
+        # Apply penalty/bonus factor for trade frequency
         return base_objective * penalty_factor if base_objective > -990 else base_objective
     
     def _sample_random_params(self) -> Dict[str, float]:
@@ -600,52 +618,51 @@ class ScientificOptimizer:
         """Standard normal PDF"""
         return np.exp(-0.5 * x**2) / np.sqrt(2 * np.pi)
 
-    # Add this to your optimization script to see raw model outputs
-    def debug_model_outputs(symbol, days=7):
-        """Debug raw model outputs before thresholds are applied"""
-        from paper_trader.config.settings import TradingSettings
-        from paper_trader.data.bitvavo_collector import BitvavoDataCollector
-        from paper_trader.models.feature_engineer import FeatureEngineer
-        from paper_trader.models.model_loader import WindowBasedModelLoader, WindowBasedEnsemblePredictor
-        import pandas as pd
-        import asyncio
-    
-        settings = TradingSettings()
-    
+def debug_model_outputs(symbol, days=7):
+    """Debug raw model outputs before thresholds are applied"""
+    from paper_trader.config.settings import TradingSettings
+    from paper_trader.data.bitvavo_collector import BitvavoDataCollector
+    from paper_trader.models.feature_engineer import FeatureEngineer
+    from paper_trader.models.model_loader import WindowBasedModelLoader, WindowBasedEnsemblePredictor
+    import pandas as pd
+    import asyncio
+
+    settings = TradingSettings()
+
     # Initialize data collector with proper API credentials
-        data_collector = BitvavoDataCollector(
-            api_key=settings.bitvavo_api_key,
-            api_secret=settings.bitvavo_api_secret,
-            interval=settings.candle_interval,
-            settings=settings
-        )
-    
-        feature_engineer = FeatureEngineer()
-        model_loader = WindowBasedModelLoader(settings.model_path)
-        predictor = WindowBasedEnsemblePredictor(
-            model_loader=model_loader,
-            settings=settings
-        )
-    
+    data_collector = BitvavoDataCollector(
+        api_key=settings.bitvavo_api_key,
+        api_secret=settings.bitvavo_api_secret,
+        interval=settings.candle_interval,
+        settings=settings
+    )
+
+    feature_engineer = FeatureEngineer()
+    model_loader = WindowBasedModelLoader(settings.model_path)
+    predictor = WindowBasedEnsemblePredictor(
+        model_loader=model_loader,
+        settings=settings
+    )
+
     # Get historical data
-        print(f"Getting {days} days of historical data for {symbol}...")
-        data = asyncio.run(data_collector.get_historical_data(symbol, limit=days*1440))  # days * minutes per day
-    
+    print(f"Getting {days} days of historical data for {symbol}...")
+    data = asyncio.run(data_collector.get_historical_data(symbol, limit=days*1440))  # days * minutes per day
+
     if data is None or len(data) < 100:
         print(f"❌ Insufficient data for {symbol}: {len(data) if data is not None else 0} candles")
         return
-    
+
     # Engineer features
     features_df = feature_engineer.engineer_features(data)
     if features_df is None:
         print("❌ Feature engineering failed")
         return
-    
+
     # Make predictions
     predictions = []
     confidences = []
     signals = []
-    
+
     for i in range(min(100, len(features_df) - settings.sequence_length)):
         window = features_df.iloc[i:i+settings.sequence_length]
         pred_result = predictor.predict(window)
@@ -653,7 +670,7 @@ class ScientificOptimizer:
             predictions.append(pred_result)
             confidences.append(pred_result.get('confidence', 0))
             signals.append(pred_result.get('signal_strength', 'NONE'))
-    
+
     # Analyze distribution
     if confidences:
         print("\n====== MODEL OUTPUT DISTRIBUTION ======")
@@ -695,7 +712,7 @@ class ScientificOptimizer:
         
         for signal, count in signal_counts.items():
             print(f"{signal}: {count} ({count/len(signals)*100:.1f}%)")
-    
+
     else:
         print("❌ No predictions generated")
 
@@ -815,9 +832,9 @@ Examples:
     parser.add_argument('--method', choices=['bayesian', 'grid'], default='bayesian',
                        help='Optimization method (default: bayesian)')
     
-    parser.add_argument('--mode', choices=['conservative', 'balanced', 'aggressive', 'profit_focused'],
-                       default='profit_focused',
-                       help='Optimization mode determining parameter ranges (default: profit_focused)')
+    parser.add_argument('--mode', choices=['conservative', 'balanced', 'aggressive', 'profit_focused', 'high_frequency'],
+                       default='high_frequency',
+                       help='Optimization mode determining parameter ranges (default: high_frequency)')
     
     parser.add_argument('--objective', choices=['sharpe_ratio', 'total_return', 'calmar_ratio', 'profit_factor'],
                        default='profit_factor',
