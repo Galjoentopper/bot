@@ -614,11 +614,13 @@ class HybridModelTrainer:
         # Use available features
         feature_data = df[available_features].values
 
-        # Create target: next period price change % with validation
+        # Create target: binary jump detection (≥0.5% price increase) for LSTM consistency with XGBoost
+        # This aligns both models to focus specifically on jump detection
         targets = (
-            df["close"]
-            .pct_change(self.prediction_horizon)
-            .shift(-self.prediction_horizon)
+            (df["close"]
+             .pct_change(self.prediction_horizon)
+             .shift(-self.prediction_horizon) >= self.price_change_threshold)
+            .astype(float)
             .values
         )
 
@@ -810,8 +812,8 @@ class HybridModelTrainer:
         dense2 = Dropout(self.dropout_rate)(dense2)
         dense2 = BatchNormalization()(dense2)
 
-        # Output layer (using float32 for maximum performance)
-        outputs = Dense(1, activation="linear")(dense2)
+        # Output layer for binary jump classification (using sigmoid activation)
+        outputs = Dense(1, activation="sigmoid")(dense2)
 
         # Create model
         model = Model(inputs=inputs, outputs=outputs)
@@ -832,11 +834,11 @@ class HybridModelTrainer:
                 beta_2=0.999,
             )
 
-        # Compile with quantile loss
+        # Compile with binary crossentropy for jump detection
         model.compile(
             optimizer=optimizer,
-            loss=quantile_loss(self.quantile),
-            metrics=["mae", "mse"],
+            loss="binary_crossentropy",
+            metrics=["accuracy", "precision", "recall"],
         )
 
         # Optimized callbacks for faster training

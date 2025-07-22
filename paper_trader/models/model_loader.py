@@ -714,8 +714,10 @@ class WindowBasedEnsemblePredictor:
                 self.logger.warning(f"No valid predictions for {symbol} with window {optimal_window}")
                 return None
             
-            # Calculate ensemble prediction with enhanced weighting
-            ensemble_pred = self._calculate_enhanced_ensemble(predictions, confidence_scores)
+            # Calculate ensemble prediction with jump-specific weighting
+            jump_features_active = self._count_jump_features(features)
+            jump_probability = self._calculate_jump_probability(predictions, confidence_scores, jump_features_active)
+            ensemble_pred = self._calculate_enhanced_ensemble(predictions, confidence_scores, jump_probability)
 
             # Calculate uncertainty and confidence
             uncertainty = self.calculate_prediction_uncertainty(predictions, market_volatility)
@@ -728,8 +730,8 @@ class WindowBasedEnsemblePredictor:
                 current_price = float(current_price)
             price_change_pct = (ensemble_pred - current_price) / current_price
             
-            # Enhanced signal classification
-            signal_strength = self._classify_enhanced_signal(price_change_pct, avg_confidence, market_volatility)
+            # Enhanced signal classification with jump consideration
+            signal_strength = self._classify_enhanced_signal(price_change_pct, avg_confidence, market_volatility, jump_probability)
             
             # Prepare result data first
             result = {
@@ -740,6 +742,8 @@ class WindowBasedEnsemblePredictor:
                 'confidence': avg_confidence,
                 'uncertainty': uncertainty,
                 'signal_strength': signal_strength,
+                'jump_probability': jump_probability,
+                'jump_features_active': jump_features_active,
                 'optimal_window': optimal_window,
                 'market_volatility': market_volatility,
                 'individual_predictions': predictions,
@@ -940,32 +944,39 @@ class WindowBasedEnsemblePredictor:
             self.logger.error(f"Error in Caboose prediction for {symbol} window {window}: {e}")
             return None, 0.0
     
-    def _calculate_enhanced_ensemble(self, predictions: dict, confidence_scores: dict) -> float:
-        """Calculate enhanced weighted ensemble prediction with adaptive weighting."""
+    def _calculate_enhanced_ensemble(self, predictions: dict, confidence_scores: dict, jump_probability: float = 0.0) -> float:
+        """Calculate enhanced weighted ensemble prediction with jump-detection adaptive weighting."""
         if not predictions:
             return 0.0
         
         total_weight = 0
         weighted_sum = 0
         
-        # Calculate adaptive weights based on confidence
+        # Calculate adaptive weights based on confidence and jump probability
         max_confidence = max(confidence_scores.values()) if confidence_scores else 1.0
         
         for model_name, prediction in predictions.items():
             confidence = confidence_scores[model_name]
             
-            # Base weight
+            # Base weight with jump-detection bias
             if model_name == 'lstm':
-                base_weight = self.lstm_weight
+                # Give LSTM higher weight for jump detection as it's now trained for binary classification
+                base_weight = self.lstm_weight * (1.0 + 0.3 * jump_probability)
             elif model_name == 'xgb':
-                base_weight = self.xgb_weight
+                # XGBoost maintains its weight for jump detection
+                base_weight = self.xgb_weight * (1.0 + 0.2 * jump_probability)
             elif model_name == 'caboose':
-                base_weight = self.caboose_weight
+                base_weight = self.caboose_weight * (1.0 + 0.1 * jump_probability)
             else:
                 base_weight = 0.5
             
-            # Adaptive confidence weighting
+            # Multi-timeframe confidence weighting with jump focus
             confidence_multiplier = (confidence / max_confidence) ** 0.5  # Square root for smoother scaling
+            
+            # Boost weight when prediction indicates jump potential
+            if prediction > 0.5:  # Binary prediction > 0.5 indicates jump likelihood
+                confidence_multiplier *= (1.0 + 0.2 * jump_probability)
+            
             weight = base_weight * confidence_multiplier
             
             weighted_sum += prediction * weight
@@ -975,6 +986,44 @@ class WindowBasedEnsemblePredictor:
             return np.mean(list(predictions.values()))
 
         return weighted_sum / total_weight
+        
+    def _count_jump_features(self, features: pd.DataFrame) -> int:
+        """Count how many jump-specific features are active."""
+        jump_features = [
+            'volume_surge_5', 'volume_surge_10', 'volatility_breakout', 'atr_breakout',
+            'resistance_breakout', 'support_bounce', 'price_gap_up', 'momentum_convergence',
+            'squeeze_breakout', 'market_momentum_alignment', 'strong_trend'
+        ]
+        
+        active_count = 0
+        latest_features = features.iloc[-1] if len(features) > 0 else {}
+        
+        for feature in jump_features:
+            if feature in latest_features and latest_features[feature] > 0:
+                active_count += 1
+                
+        return active_count
+    
+    def _calculate_jump_probability(self, predictions: dict, confidence_scores: dict, jump_features_active: int) -> float:
+        """Calculate probability of a price jump based on model predictions and features."""
+        if not predictions:
+            return 0.0
+            
+        # Base probability from model ensemble (assuming binary predictions)
+        avg_prediction = np.mean(list(predictions.values()))
+        avg_confidence = np.mean(list(confidence_scores.values())) if confidence_scores else 0.5
+        
+        # Jump feature contribution (normalized)
+        feature_contribution = min(jump_features_active / 8.0, 1.0)  # Normalize to max 8 features
+        
+        # Combine probabilities
+        jump_probability = (
+            0.5 * avg_prediction +        # Model predictions (50% weight)
+            0.3 * avg_confidence +        # Model confidence (30% weight) 
+            0.2 * feature_contribution    # Feature contribution (20% weight)
+        )
+        
+        return min(max(jump_probability, 0.0), 1.0)
 
     def calculate_prediction_uncertainty(self, predictions: dict, market_volatility: float) -> float:
         """Calculate uncertainty based on model disagreement and market conditions."""
@@ -1008,21 +1057,25 @@ class WindowBasedEnsemblePredictor:
         
         return max(0.05, min(0.95, adjusted_confidence))
     
-    def _classify_enhanced_signal(self, price_change_pct: float, confidence: float, market_volatility: float) -> str:
-        """Enhanced signal classification with improved thresholds and volatility adjustment."""
+    def _classify_enhanced_signal(self, price_change_pct: float, confidence: float, market_volatility: float, jump_probability: float = 0.0) -> str:
+        """Enhanced signal classification with jump probability consideration."""
         abs_change = abs(price_change_pct) * 100  # Convert to percentage
         
         # Adjust thresholds based on market volatility
         volatility_multiplier = 1.0 + (market_volatility - 0.5) * 0.5
         
-        # Enhanced signal classification logic with lower thresholds
-        if confidence >= 0.8 and abs_change >= (1.5 * volatility_multiplier):
+        # Jump probability boosts signal strength
+        jump_boost = jump_probability * 0.3  # Up to 30% boost
+        effective_confidence = min(confidence + jump_boost, 1.0)
+        
+        # Enhanced signal classification logic with jump consideration
+        if effective_confidence >= 0.8 and (abs_change >= (1.5 * volatility_multiplier) or jump_probability > 0.7):
             return "VERY_STRONG"
-        elif confidence >= 0.7 and abs_change >= (1.0 * volatility_multiplier):
+        elif effective_confidence >= 0.7 and (abs_change >= (1.0 * volatility_multiplier) or jump_probability > 0.6):
             return "STRONG"
-        elif confidence >= 0.6 and abs_change >= (0.5 * volatility_multiplier):
+        elif effective_confidence >= 0.6 and (abs_change >= (0.5 * volatility_multiplier) or jump_probability > 0.5):
             return "MODERATE"
-        elif confidence >= 0.3 and abs_change >= (0.05 * volatility_multiplier):
+        elif effective_confidence >= 0.3 and (abs_change >= (0.05 * volatility_multiplier) or jump_probability > 0.3):
             return "WEAK"
         else:
             return "NEUTRAL"
