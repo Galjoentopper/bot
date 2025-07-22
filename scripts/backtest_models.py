@@ -501,15 +501,45 @@ class ModelBacktester:
         return result
     
     def generate_signal(self, xgb_prob: float, lstm_delta: float) -> str:
-        """Generate trading signal based on model outputs"""
-        if (xgb_prob > self.config.buy_threshold and 
-            lstm_delta > self.config.lstm_delta_threshold):
+        """Generate trading signal based on model outputs with fallback methods"""
+        
+        # Primary method: Both models must agree (original logic but with debug)
+        primary_buy = (xgb_prob > self.config.buy_threshold and 
+                      lstm_delta > self.config.lstm_delta_threshold)
+        primary_sell = (xgb_prob < self.config.sell_threshold and 
+                       lstm_delta < -self.config.lstm_delta_threshold)
+        
+        if primary_buy:
             return 'BUY'
-        elif (xgb_prob < self.config.sell_threshold and 
-              lstm_delta < -self.config.lstm_delta_threshold):
+        elif primary_sell:
             return 'SELL'
-        else:
-            return 'HOLD'
+        
+        # Secondary method: Either model can trigger (less restrictive)
+        # Use looser thresholds for secondary signals
+        secondary_buy_threshold = max(0.55, self.config.buy_threshold - 0.1)
+        secondary_sell_threshold = min(0.45, self.config.sell_threshold + 0.1)
+        secondary_lstm_threshold = max(0.005, self.config.lstm_delta_threshold * 0.5)
+        
+        secondary_buy = (xgb_prob > secondary_buy_threshold or 
+                        lstm_delta > secondary_lstm_threshold)
+        secondary_sell = (xgb_prob < secondary_sell_threshold or 
+                         lstm_delta < -secondary_lstm_threshold)
+        
+        if secondary_buy:
+            return 'BUY'
+        elif secondary_sell:
+            return 'SELL'
+        
+        # Tertiary method: Simple momentum-based fallback
+        # If LSTM shows strong directional movement, trade regardless of XGB
+        strong_lstm_threshold = 0.015
+        if abs(lstm_delta) > strong_lstm_threshold:
+            if lstm_delta > 0:
+                return 'BUY'
+            else:
+                return 'SELL'
+        
+        return 'HOLD'
     
     def calculate_position_size(self, capital: float, entry_price: float, stop_loss: float) -> float:
         """Calculate position size based on risk management"""
@@ -694,10 +724,19 @@ class ModelBacktester:
                 # Generate signal
                 signal = self.generate_signal(xgb_prob, lstm_delta)
                 
-                # Debug signal generation (only print occasionally to avoid spam)
-                if i % 2000 == 0 and self.config.verbose:  # Print every 2000 iterations
+                # Enhanced debug signal generation (print more frequently for debugging)
+                if i % 1000 == 0 and self.config.verbose:  # Print every 1000 iterations for more visibility
                     print(f"      Debug at {current_time}: XGB_prob={xgb_prob:.3f}, LSTM_delta={lstm_delta:.6f}, Signal={signal}")
-                    print(f"        Thresholds: buy={self.config.buy_threshold}, sell={self.config.sell_threshold}, lstm_delta={self.config.lstm_delta_threshold}")
+                    print(f"        Thresholds: buy={self.config.buy_threshold:.3f}, sell={self.config.sell_threshold:.3f}, lstm_delta={self.config.lstm_delta_threshold:.6f}")
+                    
+                    # Additional debug info about threshold proximity
+                    if signal == 'HOLD':
+                        buy_diff = self.config.buy_threshold - xgb_prob
+                        sell_diff = xgb_prob - self.config.sell_threshold  
+                        lstm_buy_diff = self.config.lstm_delta_threshold - lstm_delta
+                        lstm_sell_diff = lstm_delta + self.config.lstm_delta_threshold
+                        print(f"        Near buy? XGB_diff={buy_diff:.3f}, LSTM_diff={lstm_buy_diff:.6f}")
+                        print(f"        Near sell? XGB_diff={sell_diff:.3f}, LSTM_diff={lstm_sell_diff:.6f}")
                 
                 if signal in ['BUY', 'SELL']:
                     # Calculate stop loss
@@ -743,6 +782,12 @@ class ModelBacktester:
         # Update capital from final trades
         for trade in final_trades:
             capital += trade.pnl
+        
+        # Debug output for trade generation
+        if self.config.verbose and len(window_trades) == 0:
+            print(f"        ⚠️  No trades generated in window {window_num}")
+        elif self.config.verbose:
+            print(f"        ✅ Generated {len(window_trades)} trades in window {window_num}")
         
         return window_trades, capital
     

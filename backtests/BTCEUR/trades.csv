@@ -1,0 +1,2 @@
+entry_time,exit_time,direction,entry_price,exit_price,position_size,pnl,confidence,exit_reason,fees,slippage
+2020-12-31 09:45:00,2020-12-31 13:00:00,BUY,23680.94729,22948.79823,0.7229154222475572,-622.541337898052,0.6128955280897994,STOP_LOSS,93.25949104,46.629059999999996

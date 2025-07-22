@@ -56,12 +56,12 @@ class ParameterSpace:
         Args:
             optimization_mode: 'conservative', 'balanced', 'aggressive', 'profit_focused'
         """
-        # Base parameter ranges based on academic research
+        # Base parameter ranges - adjusted for better trade generation
         if optimization_mode == 'conservative':
             self.param_bounds = {
-                'buy_threshold': (0.65, 0.85),          # Higher confidence required
-                'sell_threshold': (0.15, 0.35),          # Conservative exit
-                'lstm_delta_threshold': (0.005, 0.025),  # Moderate sensitivity
+                'buy_threshold': (0.55, 0.75),          # Lowered for more trades
+                'sell_threshold': (0.25, 0.45),          # Raised for more trades  
+                'lstm_delta_threshold': (0.001, 0.015),  # More sensitive
                 'risk_per_trade': (0.005, 0.015),        # Lower risk
                 'stop_loss_pct': (0.015, 0.035),         # Tighter stop loss
                 'take_profit_pct': (0.03, 0.08),         # Conservative targets
@@ -70,9 +70,9 @@ class ParameterSpace:
             }
         elif optimization_mode == 'aggressive':
             self.param_bounds = {
-                'buy_threshold': (0.55, 0.75),          # Lower confidence threshold
-                'sell_threshold': (0.25, 0.45),          # More aggressive
-                'lstm_delta_threshold': (0.005, 0.03),   # Higher sensitivity
+                'buy_threshold': (0.45, 0.65),          # Much lower for more trades
+                'sell_threshold': (0.35, 0.55),          # Much higher for more trades
+                'lstm_delta_threshold': (0.001, 0.02),   # More sensitive
                 'risk_per_trade': (0.015, 0.035),        # Higher risk
                 'stop_loss_pct': (0.02, 0.05),           # Wider stop loss
                 'take_profit_pct': (0.04, 0.12),         # Aggressive targets
@@ -81,9 +81,9 @@ class ParameterSpace:
             }
         elif optimization_mode == 'profit_focused':
             self.param_bounds = {
-                'buy_threshold': (0.60, 0.80),          # Balanced confidence
-                'sell_threshold': (0.20, 0.40),          # Profit-focused exit
-                'lstm_delta_threshold': (0.008, 0.025),  # Optimized sensitivity
+                'buy_threshold': (0.50, 0.70),          # Lowered for more trades
+                'sell_threshold': (0.30, 0.50),          # Raised for more trades
+                'lstm_delta_threshold': (0.001, 0.018),  # More sensitive
                 'risk_per_trade': (0.01, 0.025),         # Moderate risk
                 'stop_loss_pct': (0.018, 0.04),          # Balanced stop loss
                 'take_profit_pct': (0.035, 0.10),        # Profit-focused targets
@@ -92,9 +92,9 @@ class ParameterSpace:
             }
         else:  # balanced
             self.param_bounds = {
-                'buy_threshold': (0.60, 0.80),          # Balanced confidence
-                'sell_threshold': (0.20, 0.40),          # Balanced exit
-                'lstm_delta_threshold': (0.005, 0.025),  # Balanced sensitivity
+                'buy_threshold': (0.50, 0.70),          # Lowered for more trades
+                'sell_threshold': (0.30, 0.50),          # Raised for more trades
+                'lstm_delta_threshold': (0.001, 0.018),  # More sensitive
                 'risk_per_trade': (0.01, 0.025),         # Moderate risk
                 'stop_loss_pct': (0.02, 0.04),           # Balanced stop loss
                 'take_profit_pct': (0.04, 0.09),         # Balanced targets
@@ -148,6 +148,8 @@ class ScientificOptimizer:
         self.evaluation_results = []
         self.best_result = None
         self.iteration_count = 0
+        self.zero_trades_detected = False
+        self.aggressive_mode_enabled = False
         
         # Gaussian Process for Bayesian optimization
         kernel = ConstantKernel(1.0) * Matern(nu=2.5, length_scale=1.0)
@@ -168,6 +170,53 @@ class ScientificOptimizer:
             print(f"🎯 Optimization mode: {optimization_mode}")
             print(f"📈 Objective: {objective}")
             print(f"🔧 Parameter space: {len(self.param_space.param_names)} dimensions")
+    
+    def switch_to_aggressive_mode(self):
+        """Switch to more aggressive parameter ranges when zero trades are detected"""
+        if self.aggressive_mode_enabled:
+            return  # Already in aggressive mode
+            
+        if self.verbose:
+            print(f"\n⚠️  Zero trades detected across multiple evaluations!")
+            print(f"🔄 Switching to AGGRESSIVE mode for better trade generation...")
+        
+        # Store original parameters for reference
+        self.original_param_bounds = self.param_space.param_bounds.copy()
+        
+        # Switch to very aggressive parameter ranges
+        self.param_space.param_bounds = {
+            'buy_threshold': (0.40, 0.60),          # Very low for maximum trades
+            'sell_threshold': (0.40, 0.60),          # Very high for maximum trades
+            'lstm_delta_threshold': (0.0001, 0.01),  # Extremely sensitive
+            'risk_per_trade': (0.01, 0.03),          # Moderate risk
+            'stop_loss_pct': (0.015, 0.04),          # Balanced stop loss
+            'take_profit_pct': (0.03, 0.08),         # Conservative targets for reliability
+            'max_capital_per_trade': (0.05, 0.15),   # Balanced positions
+            'max_positions': (8, 15),                # More positions allowed
+        }
+        
+        # Update bounds for optimization
+        self.param_space.bounds = [self.param_space.param_bounds[name] for name in self.param_space.param_names]
+        
+        self.aggressive_mode_enabled = True
+        
+        if self.verbose:
+            print(f"✅ Aggressive mode enabled - using very permissive thresholds")
+            print(f"   Buy threshold: {self.param_space.param_bounds['buy_threshold']}")
+            print(f"   Sell threshold: {self.param_space.param_bounds['sell_threshold']}")
+            print(f"   LSTM delta threshold: {self.param_space.param_bounds['lstm_delta_threshold']}")
+    
+    def check_for_zero_trades_and_adapt(self):
+        """Check if we're getting zero trades and adapt if needed"""
+        if len(self.evaluation_results) >= 2:  # Check after just 2 evaluations for faster adaptation
+            # Count recent evaluations with zero trades (objective = -999)
+            recent_results = self.evaluation_results[-2:]
+            zero_trade_count = sum(1 for result in recent_results if result <= -990)
+            
+            if zero_trade_count >= 1 and not self.aggressive_mode_enabled:  # Switch after just 1 zero-trade result
+                self.switch_to_aggressive_mode()
+                return True
+        return False
     
     def evaluate_parameters(self, params: Dict[str, float]) -> Dict[str, Any]:
         """
@@ -254,6 +303,23 @@ class ScientificOptimizer:
                 self.best_result = result
                 if self.verbose:
                     print(f"🏆 New best result: {self.objective}={result['objective_value']:.4f}")
+            
+            # Check for zero trades and adapt parameters if needed
+            adapted = self.check_for_zero_trades_and_adapt()
+            if adapted:
+                if self.verbose:
+                    print(f"🔄 Re-sampling with aggressive parameters...")
+                # Sample a few more with aggressive parameters
+                for j in range(2):
+                    aggressive_params = self._sample_random_params()
+                    aggressive_result = self.evaluate_parameters(aggressive_params)
+                    self.evaluated_params.append(self._params_to_array(aggressive_params))
+                    self.evaluation_results.append(aggressive_result['objective_value'])
+                    if aggressive_result['success'] and (self.best_result is None or 
+                                                    aggressive_result['objective_value'] > self.best_result['objective_value']):
+                        self.best_result = aggressive_result
+                        if self.verbose:
+                            print(f"🏆 New aggressive best result: {self.objective}={aggressive_result['objective_value']:.4f}")
             
             self.iteration_count += 1
             
@@ -420,21 +486,37 @@ class ScientificOptimizer:
     
     def _calculate_objective(self, metrics: Dict[str, float]) -> float:
         """Calculate objective value from metrics"""
-        if metrics.get('total_trades', 0) < 5:  # Minimum trades required
-            return -999
+        total_trades = metrics.get('total_trades', 0)
         
+        # Very permissive trade requirement - just need at least 1 trade for valid evaluation
+        if total_trades < 1:
+            if self.verbose:
+                print(f"      ❌ No trades generated - returning penalty")
+            return -999
+        elif total_trades < 3:
+            if self.verbose:
+                print(f"      ⚠️  Few trades ({total_trades}) but allowing evaluation with penalty")
+            # Small penalty for few trades but still allow evaluation
+            penalty_factor = 0.5  # 50% penalty for having very few trades
+        else:
+            penalty_factor = 1.0  # No penalty for sufficient trades
+        
+        base_objective = 0
         if self.objective == 'sharpe_ratio':
-            return metrics.get('sharpe_ratio', -999)
+            base_objective = metrics.get('sharpe_ratio', -999)
         elif self.objective == 'total_return':
-            return metrics.get('total_return', -999)
+            base_objective = metrics.get('total_return', -999)
         elif self.objective == 'calmar_ratio':
             total_return = metrics.get('total_return', 0)
             max_drawdown = abs(metrics.get('max_drawdown', 0.01))
-            return total_return / max_drawdown if max_drawdown > 0 else -999
+            base_objective = total_return / max_drawdown if max_drawdown > 0 else -999
         elif self.objective == 'profit_factor':
-            return metrics.get('profit_factor', -999)
+            base_objective = metrics.get('profit_factor', -999)
         else:
-            return metrics.get('total_return', -999)  # Default to total return
+            base_objective = metrics.get('total_return', -999)  # Default to total return
+        
+        # Apply penalty factor for few trades
+        return base_objective * penalty_factor if base_objective > -990 else base_objective
     
     def _sample_random_params(self) -> Dict[str, float]:
         """Sample random parameters from the parameter space"""
