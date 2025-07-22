@@ -82,14 +82,14 @@ class ParameterSpace:
         elif optimization_mode == 'high_frequency':
             # NEW: Ultra-aggressive parameters for 5+ trades per day target
             self.param_bounds = {
-                'buy_threshold': (0.500, 0.515),         # VERY close to neutral for maximum trades
-                'sell_threshold': (0.485, 0.500),        # VERY close to neutral for maximum trades
-                'lstm_delta_threshold': (0.00005, 0.001), # EXTREMELY sensitive
-                'risk_per_trade': (0.005, 0.02),         # Lower risk to enable more trades
-                'stop_loss_pct': (0.008, 0.025),         # Tighter stop loss for quick exits
-                'take_profit_pct': (0.01, 0.04),         # Smaller profit targets for quick wins
-                'max_capital_per_trade': (0.03, 0.08),   # Smaller positions to enable more trades
-                'max_positions': (10, 20),               # Many positions allowed
+                'buy_threshold': (0.5001, 0.505),        # VERY close to neutral for maximum trades
+                'sell_threshold': (0.495, 0.4999),       # VERY close to neutral for maximum trades
+                'lstm_delta_threshold': (0.00001, 0.0005), # EXTREMELY sensitive
+                'risk_per_trade': (0.003, 0.015),        # Lower risk to enable more trades
+                'stop_loss_pct': (0.005, 0.02),          # Tighter stop loss for quick exits
+                'take_profit_pct': (0.008, 0.03),        # Smaller profit targets for quick wins
+                'max_capital_per_trade': (0.02, 0.06),   # Smaller positions to enable more trades
+                'max_positions': (15, 30),               # Many positions allowed
             }
         elif optimization_mode == 'profit_focused':
             self.param_bounds = {
@@ -118,7 +118,7 @@ class ParameterSpace:
         self.fixed_params = {
             'trading_fee': 0.002,        # Realistic crypto trading fees
             'slippage': 0.001,           # Conservative slippage estimate
-            'max_trades_per_hour': 5,    # Allow more trades per hour for high frequency
+            'max_trades_per_hour': 10,   # Allow many trades per hour for high frequency
             'initial_capital': 10000.0,  # Standard starting capital
         }
         
