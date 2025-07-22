@@ -822,10 +822,21 @@ Examples:
     parser.add_argument('--grid-points', type=int, default=3,
                        help='Number of grid points per dimension for grid search (default: 3)')
     
-    parser.add_argument('--quiet', action='store_true',
+        parser.add_argument('--quiet', action='store_true',
                        help='Suppress detailed output')
     
+    parser.add_argument('--debug_model_output', nargs=2, metavar=('SYMBOL', 'DAYS'),
+                       help='Debug model outputs for a symbol. Usage: --debug_model_output BTC-EUR 7')
+    
     args = parser.parse_args()
+    
+    # Handle debug mode
+    if args.debug_model_output:
+        symbol = args.debug_model_output[0]
+        days = int(args.debug_model_output[1])
+        print(f"🔍 Debug mode: Analyzing {symbol} for {days} days")
+        debug_model_outputs(symbol, days)
+        return 0
     
     # Validate arguments
     if args.method == 'bayesian' and args.iterations < args.initial_random:
