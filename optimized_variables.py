@@ -600,6 +600,94 @@ class ScientificOptimizer:
         """Standard normal PDF"""
         return np.exp(-0.5 * x**2) / np.sqrt(2 * np.pi)
 
+# Add this to your optimization script to see raw model outputs
+def debug_model_outputs(symbol, days=7):
+    """Debug raw model outputs before thresholds are applied"""
+    from paper_trader.config.settings import TradingSettings
+    from paper_trader.data.bitvavo_collector import BitvavoDataCollector
+    from paper_trader.models.feature_engineer import FeatureEngineer
+    from paper_trader.models.model_loader import WindowBasedModelLoader, WindowBasedEnsemblePredictor
+    import pandas as pd
+    import asyncio
+    
+    settings = TradingSettings()
+    data_collector = BitvavoDataCollector(settings)
+    feature_engineer = FeatureEngineer()
+    model_loader = WindowBasedModelLoader(settings)
+    predictor = WindowBasedEnsemblePredictor(model_loader, settings)
+    
+    # Get historical data
+    print(f"Getting {days} days of historical data for {symbol}...")
+    asyncio.run(data_collector.initialize())
+    data = asyncio.run(data_collector.get_historical_data(symbol, limit=days*1440))  # days * minutes per day
+    
+    if data is None or len(data) < 100:
+        print(f"❌ Insufficient data for {symbol}: {len(data) if data is not None else 0} candles")
+        return
+    
+    # Engineer features
+    features_df = feature_engineer.engineer_features(data)
+    if features_df is None:
+        print("❌ Feature engineering failed")
+        return
+    
+    # Make predictions
+    predictions = []
+    confidences = []
+    signals = []
+    
+    for i in range(min(100, len(features_df) - settings.sequence_length)):
+        window = features_df.iloc[i:i+settings.sequence_length]
+        pred_result = predictor.predict(window)
+        if pred_result:
+            predictions.append(pred_result)
+            confidences.append(pred_result.get('confidence', 0))
+            signals.append(pred_result.get('signal_strength', 'NONE'))
+    
+    # Analyze distribution
+    if confidences:
+        print("\n====== MODEL OUTPUT DISTRIBUTION ======")
+        print(f"Total predictions: {len(confidences)}")
+        print(f"Confidence min: {min(confidences):.4f}")
+        print(f"Confidence max: {max(confidences):.4f}")
+        print(f"Confidence mean: {sum(confidences)/len(confidences):.4f}")
+        print(f"Confidence median: {sorted(confidences)[len(confidences)//2]:.4f}")
+        print("\nConfidence histogram:")
+        
+        # Simple histogram
+        bins = {'0.45-0.47': 0, '0.47-0.49': 0, '0.49-0.50': 0, '0.50-0.51': 0, '0.51-0.53': 0, '0.53-0.55': 0, '0.55+': 0}
+        for c in confidences:
+            if c < 0.47:
+                bins['0.45-0.47'] += 1
+            elif c < 0.49:
+                bins['0.47-0.49'] += 1
+            elif c < 0.50:
+                bins['0.49-0.50'] += 1
+            elif c < 0.51:
+                bins['0.50-0.51'] += 1
+            elif c < 0.53:
+                bins['0.51-0.53'] += 1
+            elif c < 0.55:
+                bins['0.53-0.55'] += 1
+            else:
+                bins['0.55+'] += 1
+        
+        for bin_name, count in bins.items():
+            print(f"{bin_name}: {'#' * (count // 2)} ({count})")
+        
+        # Signal strength distribution
+        print("\nSignal strength distribution:")
+        signal_counts = {}
+        for s in signals:
+            if s not in signal_counts:
+                signal_counts[s] = 0
+            signal_counts[s] += 1
+        
+        for signal, count in signal_counts.items():
+            print(f"{signal}: {count} ({count/len(signals)*100:.1f}%)")
+    
+    else:
+        print("❌ No predictions generated")
 
 def create_optimized_env_file(symbols: List[str], best_params: Dict[str, float], 
                             optimization_results: Dict[str, Any]) -> str:
