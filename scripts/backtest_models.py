@@ -711,13 +711,33 @@ class ModelBacktester:
 
     
     def calculate_position_size(self, capital: float, entry_price: float, stop_loss: float) -> float:
-        """Calculate position size based on risk management"""
+        """
+        Calculate position size in shares/units based on risk management
+        Returns the number of shares to buy/sell
+        """
+        # Ensure we have positive capital for trading
+        if capital <= 0:
+            return 0
+            
+        # Calculate maximum risk amount in dollars
         risk_amount = capital * self.config.risk_per_trade
-        price_risk = abs(entry_price - stop_loss)
-        if price_risk > 0:
-            position_size = risk_amount / price_risk
-            return min(position_size, capital * 0.1)  # Max 10% of capital per trade
-        return 0
+        
+        # Calculate price risk per share
+        price_risk_per_share = abs(entry_price - stop_loss)
+        if price_risk_per_share <= 0:
+            return 0
+            
+        # Calculate position size in shares based on risk
+        position_size_shares = risk_amount / price_risk_per_share
+        
+        # Apply maximum capital per trade limit (convert to shares)
+        max_capital_per_trade = capital * (self.config.max_capital_per_trade if hasattr(self.config, 'max_capital_per_trade') else 0.1)
+        max_shares_by_capital = max_capital_per_trade / entry_price
+        
+        # Use the smaller of the two limits
+        final_position_size = min(position_size_shares, max_shares_by_capital)
+        
+        return max(0, final_position_size)  # Ensure non-negative
     
     def apply_slippage_and_fees(self, price: float, direction: str) -> Tuple[float, float, float]:
         """Apply slippage and fees to trade execution"""
@@ -940,6 +960,10 @@ class ModelBacktester:
                     # Calculate position size
                     position_size = self.calculate_position_size(capital, current_price, stop_loss)
                     
+                    # Debug trade execution
+                    if self.config.verbose and current_step % 100 == 0:
+                        print(f"      Trade execution debug: ATR={atr:.6f}, StopLoss={stop_loss:.2f}, PositionSize={position_size:.6f}")
+                    
                     if position_size > 0:
                         # Execute trade
                         execution_price, slippage, fees = self.apply_slippage_and_fees(current_price, signal)
@@ -957,9 +981,19 @@ class ModelBacktester:
                         )
                         
                         positions.append(trade)
+                        old_capital = capital
                         capital -= (position_size * execution_price + fees)
                         trades_this_hour += 1
                         trades_generated += 1
+                        
+                        if self.config.verbose:
+                            print(f"      ✅ TRADE EXECUTED: {signal} {symbol} at {current_time}")
+                            print(f"         Price: {execution_price:.2f}, Size: {position_size:.6f} shares, StopLoss: {stop_loss:.2f}")
+                            print(f"         Cost: {position_size * execution_price:.2f}, Fees: {fees:.2f}, Total: {position_size * execution_price + fees:.2f}")
+                            print(f"         Capital: {old_capital:.2f} -> {capital:.2f} (change: {capital - old_capital:.2f})")
+                    else:
+                        if self.config.verbose and current_step % 100 == 0:
+                            print(f"      ❌ Trade not executed: position_size={position_size} <= 0")
                         
             except Exception as e:
                 print(f"    Error generating signal at {current_time}: {e}")
