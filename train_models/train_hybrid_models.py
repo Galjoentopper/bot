@@ -105,7 +105,13 @@ except Exception as e:  # pragma: no cover - safe fallback
     print(f"⚠️ GPU configuration warning: {e}")
 
 # Technical Analysis
-# import pandas_ta as ta  # Temporarily disabled due to numpy compatibility issues
+pandas_ta_available = False
+try:
+    import pandas_ta as ta
+    pandas_ta_available = True
+    print("✅ Using pandas_ta for technical analysis")
+except ImportError as e:
+    print(f"⚠️ pandas_ta not available ({e}), using fallback implementation")
 
 # Simple technical indicators implementation as fallback
 class TechnicalIndicators:
@@ -162,8 +168,12 @@ class TechnicalIndicators:
         true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         return true_range.rolling(window=length).mean()
 
-# Use fallback implementation
-ta = TechnicalIndicators()
+# Only use fallback implementation if pandas_ta is not available
+if not pandas_ta_available:
+    print("📊 Using fallback TechnicalIndicators implementation")
+    ta = TechnicalIndicators()
+else:
+    print("📊 Using pandas_ta for technical analysis")
 
 # Visualization
 import matplotlib.pyplot as plt
