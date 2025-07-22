@@ -822,7 +822,7 @@ Examples:
     parser.add_argument('--grid-points', type=int, default=3,
                        help='Number of grid points per dimension for grid search (default: 3)')
     
-        parser.add_argument('--quiet', action='store_true',
+    parser.add_argument('--quiet', action='store_true',
                        help='Suppress detailed output')
     
     parser.add_argument('--debug_model_output', nargs=2, metavar=('SYMBOL', 'DAYS'),
