@@ -164,6 +164,15 @@ class BinanceDataCollector:
             List of kline data or None if failed
         """
         try:
+            # Don't try to fetch future data
+            current_time = int(time.time() * 1000)
+            if start_time >= current_time:
+                logger.warning(f"Skipping future data request for {symbol}: start_time {start_time} >= current_time {current_time}")
+                return None
+                
+            # Adjust end_time if it's in the future
+            end_time = min(end_time, current_time)
+            
             params = {
                 "symbol": symbol,
                 "interval": self.interval,
@@ -172,13 +181,19 @@ class BinanceDataCollector:
                 "limit": limit
             }
             
-            response = requests.get(f"{self.base_url}/klines", params=params)
+            response = requests.get(f"{self.base_url}/klines", params=params, timeout=10)
             response.raise_for_status()
             
             data = response.json()
             logger.info(f"API fetch: {len(data)} candles for {symbol}")
             return data
             
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 451:
+                logger.error(f"API fetch failed for {symbol}: 451 error (rate limit or data unavailable) for timestamp {start_time}")
+            else:
+                logger.error(f"API fetch failed for {symbol}: {e}")
+            return None
         except Exception as e:
             logger.error(f"API fetch failed for {symbol}: {e}")
             return None
@@ -196,6 +211,12 @@ class BinanceDataCollector:
             List of kline data or None if failed
         """
         try:
+            # Don't try to fetch future data
+            current_time = int(time.time() * 1000)
+            if start_time >= current_time:
+                logger.warning(f"Skipping future data request for {symbol}: start_time {start_time} >= current_time {current_time}")
+                return None
+                
             params = {
                 "symbol": symbol,
                 "interval": self.interval,
@@ -203,13 +224,19 @@ class BinanceDataCollector:
                 "limit": limit
             }
             
-            response = requests.get(f"{self.base_url}/klines", params=params)
+            response = requests.get(f"{self.base_url}/klines", params=params, timeout=10)
             response.raise_for_status()
             
             data = response.json()
             logger.info(f"Regular fetch: {len(data)} candles for {symbol}")
             return data
             
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 451:
+                logger.error(f"Regular fetch failed for {symbol}: 451 error (rate limit or data unavailable) for timestamp {start_time}")
+            else:
+                logger.error(f"Regular fetch failed for {symbol}: {e}")
+            return None
         except Exception as e:
             logger.error(f"Regular fetch failed for {symbol}: {e}")
             return None
@@ -294,9 +321,69 @@ class BinanceDataCollector:
         conn.close()
         return len(new_data)
     
+    def get_database_gaps(self, symbol: str, db_path: str) -> List[tuple]:
+        """
+        Identify gaps in the database that need to be filled
+        
+        Args:
+            symbol: Trading pair symbol
+            db_path: Path to database file
+            
+        Returns:
+            List of (start_timestamp, end_timestamp) tuples for gaps
+        """
+        conn = sqlite3.connect(db_path)
+        
+        # Get all timestamps and find gaps
+        df = pd.read_sql_query("SELECT timestamp FROM market_data ORDER BY timestamp", conn)
+        conn.close()
+        
+        if df.empty:
+            # No data, entire range is a gap
+            start_timestamp = int(datetime.strptime(self.start_date, "%Y-%m-%d").timestamp() * 1000)
+            end_timestamp = int(time.time() * 1000)
+            return [(start_timestamp, end_timestamp)]
+        
+        gaps = []
+        expected_interval = 15 * 60 * 1000  # 15 minutes in milliseconds
+        
+        timestamps = df['timestamp'].tolist()
+        
+        # Check for gaps between consecutive timestamps
+        for i in range(len(timestamps) - 1):
+            current_ts = timestamps[i]
+            next_ts = timestamps[i + 1]
+            
+            # If gap is larger than expected interval, there's missing data
+            if next_ts - current_ts > expected_interval * 1.5:  # Allow some tolerance
+                gap_start = current_ts + expected_interval
+                gap_end = next_ts - expected_interval
+                gaps.append((gap_start, gap_end))
+        
+        # Check if we need data before the first timestamp
+        first_timestamp = timestamps[0]
+        start_timestamp = int(datetime.strptime(self.start_date, "%Y-%m-%d").timestamp() * 1000)
+        if first_timestamp > start_timestamp + expected_interval:
+            gaps.insert(0, (start_timestamp, first_timestamp - expected_interval))
+        
+        # Check if we need recent data after the last timestamp
+        last_timestamp = timestamps[-1]
+        current_time = int(time.time() * 1000)
+        # Only fetch data up to current time minus a safety buffer (2 hours)
+        # This prevents trying to fetch very recent data that might not be available
+        safe_current_time = current_time - (2 * 60 * 60 * 1000)  # 2 hours ago
+        
+        if last_timestamp < safe_current_time - expected_interval:
+            # Make sure the gap doesn't extend into very recent time
+            gap_end = min(safe_current_time, last_timestamp + (7 * 24 * 60 * 60 * 1000))  # Limit to 7 days from last data
+            if gap_end > last_timestamp + expected_interval:
+                gaps.append((last_timestamp + expected_interval, gap_end))
+        
+        return gaps
+
     def collect_symbol_data(self, symbol: str) -> bool:
         """
-        Collect all historical data for a specific symbol using hybrid approach
+        Collect all historical data for a specific symbol using improved hybrid approach
 
         Args:
             symbol: Trading pair symbol
@@ -312,87 +399,123 @@ class BinanceDataCollector:
         # Calculate start and end dates
         start_dt = datetime.strptime(self.start_date, "%Y-%m-%d")
         current_dt = datetime.now()
+        current_timestamp = int(time.time() * 1000)
         
         total_records = 0
         
-        # Phase 1: Download bulk monthly files (much faster)
+        # First, identify what data we already have and what gaps exist
+        gaps = self.get_database_gaps(symbol, db_path)
+        logger.info(f"{symbol}: Found {len(gaps)} data gaps to fill")
+        
+        if not gaps:
+            logger.info(f"{symbol}: Database is up to date, no gaps found")
+            return True
+        
+        # Phase 1: Download bulk monthly files for large gaps (much faster)
         logger.info(f"Phase 1: Downloading bulk monthly files for {symbol}")
         
-        year = start_dt.year
-        month = start_dt.month
-        
-        while year < current_dt.year or (year == current_dt.year and month < current_dt.month):
-            # Try to download bulk file for this month
-            df = self.download_bulk_file(symbol, year, month)
+        # Organize gaps by month for bulk downloading
+        monthly_gaps = {}
+        for gap_start, gap_end in gaps:
+            gap_start_dt = datetime.fromtimestamp(gap_start / 1000)
+            gap_end_dt = datetime.fromtimestamp(gap_end / 1000)
             
-            if df is not None and not df.empty:
-                new_records = self.save_to_database(df, db_path)
-                total_records += new_records
-                logger.info(f"{symbol}: Bulk {year}-{month:02d} - {new_records} new records")
-            else:
-                logger.warning(f"{symbol}: No bulk data for {year}-{month:02d}, will use API later")
-            
-            # Rate limiting for bulk downloads
-            time.sleep(self.bulk_request_delay)
-            
-            # Move to next month
-            month += 1
-            if month > 12:
-                month = 1
-                year += 1
-        
-        # Phase 2: Use API for recent data (current month and any missing data)
-        logger.info(f"Phase 2: Using API for recent data for {symbol}")
-        
-        # Get the latest timestamp in database
-        conn = sqlite3.connect(db_path)
-        latest_timestamp_query = "SELECT MAX(timestamp) FROM market_data"
-        latest_result = pd.read_sql_query(latest_timestamp_query, conn)
-        conn.close()
-        
-        if latest_result.iloc[0, 0] is not None:
-            current_timestamp = int(latest_result.iloc[0, 0]) + (15 * 60 * 1000)  # Start from next 15min
-        else:
-            current_timestamp = int(start_dt.timestamp() * 1000)
-        
-        end_timestamp = int(time.time() * 1000)
-        
-        # Fill gaps with API calls
-        while current_timestamp < end_timestamp:
-            # Calculate batch end time
-            batch_end = min(current_timestamp + (1000 * 15 * 60 * 1000), end_timestamp)  # 1000 candles worth
-            
-            # Use API method
-            klines_data = self.get_klines_api(symbol, current_timestamp, batch_end, 1000)
-            
-            # Fallback to smaller batches if needed
-            if klines_data is None:
-                logger.warning(f"Large API batch failed for {symbol}, trying smaller batch")
-                klines_data = self.get_klines_regular(symbol, current_timestamp, 500)
+            # Process each month in the gap
+            current_month_dt = gap_start_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            while current_month_dt <= gap_end_dt:
+                year_month = (current_month_dt.year, current_month_dt.month)
+                if year_month not in monthly_gaps:
+                    monthly_gaps[year_month] = []
+                monthly_gaps[year_month].append((gap_start, gap_end))
                 
-                if klines_data is None:
-                    logger.error(f"API methods failed for {symbol} at timestamp {current_timestamp}")
+                # Move to next month
+                if current_month_dt.month == 12:
+                    current_month_dt = current_month_dt.replace(year=current_month_dt.year + 1, month=1)
+                else:
+                    current_month_dt = current_month_dt.replace(month=current_month_dt.month + 1)
+        
+        # Download bulk files for identified months
+        for (year, month), _ in monthly_gaps.items():
+            # Only download if the month is in the past (not current or future months)
+            month_end = datetime(year, month, 1)
+            if month < 12:
+                month_end = month_end.replace(month=month + 1)
+            else:
+                month_end = month_end.replace(year=year + 1, month=1)
+            
+            if month_end < current_dt:
+                df = self.download_bulk_file(symbol, year, month)
+                
+                if df is not None and not df.empty:
+                    new_records = self.save_to_database(df, db_path)
+                    total_records += new_records
+                    logger.info(f"{symbol}: Bulk {year}-{month:02d} - {new_records} new records")
+                else:
+                    logger.warning(f"{symbol}: No bulk data for {year}-{month:02d}")
+                
+                # Rate limiting for bulk downloads
+                time.sleep(self.bulk_request_delay)
+        
+        # Phase 2: Use API for recent data and remaining gaps
+        logger.info(f"Phase 2: Using API for recent data and remaining gaps for {symbol}")
+        
+        # Recalculate gaps after bulk downloads
+        remaining_gaps = self.get_database_gaps(symbol, db_path)
+        
+        for gap_start, gap_end in remaining_gaps:
+            # Ensure we don't try to fetch future data
+            gap_end = min(gap_end, current_timestamp)
+            
+            if gap_start >= gap_end:
+                continue  # Skip if gap is invalid
+            
+            logger.info(f"{symbol}: Filling gap from {datetime.fromtimestamp(gap_start/1000)} to {datetime.fromtimestamp(gap_end/1000)}")
+            
+            current_ts = gap_start
+            
+            while current_ts < gap_end:
+                # Calculate batch end time (don't exceed gap end or current time)
+                batch_end = min(current_ts + (1000 * 15 * 60 * 1000), gap_end, current_timestamp)
+                
+                # Skip if we're trying to fetch future data
+                if current_ts >= current_timestamp:
+                    logger.warning(f"{symbol}: Skipping future timestamp {current_ts} (current: {current_timestamp})")
                     break
-            
-            # Process and save data
-            df = self.process_klines_data(klines_data)
-            
-            if not df.empty:
-                new_records = self.save_to_database(df, db_path)
-                total_records += new_records
                 
-                # Update current timestamp to last candle + 1
-                current_timestamp = int(df['timestamp'].max()) + (15 * 60 * 1000)  # Add 15 minutes
-            else:
-                # If no data, move forward by a day
-                current_timestamp += (24 * 60 * 60 * 1000)
-            
-            # Rate limiting
-            time.sleep(self.request_delay)
-            
-            # Progress update
-            progress = ((current_timestamp - int(start_dt.timestamp() * 1000)) / (end_timestamp - int(start_dt.timestamp() * 1000))) * 100
-            logger.info(f"{symbol}: API phase {progress:.1f}% complete, {total_records} total records")
+                # Use API method
+                klines_data = self.get_klines_api(symbol, current_ts, batch_end, 1000)
+                
+                # Fallback to smaller batches if needed
+                if klines_data is None:
+                    logger.warning(f"Large API batch failed for {symbol}, trying smaller batch")
+                    klines_data = self.get_klines_regular(symbol, current_ts, 500)
+                    
+                    if klines_data is None:
+                        logger.error(f"API methods failed for {symbol} at timestamp {current_ts}")
+                        # Skip this batch and continue
+                        current_ts += (100 * 15 * 60 * 1000)  # Skip ahead by 100 candles
+                        continue
+                
+                # Process and save data
+                df = self.process_klines_data(klines_data)
+                
+                if not df.empty:
+                    new_records = self.save_to_database(df, db_path)
+                    total_records += new_records
+                    
+                    # Update current timestamp to last candle + 1
+                    current_ts = int(df['timestamp'].max()) + (15 * 60 * 1000)  # Add 15 minutes
+                else:
+                    # If no data, move forward by a smaller amount
+                    current_ts += (50 * 15 * 60 * 1000)  # Skip ahead by 50 candles
+                
+                # Rate limiting
+                time.sleep(self.request_delay)
+                
+                # Progress update
+                if gap_end > gap_start:
+                    progress = ((current_ts - gap_start) / (gap_end - gap_start)) * 100
+                    logger.info(f"{symbol}: Gap filling {progress:.1f}% complete")
         
         logger.info(f"Completed {symbol}: {total_records} total records collected")
         return True
