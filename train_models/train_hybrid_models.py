@@ -18,6 +18,7 @@ Supported pairs: BTCEUR, ETHEUR, ADAEUR, SOLEUR, XRPEUR
 import os
 import random
 import sys
+import logging
 
 # Add parent directory to path to enable relative imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -69,6 +70,9 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.optimizers import Adam, AdamW
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 import traceback
+
+# Set up module-level logger
+logger = logging.getLogger(__name__)
 
 
 def configure_gpu() -> None:
