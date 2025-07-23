@@ -225,9 +225,9 @@ class HybridModelTrainer:
         self,
         data_dir: str = None,
         models_dir: str = None,
-        train_months: int = 12,
+        train_months: int = 6,  # Increased from 12 to 6 months for better balance
         test_months: int = 1,
-        step_months: int = 1,
+        step_months: int = 3,  # Increased from 1 to 3 months to reduce total windows
         symbols: List[str] | None = None,
         seed: int = 42,
         warm_start: bool = True,
@@ -553,7 +553,7 @@ class HybridModelTrainer:
         return data
 
     def generate_walk_forward_windows(
-        self, df: pd.DataFrame
+        self, df: pd.DataFrame, max_windows: int = 15
     ) -> List[Tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp, pd.Timestamp]]:
         """Generate sliding walk-forward windows with purge and embargo gaps.
 
@@ -561,16 +561,23 @@ class HybridModelTrainer:
         ``self.test_months`` for testing. Windows advance by ``self.step_months``
         to create a sliding sequence while the purge/embargo gaps between the
         training and testing segments are preserved.
+        
+        Args:
+            df: DataFrame with market data
+            max_windows: Maximum number of windows to generate (default: 15)
         """
 
         windows = []
         start = df.index.min()
         end = df.index.max()
-
+        
+        # Calculate how many windows we would generate with current settings
         current_start = start
         purge = timedelta(minutes=15 * self.purge_candles)
         embargo = timedelta(minutes=15 * self.embargo_candles)
-
+        
+        # First pass: generate all possible windows
+        all_windows = []
         while True:
             train_start = current_start
             train_end = train_start + pd.DateOffset(months=self.train_months)
@@ -580,12 +587,46 @@ class HybridModelTrainer:
             if test_end > end:
                 break
 
-            windows.append((train_start, train_end, test_start, test_end))
+            all_windows.append((train_start, train_end, test_start, test_end))
             current_start = current_start + pd.DateOffset(months=self.step_months)
+        
+        # If we have too many windows, select the most recent ones
+        if len(all_windows) > max_windows:
+            logger.info(f"Generated {len(all_windows)} windows, selecting the most recent {max_windows}")
+            windows = all_windows[-max_windows:]  # Take the last (most recent) windows
+        else:
+            windows = all_windows
+            
+        # Ensure the last window uses the most recent data possible
+        if windows:
+            last_window = windows[-1]
+            train_start, train_end, test_start, test_end = last_window
+            
+            # Adjust the last window to end exactly at the end of available data
+            adjusted_test_end = end
+            # Adjust test_start accordingly, but maintain the test period length
+            adjusted_test_start = adjusted_test_end - pd.DateOffset(months=self.test_months)
+            # Adjust train_end to maintain the purge gap
+            adjusted_train_end = adjusted_test_start - purge
+            # Adjust train_start to maintain the training period length  
+            adjusted_train_start = adjusted_train_end - pd.DateOffset(months=self.train_months)
+            
+            # Replace the last window with the adjusted one
+            windows[-1] = (adjusted_train_start, adjusted_train_end, adjusted_test_start, adjusted_test_end)
+            
+            logger.info(f"Adjusted last window to end at {adjusted_test_end.strftime('%Y-%m-%d')}")
 
         print(
             f"📅 Generated {len(windows)} sliding walk-forward windows with purging and embargo"
         )
+        
+        # Print summary of windows for verification
+        if windows:
+            first_window = windows[0]
+            last_window = windows[-1]
+            logger.info(f"First window: Train {first_window[0].strftime('%Y-%m')} to {first_window[1].strftime('%Y-%m')}, Test {first_window[2].strftime('%Y-%m')} to {first_window[3].strftime('%Y-%m')}")
+            logger.info(f"Last window: Train {last_window[0].strftime('%Y-%m')} to {last_window[1].strftime('%Y-%m')}, Test {last_window[2].strftime('%Y-%m')} to {last_window[3].strftime('%Y-%m')}")
+
         return windows
 
     def prepare_lstm_data(
@@ -2127,8 +2168,8 @@ Examples:
     parser.add_argument(
         "--train-months",
         type=int,
-        default=3,
-        help="Training window size in months (default: 3)",
+        default=6,  # Increased from 3 to 6 months for more stable training
+        help="Training window size in months (default: 6)",
     )
 
     parser.add_argument(
@@ -2141,8 +2182,8 @@ Examples:
     parser.add_argument(
         "--step-months",
         type=int,
-        default=1,
-        help="Step size for rolling window in months (default: 1)",
+        default=3,  # Increased from 1 to 3 months to reduce total windows
+        help="Step size in months between windows (default: 3)",
     )
 
     parser.add_argument(
