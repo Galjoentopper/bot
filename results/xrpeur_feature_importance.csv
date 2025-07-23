@@ -1,7 +1,4 @@
 feature,importance
-atr_ratio,0.2103517
-atr,0.18024266
-spread,0.16161194
-price_change_24h,0.15516834
-volatility_breakout,0.15074366
-realized_vol_5,0.14188172
+atr_ratio,0.3463265
+atr,0.33156458
+realized_vol_5,0.32210892
