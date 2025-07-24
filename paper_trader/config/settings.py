@@ -119,7 +119,7 @@ class TradingSettings:
     def __post_init__(self):
         """Initialize symbols list from environment variable."""
         if self.symbols is None:
-            symbols_str = os.getenv('SYMBOLS', 'BTCEUR,ETHEUR,ADAEUR,SOLEUR,XRPEUR')
+            symbols_str = os.getenv('SYMBOLS', 'BTC-EUR,ETH-EUR,ADA-EUR,SOL-EUR,XRP-EUR')
             self.symbols = [s.strip() for s in symbols_str.split(',')]
     
     def validate(self) -> bool:
