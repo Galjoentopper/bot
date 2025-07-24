@@ -754,8 +754,20 @@ class ModelBacktester:
         return execution_price, slippage_amount, fees
     
     def backtest_symbol(self, symbol: str, progress_callback=None) -> Dict:
-        """Backtest a single symbol using walk-forward validation"""
+        """Backtest a single symbol using walk-forward validation with last 15 windows only"""
         print(f"\nBacktesting {symbol}...")
+        
+        # Get available windows (limited to last 15)
+        available_windows = self._get_available_windows(symbol)
+        if not available_windows:
+            print(f"  ❌ No available windows found for {symbol}")
+            return {
+                'symbol': symbol,
+                'trades': [],
+                'equity_history': [],
+                'performance': {},
+                'final_capital': self.config.initial_capital
+            }
         
         # Load data
         data = self.load_data(symbol)
@@ -769,18 +781,18 @@ class ModelBacktester:
         trades = []
         equity_history = []
         
-        # Walk-forward validation
+        # Walk-forward validation using only available windows
         start_date = data.index[0]
         end_date = data.index[-1]
         
         # Calculate total expected windows for progress tracking
-        total_months = ((end_date - start_date).days // 30)
-        estimated_windows = max(1, (total_months - self.config.train_months) // self.config.slide_months)
+        estimated_windows = len(available_windows)
         
-        window_num = 1
         current_date = start_date
+        window_index = 0  # Index into available_windows list
         
-        while current_date < end_date:
+        while current_date < end_date and window_index < len(available_windows):
+            window_num = available_windows[window_index]
             # Update progress callback if available
             if progress_callback:
                 progress_callback(symbol, window_num, estimated_windows, None, None)
@@ -801,7 +813,7 @@ class ModelBacktester:
             
             if len(test_data) < self.config.sequence_length + 1:
                 current_date += timedelta(days=30 * self.config.slide_months)
-                window_num += 1
+                window_index += 1
                 continue
             
             # Load models for this window
@@ -810,7 +822,7 @@ class ModelBacktester:
             if xgb_model is None:
                 print(f"    XGBoost model not found for window {window_num}, skipping...")
                 current_date += timedelta(days=30 * self.config.slide_months)
-                window_num += 1
+                window_index += 1
                 continue
             
             # Allow running with just XGBoost if LSTM is not available
@@ -833,7 +845,7 @@ class ModelBacktester:
             
             # Move to next window
             current_date += timedelta(days=30 * self.config.slide_months)
-            window_num += 1
+            window_index += 1
         
         # Calculate performance metrics
         performance = self.calculate_performance_metrics(trades, equity_history, symbol)
@@ -1278,6 +1290,47 @@ class ModelBacktester:
         if fc_files:
             return fc_files[0]  # Return the first available feature columns
         return None
+
+    def _get_available_windows(self, symbol: str) -> List[int]:
+        """Get list of available window numbers for a symbol, limited to last 15 windows"""
+        import glob
+        import re
+        
+        # Find all window numbers for this symbol
+        lstm_files = glob.glob(f'models/lstm/{symbol.lower()}_window_*.keras')
+        xgb_files = glob.glob(f'models/xgboost/{symbol.lower()}_window_*.json')
+        
+        # Extract window numbers
+        lstm_windows = []
+        for f in lstm_files:
+            match = re.search(r'window_(\d+)\.keras', f)
+            if match:
+                lstm_windows.append(int(match.group(1)))
+        
+        xgb_windows = []
+        for f in xgb_files:
+            match = re.search(r'window_(\d+)\.json', f)
+            if match:
+                xgb_windows.append(int(match.group(1)))
+        
+        # Find common windows (both LSTM and XGBoost available)
+        common_windows = sorted(set(lstm_windows) & set(xgb_windows))
+        
+        if not common_windows:
+            if self.config.verbose:
+                print(f"    ⚠️ No common windows found for {symbol}")
+            return []
+        
+        # Limit to last 15 windows
+        if len(common_windows) <= 15:
+            last_15_windows = common_windows
+        else:
+            last_15_windows = common_windows[-15:]  # Take the last 15 windows
+        
+        if self.config.verbose:
+            print(f"    📊 Available windows for {symbol}: {len(common_windows)} total, using last 15: {last_15_windows}")
+        
+        return last_15_windows
     
     def run_backtest(self, symbols: List[str] = None, progress_callback=None) -> Dict:
         """Run backtest for all specified symbols"""
