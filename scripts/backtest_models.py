@@ -761,11 +761,24 @@ class ModelBacktester:
         available_windows = self._get_available_windows(symbol)
         if not available_windows:
             print(f"  ❌ No available windows found for {symbol}")
+            # Return proper zero performance metrics instead of empty dict
+            zero_performance = {
+                'total_trades': 0,
+                'win_rate': 0.0,
+                'total_pnl': 0.0,
+                'avg_win': 0.0,
+                'avg_loss': 0.0,
+                'profit_factor': 0.0,
+                'sharpe_ratio': 0.0,
+                'sortino_ratio': 0.0,
+                'max_drawdown': 0.0,
+                'total_return': 0.0
+            }
             return {
                 'symbol': symbol,
                 'trades': [],
                 'equity_history': [],
-                'performance': {},
+                'performance': zero_performance,
                 'final_capital': self.config.initial_capital
             }
         
@@ -1125,7 +1138,18 @@ class ModelBacktester:
     def calculate_performance_metrics(self, trades: List[Trade], equity_history: List[Dict], symbol: str) -> Dict:
         """Calculate comprehensive performance metrics"""
         if not trades:
-            return {}
+            return {
+                'total_trades': 0,
+                'win_rate': 0.0,
+                'total_pnl': 0.0,
+                'avg_win': 0.0,
+                'avg_loss': 0.0,
+                'profit_factor': 0.0,
+                'sharpe_ratio': 0.0,
+                'sortino_ratio': 0.0,
+                'max_drawdown': 0.0,
+                'total_return': 0.0
+            }
         
         # Basic trade statistics
         total_trades = len(trades)
@@ -1140,7 +1164,12 @@ class ModelBacktester:
         avg_loss = np.mean([t.pnl for t in losing_trades]) if losing_trades else 0
         
         # Risk metrics
-        profit_factor = abs(avg_win * len(winning_trades) / (avg_loss * len(losing_trades))) if losing_trades else float('inf')
+        if losing_trades and avg_loss != 0:
+            profit_factor = abs(avg_win * len(winning_trades) / (avg_loss * len(losing_trades)))
+        elif winning_trades and not losing_trades:
+            profit_factor = float('inf')  # Only winning trades
+        else:
+            profit_factor = 0.0  # No trades or only losing trades
         
         # Equity curve analysis
         if equity_history:
