@@ -363,11 +363,11 @@ class BitvavoDataCollector:
     async def get_historical_data(self, symbol: str, interval: str | None = None, limit: int = 100) -> Optional[pd.DataFrame]:
         """Fetch historical candle data for a symbol."""
         interval = interval or self.interval
-        endpoint = f"{self.base_url}/candles"
+        endpoint = f"{self.base_url}/{symbol}/candles"
         
         try:
             await asyncio.sleep(random.uniform(self.settings.api_retry_delay_min, self.settings.api_retry_delay_max))  # Random delay
-            params = {'market': symbol, 'interval': interval, 'limit': limit}
+            params = {'interval': interval, 'limit': limit}
             self.logger.debug(f"Fetching data from {endpoint} for symbol: {symbol}")
             
             response = await self.session.get(endpoint, params=params, timeout=self.settings.api_timeout_seconds)
