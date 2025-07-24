@@ -5,7 +5,6 @@ import json
 import logging
 import time
 import random
-import sqlite3
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -364,122 +363,50 @@ class BitvavoDataCollector:
     async def get_historical_data(self, symbol: str, interval: str | None = None, limit: int = 100) -> Optional[pd.DataFrame]:
         """Fetch historical candle data for a symbol."""
         interval = interval or self.interval
-        endpoints_to_try = [
-            f"{self.base_url}/candles",
-            f"{self.base_url}/{symbol}/candles",
-        ]
+        endpoint = f"{self.base_url}/candles"
         
-        alt_symbols = [
-            symbol,
-            symbol.replace('-', ''),
-            symbol.lower(),
-        ]
-
-        for endpoint in endpoints_to_try:
-            for s in alt_symbols:
-                try:
-                    await asyncio.sleep(random.uniform(self.settings.api_retry_delay_min, self.settings.api_retry_delay_max))  # Random delay
-                    params = {'market': s, 'interval': interval, 'limit': limit}
-                    self.logger.debug(f"Trying endpoint: {endpoint} with symbol: {s}")
-                    
-                    response = await self.session.get(endpoint, params=params, timeout=self.settings.api_timeout_seconds)
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        if data and isinstance(data, list) and len(data) > 0:
-                            df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                            df = df.set_index('timestamp')
-                            
-                            numeric_cols = ['open', 'high', 'low', 'close', 'volume']
-                            for col in numeric_cols:
-                                df[col] = pd.to_numeric(df[col], errors='coerce')
-                            
-                            df = df.dropna()
-                            if not df.empty:
-                                self.logger.info(f"Successfully fetched {len(df)} candles for {symbol}")
-                                return df
-                        else:
-                            self.logger.debug(f"Empty or invalid data from {endpoint} for {s}")
-                    elif response.status_code == 404:
-                        self.logger.debug(f"Endpoint {endpoint} not found for symbol {s}")
-                    else:
-                        self.logger.warning(f"HTTP {response.status_code} from {endpoint} for {s}: {response.text[:150]}")
-
-                except httpx.RequestError as e:
-                    self.logger.warning(f"Request failed for {endpoint} with symbol {s}: {e}")
-                except (ValueError, KeyError) as e:
-                    self.logger.warning(f"Error parsing JSON for {s}: {e}")
-                except Exception as e:
-                    self.logger.error(f"An unexpected error occurred for {s}: {e}")
-
-        self.logger.error(f"Failed to fetch historical data for {symbol} after all attempts.")
-        
-        # Fallback to local SQLite database if API is unavailable
-        self.logger.info(f"Attempting to load data from local database for {symbol}")
-        return await self._load_from_local_database(symbol, limit)
-
-    async def _load_from_local_database(self, symbol: str, limit: int = 100) -> Optional[pd.DataFrame]:
-        """Load historical data from local SQLite database as fallback."""
         try:
-            # Convert symbol format for database filename
-            db_symbol = symbol.lower().replace('-', '')
-            db_path = f"data/{db_symbol}_15m.db"
+            await asyncio.sleep(random.uniform(self.settings.api_retry_delay_min, self.settings.api_retry_delay_max))  # Random delay
+            params = {'market': symbol, 'interval': interval, 'limit': limit}
+            self.logger.debug(f"Fetching data from {endpoint} for symbol: {symbol}")
             
-            # Check if database file exists
-            if not Path(db_path).exists():
-                self.logger.warning(f"Local database not found: {db_path}")
-                return None
+            response = await self.session.get(endpoint, params=params, timeout=self.settings.api_timeout_seconds)
             
-            # Connect to SQLite database
-            conn = sqlite3.connect(db_path)
-            
-            # Query the most recent data
-            query = """
-                SELECT timestamp, datetime, open, high, low, close, volume
-                FROM market_data 
-                ORDER BY timestamp DESC 
-                LIMIT ?
-            """
-            
-            df = pd.read_sql_query(query, conn, params=(limit,))
-            conn.close()
-            
-            if df.empty:
-                self.logger.warning(f"No data found in local database for {symbol}")
-                return None
-            
-            # Convert timestamp to datetime and set as index
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            df = df.set_index('timestamp')
-            df = df.drop('datetime', axis=1)  # Remove duplicate datetime column
-            
-            # Sort by timestamp (ascending order)
-            df = df.sort_index()
-            
-            # Ensure numeric columns are properly typed
-            numeric_cols = ['open', 'high', 'low', 'close', 'volume']
-            for col in numeric_cols:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-            
-            df = df.dropna()
-            
-            if not df.empty:
-                self.logger.info(f"Successfully loaded {len(df)} candles from local database for {symbol}")
-                return df
+            if response.status_code == 200:
+                data = response.json()
+                if data and isinstance(data, list) and len(data) > 0:
+                    df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                    df = df.set_index('timestamp')
+                    
+                    numeric_cols = ['open', 'high', 'low', 'close', 'volume']
+                    for col in numeric_cols:
+                        df[col] = pd.to_numeric(df[col], errors='coerce')
+                    
+                    df = df.dropna()
+                    if not df.empty:
+                        self.logger.info(f"Successfully fetched {len(df)} candles for {symbol}")
+                        return df
+                    else:
+                        self.logger.warning(f"No valid data after processing for {symbol}")
+                else:
+                    self.logger.warning(f"Empty or invalid data from API for {symbol}")
+            elif response.status_code == 404:
+                self.logger.error(f"Market {symbol} not found on Bitvavo API")
             else:
-                self.logger.warning(f"Local database data was empty after processing for {symbol}")
-                return None
-                
+                self.logger.error(f"HTTP {response.status_code} from Bitvavo API for {symbol}: {response.text[:150]}")
+
+        except httpx.RequestError as e:
+            self.logger.error(f"Request failed for {symbol}: {e}")
+        except (ValueError, KeyError) as e:
+            self.logger.error(f"Error parsing JSON for {symbol}: {e}")
         except Exception as e:
-            self.logger.error(f"Error loading data from local database for {symbol}: {e}")
-            return None
+            self.logger.error(f"An unexpected error occurred for {symbol}: {e}")
 
-    # ... rest of the class remains unchanged
+        self.logger.error(f"Failed to fetch historical data for {symbol}")
+        return None
 
 
-
-    
     async def get_latest_data(self, symbol: str, limit: int = 100) -> Optional[pd.DataFrame]:
         """Get latest data from buffer or fetch from API."""
         try:
