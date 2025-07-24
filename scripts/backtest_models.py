@@ -754,7 +754,7 @@ class ModelBacktester:
         return execution_price, slippage_amount, fees
     
     def backtest_symbol(self, symbol: str, progress_callback=None) -> Dict:
-        """Backtest a single symbol using walk-forward validation with last 15 windows only"""
+        """Backtest a single symbol using walk-forward validation with windows 2-15 only"""
         print(f"\nBacktesting {symbol}...")
         
         # Get available windows (limited to last 15)
@@ -1321,7 +1321,7 @@ class ModelBacktester:
         return None
 
     def _get_available_windows(self, symbol: str) -> List[int]:
-        """Get list of available window numbers for a symbol, limited to last 15 windows"""
+        """Get list of available window numbers for a symbol, limited to windows 2-15"""
         import glob
         import re
         
@@ -1350,16 +1350,14 @@ class ModelBacktester:
                 print(f"    ⚠️ No common windows found for {symbol}")
             return []
         
-        # Limit to last 15 windows
-        if len(common_windows) <= 15:
-            last_15_windows = common_windows
-        else:
-            last_15_windows = common_windows[-15:]  # Take the last 15 windows
+        # Use specific windows 2-15 instead of last 15 windows
+        target_windows = list(range(2, 16))  # Windows 2-15
+        available_target_windows = [w for w in target_windows if w in common_windows]
         
         if self.config.verbose:
-            print(f"    📊 Available windows for {symbol}: {len(common_windows)} total, using last 15: {last_15_windows}")
+            print(f"    📊 Available windows for {symbol}: {len(common_windows)} total, using windows 2-15: {available_target_windows}")
         
-        return last_15_windows
+        return available_target_windows
     
     def run_backtest(self, symbols: List[str] = None, progress_callback=None) -> Dict:
         """Run backtest for all specified symbols"""
