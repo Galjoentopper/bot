@@ -491,7 +491,10 @@ class ScientificOptimizer:
         valid_performances = []
         all_trades = []
         for symbol, result in results.items():
-            if result and 'performance' in result and result['performance']:
+            # Check if we have a valid result with performance metrics
+            if (result and 'performance' in result and 
+                isinstance(result['performance'], dict) and 
+                'total_trades' in result['performance']):
                 valid_performances.append(result['performance'])
             if result and 'trades' in result and result['trades']:
                 all_trades.extend(result['trades'])

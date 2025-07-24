@@ -754,18 +754,31 @@ class ModelBacktester:
         return execution_price, slippage_amount, fees
     
     def backtest_symbol(self, symbol: str, progress_callback=None) -> Dict:
-        """Backtest a single symbol using walk-forward validation with first 15 windows only"""
+        """Backtest a single symbol using walk-forward validation with last 15 windows only"""
         print(f"\nBacktesting {symbol}...")
         
-        # Get available windows (limited to first 15)
+        # Get available windows (limited to last 15)
         available_windows = self._get_available_windows(symbol)
         if not available_windows:
             print(f"  ❌ No available windows found for {symbol}")
+            # Return proper zero performance metrics instead of empty dict
+            zero_performance = {
+                'total_trades': 0,
+                'win_rate': 0.0,
+                'total_pnl': 0.0,
+                'avg_win': 0.0,
+                'avg_loss': 0.0,
+                'profit_factor': 0.0,
+                'sharpe_ratio': 0.0,
+                'sortino_ratio': 0.0,
+                'max_drawdown': 0.0,
+                'total_return': 0.0
+            }
             return {
                 'symbol': symbol,
                 'trades': [],
                 'equity_history': [],
-                'performance': {},
+                'performance': zero_performance,
                 'final_capital': self.config.initial_capital
             }
         
@@ -1308,7 +1321,7 @@ class ModelBacktester:
         return None
 
     def _get_available_windows(self, symbol: str) -> List[int]:
-        """Get list of available window numbers for a symbol, limited to first 15 windows"""
+        """Get list of available window numbers for a symbol, limited to last 15 windows"""
         import glob
         import re
         
@@ -1337,16 +1350,16 @@ class ModelBacktester:
                 print(f"    ⚠️ No common windows found for {symbol}")
             return []
         
-        # Limit to first 15 windows
+        # Limit to last 15 windows
         if len(common_windows) <= 15:
-            first_15_windows = common_windows
+            last_15_windows = common_windows
         else:
-            first_15_windows = common_windows[:15]  # Take the first 15 windows
+            last_15_windows = common_windows[-15:]  # Take the last 15 windows
         
         if self.config.verbose:
-            print(f"    📊 Available windows for {symbol}: {len(common_windows)} total, using first 15: {first_15_windows}")
+            print(f"    📊 Available windows for {symbol}: {len(common_windows)} total, using last 15: {last_15_windows}")
         
-        return first_15_windows
+        return last_15_windows
     
     def run_backtest(self, symbols: List[str] = None, progress_callback=None) -> Dict:
         """Run backtest for all specified symbols"""
