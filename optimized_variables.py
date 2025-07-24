@@ -516,23 +516,26 @@ class ScientificOptimizer:
                     if isinstance(trade.entry_time, str):
                         try:
                             trade_times.append(pd.to_datetime(trade.entry_time))
-                        except:
+                        except Exception:
                             pass
-                    else:
+                    elif hasattr(trade.entry_time, 'date'):  # datetime object
                         trade_times.append(trade.entry_time)
             
-            if trade_times:
-                time_span_days = (max(trade_times) - min(trade_times)).days
+            if trade_times and len(trade_times) > 1:
+                time_span_days = (max(trade_times) - min(trade_times)).days + 1  # Add 1 for inclusive days
                 if time_span_days > 0:
                     metrics['trades_per_day'] = len(all_trades) / time_span_days
                 else:
-                    # If all trades on same day, assume 1 day
+                    # Single day trading
                     metrics['trades_per_day'] = len(all_trades)
+            elif trade_times:
+                # Only one trade or all on same timestamp
+                metrics['trades_per_day'] = len(all_trades)
             else:
-                # Fallback: assume backtest period is roughly proportional to data
-                # For typical backtesting periods, estimate trades per day
-                estimated_days = max(30, metrics['total_trades'] * 2)  # Conservative estimate
-                metrics['trades_per_day'] = metrics['total_trades'] / estimated_days
+                # No valid timestamps - use conservative estimate based on window assumption
+                # Assume each window represents roughly 1-2 weeks of data
+                estimated_days = max(7, len(set(t.symbol for t in all_trades)) * 14)  # 2 weeks per symbol
+                metrics['trades_per_day'] = len(all_trades) / estimated_days
         else:
             metrics['trades_per_day'] = 0
         
@@ -570,7 +573,11 @@ class ScientificOptimizer:
         elif self.objective == 'calmar_ratio':
             total_return = metrics.get('total_return', 0)
             max_drawdown = abs(metrics.get('max_drawdown', 0.01))
-            base_objective = total_return / max_drawdown if max_drawdown > 0 else -999
+            # Handle edge cases for Calmar ratio calculation
+            if total_trades == 0 or total_return <= 0 or max_drawdown <= 0:
+                base_objective = -999
+            else:
+                base_objective = total_return / max_drawdown
         elif self.objective == 'profit_factor':
             base_objective = metrics.get('profit_factor', -999)
         else:
@@ -638,8 +645,26 @@ class ScientificOptimizer:
             # Add fixed parameters
             params.update(self.param_space.fixed_params)
             
-            # Validate take-profit > stop-loss for positive expectancy (key requirement)
-            if params.get('take_profit_pct', 0) > params.get('stop_loss_pct', 0):
+            # Validate parameter relationships for trading viability
+            is_valid = True
+            
+            # 1. Take-profit > stop-loss for positive expectancy (key requirement)
+            if params.get('take_profit_pct', 0) <= params.get('stop_loss_pct', 0):
+                is_valid = False
+            
+            # 2. Buy threshold should be reasonable relative to sell threshold
+            buy_thresh = params.get('buy_threshold', 0.5)
+            sell_thresh = params.get('sell_threshold', 0.5)
+            if buy_thresh <= sell_thresh:  # Buy should be > sell for logical trading
+                is_valid = False
+                
+            # 3. Risk per trade should be reasonable relative to position size
+            risk_per_trade = params.get('risk_per_trade', 0.02)
+            max_capital_per_trade = params.get('max_capital_per_trade', 0.1)
+            if risk_per_trade > max_capital_per_trade:  # Risk shouldn't exceed position size
+                is_valid = False
+            
+            if is_valid:
                 return params  # Valid parameters
             
         # If we couldn't find valid params after many attempts, force fix the last attempt
@@ -647,6 +672,17 @@ class ScientificOptimizer:
             # Ensure take_profit is at least 20% larger than stop_loss
             if params['take_profit_pct'] <= params['stop_loss_pct']:
                 params['take_profit_pct'] = params['stop_loss_pct'] * 1.2
+        
+        # Fix buy/sell threshold relationship
+        if 'buy_threshold' in params and 'sell_threshold' in params:
+            if params['buy_threshold'] <= params['sell_threshold']:
+                # Make buy threshold slightly higher than sell threshold
+                params['buy_threshold'] = params['sell_threshold'] + 0.001
+                
+        # Fix risk/position size relationship  
+        if 'risk_per_trade' in params and 'max_capital_per_trade' in params:
+            if params['risk_per_trade'] > params['max_capital_per_trade']:
+                params['risk_per_trade'] = params['max_capital_per_trade'] * 0.8
                 
         return params
     
@@ -659,7 +695,9 @@ class ScientificOptimizer:
         params = dict(zip(self.param_space.param_names, arr))
         params.update(self.param_space.fixed_params)
         
-        # Validate take-profit > stop-loss for positive expectancy
+        # Apply parameter validation and corrections
+        
+        # 1. Validate take-profit > stop-loss for positive expectancy
         if 'take_profit_pct' in params and 'stop_loss_pct' in params:
             if params['take_profit_pct'] <= params['stop_loss_pct']:
                 # Adjust take_profit to be at least 20% larger than stop_loss
@@ -669,6 +707,21 @@ class ScientificOptimizer:
                 if params['take_profit_pct'] > max_tp:
                     # If take_profit would exceed bounds, reduce stop_loss instead
                     params['stop_loss_pct'] = params['take_profit_pct'] / 1.2
+        
+        # 2. Ensure buy threshold > sell threshold for logical trading
+        if 'buy_threshold' in params and 'sell_threshold' in params:
+            if params['buy_threshold'] <= params['sell_threshold']:
+                # Make buy threshold slightly higher than sell threshold
+                params['buy_threshold'] = params['sell_threshold'] + 0.001
+                # Ensure it stays within bounds
+                _, max_buy = self.param_space.param_bounds['buy_threshold']
+                if params['buy_threshold'] > max_buy:
+                    params['sell_threshold'] = params['buy_threshold'] - 0.001
+        
+        # 3. Ensure risk per trade <= position size
+        if 'risk_per_trade' in params and 'max_capital_per_trade' in params:
+            if params['risk_per_trade'] > params['max_capital_per_trade']:
+                params['risk_per_trade'] = params['max_capital_per_trade'] * 0.8
                     
         return params
     
