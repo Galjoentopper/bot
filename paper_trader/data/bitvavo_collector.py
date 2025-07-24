@@ -162,25 +162,7 @@ class FeatureCache:
             self.logger.error(f"Error initializing buffer for {symbol}: {e}")
             self.data_buffers[symbol] = pd.DataFrame()
 
-    def get_buffer_data(self, symbol: str, min_length: int = None) -> Optional[pd.DataFrame]:
-        """Get buffer data for feature engineering with minimum length validation."""
-        if min_length is None:
-            min_length = self.settings.min_data_length
-        try:
-            if symbol not in self.data_buffers:
-                self.logger.warning(f"No buffer data for {symbol}")
-                return None
-            buffer_data = self.data_buffers[symbol].copy()
-            if len(buffer_data) < min_length:
-                self.logger.warning(f"Insufficient buffer data for {symbol}: {len(buffer_data)} < {min_length}")
-                if self.ensure_sufficient_data(symbol, min_length):
-                    buffer_data = self.data_buffers[symbol].copy()
-                else:
-                    return None
-            return buffer_data
-        except Exception as e:
-            self.logger.error(f"Error getting buffer data for {symbol}: {e}")
-            return None
+
 
     async def start_periodic_updates(self, symbols: List[str], interval_minutes: int = 15):
         """Start periodic data updates via REST API."""
@@ -202,15 +184,15 @@ class FeatureCache:
                             new_row = pd.DataFrame([latest_candle.values], 
                                                  columns=latest_candle.index, 
                                                  index=[new_timestamp])
-                            # To:
+                            # Update buffer with new data
                             if symbol in self.data_buffers and not self.data_buffers[symbol].empty:
-                                    self.data_buffers[symbol] = pd.concat([self.data_buffers[symbol], new_row])
-                            if len(self.data_buffers[symbol]) > self.settings.max_buffer_size:
+                                self.data_buffers[symbol] = pd.concat([self.data_buffers[symbol], new_row])
+                                if len(self.data_buffers[symbol]) > self.settings.max_buffer_size:
                                     self.data_buffers[symbol] = self.data_buffers[symbol].tail(self.settings.max_buffer_size)
                             else:
                                 self.data_buffers[symbol] = new_row
                             # Use the candle timestamp as the last update marker
-                            self.last_update[symbol] = latest_timestamp
+                            self.last_update[symbol] = new_timestamp
                             self.logger.info(f"Updated {symbol} buffer via API: {latest_candle['close']:.2f}")
                 await asyncio.sleep(self.settings.websocket_sleep_seconds)
             except Exception as e:
