@@ -783,13 +783,49 @@ class WindowBasedEnsemblePredictor:
             model = self.model_loader.lstm_models[symbol][window]
             scaler = self.model_loader.scalers[symbol].get(window)
             
-            # Prepare features
+            # Prepare features using the correct feature columns for this window
             feature_data = features.copy()
-            feature_cols = [col for col in LSTM_FEATURES if col in feature_data.columns]
+            
+            # Use stored feature columns if available, otherwise fall back to TRAINING_FEATURES
+            if (symbol in self.model_loader.feature_columns and 
+                window in self.model_loader.feature_columns[symbol]):
+                expected_feature_cols = self.model_loader.feature_columns[symbol][window]
+                feature_cols = [col for col in expected_feature_cols if col in feature_data.columns]
+                missing_features = [col for col in expected_feature_cols if col not in feature_data.columns]
+                
+                if missing_features:
+                    self.logger.warning(f"Missing features for {symbol} window {window}: {missing_features}")
+                    # Fill missing features with zeros
+                    for col in missing_features:
+                        feature_data[col] = 0.0
+                    feature_cols = expected_feature_cols
+                
+                self.logger.debug(f"Using {len(feature_cols)} features for {symbol} window {window}: {feature_cols}")
+            else:
+                # Fallback to TRAINING_FEATURES for compatibility with older models
+                from .feature_engineer import TRAINING_FEATURES
+                feature_cols = [col for col in TRAINING_FEATURES if col in feature_data.columns]
+                self.logger.warning(f"No feature columns found for {symbol} window {window}, using TRAINING_FEATURES fallback")
+                
             if scaler is not None and feature_cols:
-                feature_data[feature_cols] = scaler.transform(
-                    feature_data[feature_cols].to_numpy()
-                )
+                try:
+                    # Check if the scaler expects the same number of features
+                    if hasattr(scaler, 'n_features_in_') and len(feature_cols) != scaler.n_features_in_:
+                        self.logger.warning(
+                            f"Feature count mismatch for {symbol} window {window}: "
+                            f"have {len(feature_cols)} features, scaler expects {scaler.n_features_in_}. "
+                            f"Skipping scaling."
+                        )
+                        # Don't scale if there's a mismatch
+                    else:
+                        feature_data[feature_cols] = scaler.transform(
+                            feature_data[feature_cols].to_numpy()
+                        )
+                except Exception as e:
+                    self.logger.error(
+                        f"Error scaling features for {symbol} window {window}: {e}. "
+                        f"Proceeding without scaling."
+                    )
 
             # Sanitize feature values before sequence creation
             if np.isnan(feature_data[feature_cols].to_numpy()).any() or np.isinf(feature_data[feature_cols].to_numpy()).any():
