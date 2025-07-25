@@ -1,0 +1,21 @@
+{
+  "timestamp": "20250725_023411",
+  "training_type": "walk_forward",
+  "config": {
+    "train_months": 6,
+    "test_months": 1,
+    "step_months": 3,
+    "min_training_samples": 5000
+  },
+  "total_time_minutes": 0.07664359013239543,
+  "symbols_trained": 0,
+  "symbols_failed": 5,
+  "total_windows": 0,
+  "results_by_symbol": {
+    "BTCEUR": [],
+    "ETHEUR": [],
+    "ADAEUR": [],
+    "SOLEUR": [],
+    "XRPEUR": []
+  }
+}

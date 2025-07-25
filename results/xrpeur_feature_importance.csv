@@ -1,4 +1,14 @@
 feature,importance
-atr_ratio,0.3463265
-atr,0.33156458
-realized_vol_5,0.32210892
+atr_ratio,0.1629929
+atr,0.0879089
+spread,0.07611586
+volatility_20,0.072588764
+trend_strength,0.071788915
+price_vs_ema9,0.071294695
+realized_vol_5,0.06836909
+volatility_50,0.06816708
+volatility_breakout,0.06675945
+volatility_ema_ratio,0.06599572
+returns_std_10,0.06585778
+realized_vol_20,0.06414606
+price_change_1h,0.05801472
