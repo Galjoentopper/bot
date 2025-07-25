@@ -14,7 +14,7 @@ sys.path.append(str(Path(__file__).parent))
 from paper_trader.config.settings import TradingSettings
 from paper_trader.data.bitvavo_collector import BitvavoDataCollector
 from paper_trader.models.feature_engineer import FeatureEngineer
-from paper_trader.models.model_loader import WindowBasedModelLoader, WindowBasedEnsemblePredictor, directional_loss
+from paper_trader.models.model_loader import WindowBasedModelLoader, WindowBasedEnsemblePredictor, DirectionalLoss, QuantileLoss
 from paper_trader.strategy.signal_generator import SignalGenerator
 from paper_trader.strategy.exit_manager import ExitManager
 from paper_trader.portfolio.portfolio_manager import PortfolioManager
@@ -261,7 +261,10 @@ class EnhancedPaperTrader:
                         f"load_model_{symbol}",
                         self.model_loader.load_symbol_models,
                         symbol,
-                        custom_objects={"directional_loss": directional_loss}
+                        custom_objects={
+                            "DirectionalLoss": DirectionalLoss, 
+                            "QuantileLoss": QuantileLoss
+                        }
                     )
                     
                     if success:

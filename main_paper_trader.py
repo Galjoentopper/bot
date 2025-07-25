@@ -14,7 +14,7 @@ sys.path.append(str(Path(__file__).parent))
 from paper_trader.config.settings import TradingSettings
 from paper_trader.data.bitvavo_collector import BitvavoDataCollector
 from paper_trader.models.feature_engineer import FeatureEngineer
-from paper_trader.models.model_loader import WindowBasedModelLoader, WindowBasedEnsemblePredictor, directional_loss
+from paper_trader.models.model_loader import WindowBasedModelLoader, WindowBasedEnsemblePredictor, DirectionalLoss
 from paper_trader.strategy.signal_generator import SignalGenerator
 from paper_trader.strategy.exit_manager import ExitManager
 from paper_trader.portfolio.portfolio_manager import PortfolioManager
@@ -402,15 +402,21 @@ class PaperTrader:
     async def load_models(self):
         """Load ML models for all symbols."""
         import tensorflow as tf
-        from paper_trader.models.model_loader import directional_loss
+        from paper_trader.models.model_loader import DirectionalLoss, QuantileLoss
         try:
             self.logger.info("Loading ML models...")
             
             loaded_count = 0
             for symbol in self.settings.symbols:
                 try:
-                    # Load models for symbol with explicit custom_objects for directional_loss
-                    success = await self.model_loader.load_symbol_models(symbol, custom_objects={"directional_loss": directional_loss})
+                    # Load models for symbol with explicit custom_objects for class-based losses
+                    success = await self.model_loader.load_symbol_models(
+                        symbol, 
+                        custom_objects={
+                            "DirectionalLoss": DirectionalLoss, 
+                            "QuantileLoss": QuantileLoss
+                        }
+                    )
                     
                     if success:
                         loaded_count += 1
