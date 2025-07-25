@@ -161,17 +161,26 @@ class ModelBacktester:
 
                     # Try different loading approaches for compatibility
                     try:
-                        # First try: standard loading
-                        from train_hybrid_models import directional_loss
+                        # First try: standard loading with class-based custom objects
+                        from train_hybrid_models import DirectionalLoss, QuantileLoss
                         lstm_model = load_model(
                             lstm_path,
-                            custom_objects={"directional_loss": directional_loss}
+                            custom_objects={
+                                "DirectionalLoss": DirectionalLoss,
+                                "QuantileLoss": QuantileLoss
+                            }
                         )
                     except Exception as e1:
                         try:
                             # Second try: with compile=False for compatibility
-                            lstm_model = load_model(lstm_path, compile=False, 
-                                                  custom_objects={"directional_loss": directional_loss})
+                            lstm_model = load_model(
+                                lstm_path, 
+                                compile=False, 
+                                custom_objects={
+                                    "DirectionalLoss": DirectionalLoss,
+                                    "QuantileLoss": QuantileLoss
+                                }
+                            )
                             # Recompile with current TensorFlow version
                             lstm_model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
                         except Exception as e2:
@@ -197,10 +206,13 @@ class ModelBacktester:
                             print(f"    Trying fallback LSTM model: {lstm_fallback_path}")
                         import tensorflow as tf
                         from tensorflow.keras.models import load_model
-                        from train_hybrid_models import directional_loss
+                        from train_hybrid_models import DirectionalLoss, QuantileLoss
                         lstm_model = load_model(
                             lstm_fallback_path,
-                            custom_objects={"directional_loss": directional_loss}
+                            custom_objects={
+                                "DirectionalLoss": DirectionalLoss,
+                                "QuantileLoss": QuantileLoss
+                            }
                         )
                         if self.config.verbose:
                             print(f"    ✅ Fallback LSTM model loaded successfully")

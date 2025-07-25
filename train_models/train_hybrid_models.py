@@ -88,18 +88,14 @@ def configure_gpu() -> None:
     for gpu in gpus:
         tf.config.experimental.set_memory_growth(gpu, True)
 
-    print(
-        f"🚀 GPU Configuration: Found {len(gpus)} GPU(s), memory growth enabled"
-    )
+    print(f"🚀 GPU Configuration: Found {len(gpus)} GPU(s), memory growth enabled")
     print("⚡ Mixed precision DISABLED for maximum speed (using float32)")
 
     try:
         tf.config.experimental.enable_tensor_float_32()
         print("🔥 Conservative GPU optimizations: TF32 enabled")
     except Exception as tf32_error:
-        print(
-            f"🔥 Conservative GPU optimizations: TF32 unavailable ({tf32_error})"
-        )
+        print(f"🔥 Conservative GPU optimizations: TF32 unavailable ({tf32_error})")
 
 
 # Configure GPU at import time
@@ -112,15 +108,17 @@ except Exception as e:  # pragma: no cover - safe fallback
 pandas_ta_available = False
 try:
     import pandas_ta as ta
+
     pandas_ta_available = True
     print("✅ Using pandas_ta for technical analysis")
 except ImportError as e:
     print(f"⚠️ pandas_ta not available ({e}), using fallback implementation")
 
+
 # Simple technical indicators implementation as fallback
 class TechnicalIndicators:
     """Fallback technical indicators implementation"""
-    
+
     @staticmethod
     def rsi(prices, length=14):
         """Calculate RSI"""
@@ -129,22 +127,22 @@ class TechnicalIndicators:
         loss = (-delta.where(delta < 0, 0)).rolling(window=length).mean()
         rs = gain / loss
         return 100 - (100 / (1 + rs))
-    
+
     @staticmethod
     def ema(prices, length=14):
         """Calculate Exponential Moving Average"""
         return prices.ewm(span=length).mean()
-    
+
     @staticmethod
     def sma(prices, length=14):
         """Calculate Simple Moving Average"""
         return prices.rolling(window=length).mean()
-    
+
     @staticmethod
     def mom(prices, length=10):
         """Calculate Momentum"""
         return prices.diff(length)
-    
+
     @staticmethod
     def macd(prices, fast=12, slow=26, signal=9):
         """Calculate MACD"""
@@ -154,13 +152,9 @@ class TechnicalIndicators:
         signal_line = macd.ewm(span=signal).mean()
         histogram = macd - signal_line
         # Return as DataFrame to match pandas_ta format
-        result = pd.DataFrame({
-            'MACD_12_26_9': macd,
-            'MACDh_12_26_9': histogram,
-            'MACDs_12_26_9': signal_line
-        })
+        result = pd.DataFrame({"MACD_12_26_9": macd, "MACDh_12_26_9": histogram, "MACDs_12_26_9": signal_line})
         return result
-    
+
     @staticmethod
     def bbands(prices, length=20, std=2):
         """Calculate Bollinger Bands"""
@@ -169,15 +163,17 @@ class TechnicalIndicators:
         upper_band = sma + (std_dev * std)
         lower_band = sma - (std_dev * std)
         # Return as DataFrame to match pandas_ta format
-        result = pd.DataFrame({
-            'BBL_20_2.0': lower_band,
-            'BBM_20_2.0': sma,
-            'BBU_20_2.0': upper_band,
-            'BBB_20_2.0': (upper_band - lower_band) / sma,
-            'BBP_20_2.0': (prices - lower_band) / (upper_band - lower_band)
-        })
+        result = pd.DataFrame(
+            {
+                "BBL_20_2.0": lower_band,
+                "BBM_20_2.0": sma,
+                "BBU_20_2.0": upper_band,
+                "BBB_20_2.0": (upper_band - lower_band) / sma,
+                "BBP_20_2.0": (prices - lower_band) / (upper_band - lower_band),
+            }
+        )
         return result
-    
+
     @staticmethod
     def atr(high, low, close, length=14):
         """Calculate ATR"""
@@ -186,12 +182,12 @@ class TechnicalIndicators:
         tr3 = abs(low - close.shift())
         true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         return true_range.rolling(window=length).mean()
-    
+
     @staticmethod
     def roc(prices, length=10):
         """Calculate Rate of Change"""
         return ((prices - prices.shift(length)) / prices.shift(length)) * 100
-    
+
     @staticmethod
     def stoch(high, low, close, k=14, d=3):
         """Calculate Stochastic Oscillator"""
@@ -200,18 +196,16 @@ class TechnicalIndicators:
         k_percent = 100 * ((close - lowest_low) / (highest_high - lowest_low))
         d_percent = k_percent.rolling(window=d).mean()
         # Return as DataFrame to match pandas_ta format
-        result = pd.DataFrame({
-            'STOCHk_14_3_3': k_percent,
-            'STOCHd_14_3_3': d_percent
-        })
+        result = pd.DataFrame({"STOCHk_14_3_3": k_percent, "STOCHd_14_3_3": d_percent})
         return result
-    
+
     @staticmethod
     def willr(high, low, close, length=14):
         """Calculate Williams %R"""
         highest_high = high.rolling(window=length).max()
         lowest_low = low.rolling(window=length).min()
         return -100 * ((highest_high - close) / (highest_high - lowest_low))
+
 
 # Only use fallback implementation if pandas_ta is not available
 if not pandas_ta_available:
@@ -229,55 +223,77 @@ warnings.filterwarnings("ignore")
 # Quantile loss for probabilistic forecasting
 from tensorflow.keras import backend as K
 
+
 # Quantile loss implementation as a proper Keras loss class for better serialization
 @tf.keras.utils.register_keras_serializable(package="Custom", name="QuantileLoss")
 class QuantileLoss(tf.keras.losses.Loss):
     """Quantile loss function for probabilistic forecasting."""
-    
+
     def __init__(self, quantile=0.5, name="quantile_loss", **kwargs):
         super().__init__(name=name, **kwargs)
         self.quantile = quantile
-        
+
     def call(self, y_true, y_pred):
         e = y_true - y_pred
         return tf.reduce_mean(tf.maximum(self.quantile * e, (self.quantile - 1) * e), axis=-1)
-    
+
     def get_config(self):
         config = super().get_config()
         config.update({"quantile": self.quantile})
         return config
 
 
-# Legacy quantile loss function (deprecated - use QuantileLoss class instead)
-def quantile_loss(q):
-    """Return a quantile loss function configured for quantile ``q``."""
-
-    def loss(y_true, y_pred):
-        e = y_true - y_pred
-        return K.mean(K.maximum(q * e, (q - 1) * e), axis=-1)
-
-    return loss
-
-
-# Standalone directional loss function for proper serialization
-@tf.keras.utils.register_keras_serializable(package="Custom", name="directional_loss")
-def directional_loss(y_true, y_pred):
+# Directional loss implementation as a proper Keras loss class for better serialization
+@tf.keras.utils.register_keras_serializable(package="Custom", name="DirectionalLoss")
+class DirectionalLoss(tf.keras.losses.Loss):
     """
-    Custom loss function that penalizes wrong directional predictions more
+    Custom loss function that penalizes wrong directional predictions more.
+
+    This loss combines MSE with a directional penalty to encourage
+    the model to predict the correct direction of price movements.
     """
-    # Standard MSE
-    mse = tf.keras.losses.MeanSquaredError()(y_true, y_pred)
 
-    # Directional penalty
-    direction_true = tf.sign(y_true)
-    direction_pred = tf.sign(y_pred)
-    direction_penalty = tf.where(
-        tf.equal(direction_true, direction_pred),
-        0.0,
-        tf.abs(y_true - y_pred) * 2.0,  # Double penalty for wrong direction
-    )
+    def __init__(self, penalty_weight=2.0, name="directional_loss", **kwargs):
+        """
+        Initialize DirectionalLoss.
 
-    return mse + tf.reduce_mean(direction_penalty)
+        Args:
+            penalty_weight: Weight for directional penalty (default: 2.0)
+            name: Name of the loss function
+        """
+        super().__init__(name=name, **kwargs)
+        self.penalty_weight = penalty_weight
+
+    def call(self, y_true, y_pred):
+        """
+        Calculate the directional loss.
+
+        Args:
+            y_true: True values
+            y_pred: Predicted values
+
+        Returns:
+            Combined MSE and directional penalty loss
+        """
+        # Standard MSE component
+        mse = tf.keras.losses.MeanSquaredError()(y_true, y_pred)
+
+        # Directional penalty component
+        direction_true = tf.sign(y_true)
+        direction_pred = tf.sign(y_pred)
+        direction_penalty = tf.where(
+            tf.equal(direction_true, direction_pred),
+            0.0,
+            tf.abs(y_true - y_pred) * self.penalty_weight,
+        )
+
+        return mse + tf.reduce_mean(direction_penalty)
+
+    def get_config(self):
+        """Return the configuration of the loss function."""
+        config = super().get_config()
+        config.update({"penalty_weight": self.penalty_weight})
+        return config
 
 
 class HybridModelTrainer:
@@ -371,9 +387,7 @@ class HybridModelTrainer:
             "predictor": "cpu_predictor",  # Optimized CPU prediction
         }
 
-        print(
-            "🚀 Hybrid LSTM + XGBoost Model Trainer with Walk-Forward Analysis Initialized"
-        )
+        print("🚀 Hybrid LSTM + XGBoost Model Trainer with Walk-Forward Analysis Initialized")
         print(f"📁 Data directory: {self.data_dir}")
         print(f"🤖 Models directory: {self.models_dir}")
         print(f"💰 Symbols: {', '.join(self.symbols)}")
@@ -421,29 +435,27 @@ class HybridModelTrainer:
         data["price_change_1h"] = data["close"].pct_change(4)  # 4 * 15min = 1h
         data["price_change_4h"] = data["close"].pct_change(16)  # 16 * 15min = 4h
         data["price_change_24h"] = data["close"].pct_change(96)  # 96 * 15min = 24h
-        
+
         # Add 30-minute timeframe features for multi-timeframe analysis
         data["price_change_30min"] = data["close"].pct_change(2)  # 2 * 15min = 30min
-        data["returns_30min"] = data["close"].rolling(2).apply(lambda x: (x.iloc[-1] / x.iloc[0]) - 1 if len(x) == 2 else 0)
-        
+        data["returns_30min"] = (
+            data["close"].rolling(2).apply(lambda x: (x.iloc[-1] / x.iloc[0]) - 1 if len(x) == 2 else 0)
+        )
+
         # Multi-timeframe volatility features
         data["volatility_15min"] = data["returns"].rolling(4).std()  # 4 periods = 1 hour of 15min data
-        data["volatility_30min"] = data["returns"].rolling(8).std()  # 8 periods = 2 hours  
-        data["volatility_1h"] = data["returns"].rolling(16).std()   # 16 periods = 4 hours
-        data["volatility_4h"] = data["returns"].rolling(64).std()   # 64 periods = 16 hours
-        
+        data["volatility_30min"] = data["returns"].rolling(8).std()  # 8 periods = 2 hours
+        data["volatility_1h"] = data["returns"].rolling(16).std()  # 16 periods = 4 hours
+        data["volatility_4h"] = data["returns"].rolling(64).std()  # 64 periods = 16 hours
+
         # Cross-timeframe volatility ratios for regime detection
         data["vol_ratio_15min_30min"] = data["volatility_15min"] / data["volatility_30min"]
-        data["vol_ratio_30min_1h"] = data["volatility_30min"] / data["volatility_1h"] 
+        data["vol_ratio_30min_1h"] = data["volatility_30min"] / data["volatility_1h"]
         data["vol_ratio_1h_4h"] = data["volatility_1h"] / data["volatility_4h"]
 
         # Price normalization features
-        data["price_zscore_20"] = (
-            data["close"] - data["close"].rolling(20).mean()
-        ) / data["close"].rolling(20).std()
-        data["price_zscore_50"] = (
-            data["close"] - data["close"].rolling(50).mean()
-        ) / data["close"].rolling(50).std()
+        data["price_zscore_20"] = (data["close"] - data["close"].rolling(20).mean()) / data["close"].rolling(20).std()
+        data["price_zscore_50"] = (data["close"] - data["close"].rolling(50).mean()) / data["close"].rolling(50).std()
 
         # Lag features for returns (important for prediction)
         for lag in [1, 2, 3, 5, 10, 20]:
@@ -460,15 +472,13 @@ class HybridModelTrainer:
         data["volume_sma_20"] = data["volume"].rolling(20).mean()
         data["volume_ratio"] = data["volume"] / data["volume_sma_20"]
         data["volume_change"] = data["volume"].pct_change()
-        data["volume_zscore"] = (
-            data["volume"] - data["volume"].rolling(20).mean()
-        ) / data["volume"].rolling(20).std()
+        data["volume_zscore"] = (data["volume"] - data["volume"].rolling(20).mean()) / data["volume"].rolling(20).std()
 
         # Volume-Price relationship
         data["volume_price_trend"] = data["volume"] * data["returns"]
-        data["volume_weighted_price"] = (data["volume"] * data["close"]).rolling(
+        data["volume_weighted_price"] = (data["volume"] * data["close"]).rolling(20).sum() / data["volume"].rolling(
             20
-        ).sum() / data["volume"].rolling(20).sum()
+        ).sum()
 
         # Market microstructure features
         data["spread"] = (data["high"] - data["low"]) / data["close"]
@@ -476,12 +486,8 @@ class HybridModelTrainer:
         data["spread_ratio"] = data["spread"] / data["spread_ma"]
 
         # Order flow approximation
-        data["buying_pressure"] = (data["close"] - data["low"]) / (
-            data["high"] - data["low"]
-        )
-        data["selling_pressure"] = (data["high"] - data["close"]) / (
-            data["high"] - data["low"]
-        )
+        data["buying_pressure"] = (data["close"] - data["low"]) / (data["high"] - data["low"])
+        data["selling_pressure"] = (data["high"] - data["close"]) / (data["high"] - data["low"])
         data["net_pressure"] = data["buying_pressure"] - data["selling_pressure"]
 
         # Enhanced Volatility features
@@ -496,9 +502,7 @@ class HybridModelTrainer:
         data["realized_vol_20"] = data["returns"].rolling(20).std() * np.sqrt(20)
 
         # Volatility clustering
-        data["vol_regime"] = (
-            data["volatility_20"] > data["volatility_20"].rolling(100).quantile(0.75)
-        ).astype(int)
+        data["vol_regime"] = (data["volatility_20"] > data["volatility_20"].rolling(100).quantile(0.75)).astype(int)
 
         # Enhanced Moving Averages with multi-timeframe analysis
         data["ema_9"] = ta.ema(data["close"], length=9)
@@ -506,19 +510,19 @@ class HybridModelTrainer:
         data["ema_50"] = ta.ema(data["close"], length=50)
         data["ema_100"] = ta.ema(data["close"], length=100)
         data["sma_200"] = ta.sma(data["close"], length=200)
-        
+
         # Multi-timeframe EMA for different horizons
-        data["ema_30min"] = ta.ema(data["close"], length=2)   # 30 minutes
-        data["ema_1h"] = ta.ema(data["close"], length=4)      # 1 hour  
-        data["ema_2h"] = ta.ema(data["close"], length=8)      # 2 hours
-        data["ema_4h"] = ta.ema(data["close"], length=16)     # 4 hours
+        data["ema_30min"] = ta.ema(data["close"], length=2)  # 30 minutes
+        data["ema_1h"] = ta.ema(data["close"], length=4)  # 1 hour
+        data["ema_2h"] = ta.ema(data["close"], length=8)  # 2 hours
+        data["ema_4h"] = ta.ema(data["close"], length=16)  # 4 hours
 
         # Price relative to MAs (existing)
         data["price_vs_ema9"] = (data["close"] - data["ema_9"]) / data["ema_9"]
         data["price_vs_ema21"] = (data["close"] - data["ema_21"]) / data["ema_21"]
         data["price_vs_ema50"] = (data["close"] - data["ema_50"]) / data["ema_50"]
         data["price_vs_sma200"] = (data["close"] - data["sma_200"]) / data["sma_200"]
-        
+
         # Multi-timeframe price position relative to EMAs
         data["price_vs_ema_30min"] = (data["close"] - data["ema_30min"]) / data["ema_30min"]
         data["price_vs_ema_1h"] = (data["close"] - data["ema_1h"]) / data["ema_1h"]
@@ -532,9 +536,7 @@ class HybridModelTrainer:
 
         # Trend strength indicators
         data["ma_alignment"] = (
-            (data["ema_9"] > data["ema_21"])
-            & (data["ema_21"] > data["ema_50"])
-            & (data["ema_50"] > data["ema_100"])
+            (data["ema_9"] > data["ema_21"]) & (data["ema_21"] > data["ema_50"]) & (data["ema_50"] > data["ema_100"])
         ).astype(int)
         data["ma_slope_9"] = data["ema_9"].pct_change(5)
         data["ma_slope_21"] = data["ema_21"].pct_change(5)
@@ -555,9 +557,7 @@ class HybridModelTrainer:
         data["stoch_overbought"] = (data["stoch_k"] > 80).astype(int)
 
         # Williams %R
-        data["williams_r"] = ta.willr(
-            data["high"], data["low"], data["close"], length=14
-        )
+        data["williams_r"] = ta.willr(data["high"], data["low"], data["close"], length=14)
 
         # MACD
         macd_data = ta.macd(data["close"])
@@ -572,24 +572,16 @@ class HybridModelTrainer:
         data["bb_lower"] = bb_data["BBL_20_2.0"]
         data["bb_middle"] = bb_data["BBM_20_2.0"]
         data["bb_width"] = (data["bb_upper"] - data["bb_lower"]) / data["bb_middle"]
-        data["bb_position"] = (data["close"] - data["bb_lower"]) / (
-            data["bb_upper"] - data["bb_lower"]
-        )
+        data["bb_position"] = (data["close"] - data["bb_lower"]) / (data["bb_upper"] - data["bb_lower"])
 
         # VWAP
-        data["vwap"] = (data["close"] * data["volume"]).cumsum() / data[
-            "volume"
-        ].cumsum()
+        data["vwap"] = (data["close"] * data["volume"]).cumsum() / data["volume"].cumsum()
         data["price_vs_vwap"] = (data["close"] - data["vwap"]) / data["vwap"]
 
         # Candle patterns
         data["candle_body"] = abs(data["close"] - data["open"]) / data["open"]
-        data["upper_wick"] = (
-            data["high"] - np.maximum(data["open"], data["close"])
-        ) / data["open"]
-        data["lower_wick"] = (
-            np.minimum(data["open"], data["close"]) - data["low"]
-        ) / data["open"]
+        data["upper_wick"] = (data["high"] - np.maximum(data["open"], data["close"])) / data["open"]
+        data["lower_wick"] = (np.minimum(data["open"], data["close"]) - data["low"]) / data["open"]
 
         # Time-based features
         data["hour"] = data.index.hour
@@ -599,26 +591,23 @@ class HybridModelTrainer:
         # Momentum indicators (existing)
         data["momentum_10"] = ta.mom(data["close"], length=10)
         data["roc_10"] = ta.roc(data["close"], length=10)
-        
+
         # Multi-timeframe momentum indicators
-        data["momentum_30min"] = ta.mom(data["close"], length=2)   # 30 minutes
-        data["momentum_1h"] = ta.mom(data["close"], length=4)      # 1 hour
-        data["momentum_2h"] = ta.mom(data["close"], length=8)      # 2 hours
-        data["momentum_4h"] = ta.mom(data["close"], length=16)     # 4 hours
-        
+        data["momentum_30min"] = ta.mom(data["close"], length=2)  # 30 minutes
+        data["momentum_1h"] = ta.mom(data["close"], length=4)  # 1 hour
+        data["momentum_2h"] = ta.mom(data["close"], length=8)  # 2 hours
+        data["momentum_4h"] = ta.mom(data["close"], length=16)  # 4 hours
+
         # Multi-timeframe momentum alignment (all timeframes bullish)
-        data["momentum_alignment_short"] = (
-            (data["momentum_30min"] > 0) & 
-            (data["momentum_1h"] > 0)
-        ).astype(int)
-        
+        data["momentum_alignment_short"] = ((data["momentum_30min"] > 0) & (data["momentum_1h"] > 0)).astype(int)
+
         data["momentum_alignment_all"] = (
-            (data["momentum_30min"] > 0) & 
-            (data["momentum_1h"] > 0) & 
-            (data["momentum_2h"] > 0) & 
-            (data["momentum_4h"] > 0)
+            (data["momentum_30min"] > 0)
+            & (data["momentum_1h"] > 0)
+            & (data["momentum_2h"] > 0)
+            & (data["momentum_4h"] > 0)
         ).astype(int)
-        
+
         # Cross-timeframe momentum strength ratios
         data["momentum_ratio_30min_1h"] = data["momentum_30min"] / (data["momentum_1h"] + 1e-8)
         data["momentum_ratio_1h_2h"] = data["momentum_1h"] / (data["momentum_2h"] + 1e-8)
@@ -639,23 +628,17 @@ class HybridModelTrainer:
         data["volatility_breakout"] = data["atr"] * data["bb_width"]
 
         # Advanced interaction features
-        data["momentum_vol_signal"] = (
-            data["momentum_10"] * data["volume_ratio"] * data["volatility_ratio"]
-        )
+        data["momentum_vol_signal"] = data["momentum_10"] * data["volume_ratio"] * data["volatility_ratio"]
         data["trend_momentum_align"] = data["ma_alignment"] * data["momentum_10"]
         data["pressure_volume_signal"] = data["net_pressure"] * data["volume_zscore"]
         data["volatility_regime_signal"] = data["vol_regime"] * data["rsi"]
-        data["multi_timeframe_signal"] = (
-            data["price_change_1h"] * data["price_change_4h"] * data["price_change_24h"]
+        data["multi_timeframe_signal"] = data["price_change_1h"] * data["price_change_4h"] * data["price_change_24h"]
+        data["oscillator_consensus"] = (data["rsi_oversold"] + data["stoch_oversold"]) - (
+            data["rsi_overbought"] + data["stoch_overbought"]
         )
-        data["oscillator_consensus"] = (
-            data["rsi_oversold"] + data["stoch_oversold"]
-        ) - (data["rsi_overbought"] + data["stoch_overbought"])
 
         # Market regime features
-        data["trend_regime"] = (
-            (data["ma_alignment"] == 1) & (data["price_vs_sma200"] > 0)
-        ).astype(int)
+        data["trend_regime"] = ((data["ma_alignment"] == 1) & (data["price_vs_sma200"] > 0)).astype(int)
         data["consolidation_regime"] = (
             (data["bb_width"] < data["bb_width"].rolling(50).quantile(0.3))
             & (data["atr_ratio"] < data["atr_ratio"].rolling(50).quantile(0.3))
@@ -676,7 +659,7 @@ class HybridModelTrainer:
         ``self.test_months`` for testing. Windows advance by ``self.step_months``
         to create a sliding sequence while the purge/embargo gaps between the
         training and testing segments are preserved.
-        
+
         Args:
             df: DataFrame with market data
             max_windows: Maximum number of windows to generate (default: 15)
@@ -685,12 +668,12 @@ class HybridModelTrainer:
         windows = []
         start = df.index.min()
         end = df.index.max()
-        
+
         # Calculate how many windows we would generate with current settings
         current_start = start
         purge = timedelta(minutes=15 * self.purge_candles)
         embargo = timedelta(minutes=15 * self.embargo_candles)
-        
+
         # First pass: generate all possible windows
         all_windows = []
         while True:
@@ -704,49 +687,49 @@ class HybridModelTrainer:
 
             all_windows.append((train_start, train_end, test_start, test_end))
             current_start = current_start + pd.DateOffset(months=self.step_months)
-        
+
         # If we have too many windows, select the most recent ones
         if len(all_windows) > max_windows:
             logger.info(f"Generated {len(all_windows)} windows, selecting the most recent {max_windows}")
             windows = all_windows[-max_windows:]  # Take the last (most recent) windows
         else:
             windows = all_windows
-            
+
         # Ensure the last window uses the most recent data possible
         if windows:
             last_window = windows[-1]
             train_start, train_end, test_start, test_end = last_window
-            
+
             # Adjust the last window to end exactly at the end of available data
             adjusted_test_end = end
             # Adjust test_start accordingly, but maintain the test period length
             adjusted_test_start = adjusted_test_end - pd.DateOffset(months=self.test_months)
             # Adjust train_end to maintain the purge gap
             adjusted_train_end = adjusted_test_start - purge
-            # Adjust train_start to maintain the training period length  
+            # Adjust train_start to maintain the training period length
             adjusted_train_start = adjusted_train_end - pd.DateOffset(months=self.train_months)
-            
+
             # Replace the last window with the adjusted one
             windows[-1] = (adjusted_train_start, adjusted_train_end, adjusted_test_start, adjusted_test_end)
-            
+
             logger.info(f"Adjusted last window to end at {adjusted_test_end.strftime('%Y-%m-%d')}")
 
-        print(
-            f"📅 Generated {len(windows)} sliding walk-forward windows with purging and embargo"
-        )
-        
+        print(f"📅 Generated {len(windows)} sliding walk-forward windows with purging and embargo")
+
         # Print summary of windows for verification
         if windows:
             first_window = windows[0]
             last_window = windows[-1]
-            logger.info(f"First window: Train {first_window[0].strftime('%Y-%m')} to {first_window[1].strftime('%Y-%m')}, Test {first_window[2].strftime('%Y-%m')} to {first_window[3].strftime('%Y-%m')}")
-            logger.info(f"Last window: Train {last_window[0].strftime('%Y-%m')} to {last_window[1].strftime('%Y-%m')}, Test {last_window[2].strftime('%Y-%m')} to {last_window[3].strftime('%Y-%m')}")
+            logger.info(
+                f"First window: Train {first_window[0].strftime('%Y-%m')} to {first_window[1].strftime('%Y-%m')}, Test {first_window[2].strftime('%Y-%m')} to {first_window[3].strftime('%Y-%m')}"
+            )
+            logger.info(
+                f"Last window: Train {last_window[0].strftime('%Y-%m')} to {last_window[1].strftime('%Y-%m')}, Test {last_window[2].strftime('%Y-%m')} to {last_window[3].strftime('%Y-%m')}"
+            )
 
         return windows
 
-    def prepare_lstm_data(
-        self, df: pd.DataFrame
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def prepare_lstm_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Prepare enhanced sequences for LSTM training with multiple features
         """
@@ -782,27 +765,25 @@ class HybridModelTrainer:
 
         # Create target: binary jump detection (≥0.5% price increase) within next hour (4 periods)
         # This aligns both models to focus specifically on identifying profitable hourly opportunities
-        
+
         # Calculate the maximum price reached within the next 4 periods (1 hour)
-        future_prices = df["close"].shift(-self.prediction_horizon).rolling(window=self.prediction_horizon, min_periods=1).max()
+        future_prices = (
+            df["close"].shift(-self.prediction_horizon).rolling(window=self.prediction_horizon, min_periods=1).max()
+        )
         # Calculate percentage increase from current price to maximum future price within horizon
         max_price_change = (future_prices - df["close"]) / df["close"]
-        
+
         # Target is 1 if price increases by at least 0.5% within the next hour, 0 otherwise
         targets = (max_price_change >= self.price_change_threshold).astype(float).values
 
         # Validate targets before creating sequences
         valid_target_mask = ~(np.isnan(targets) | np.isinf(targets))
-        print(
-            f"📊 Target validation: {valid_target_mask.sum()}/{len(targets)} valid targets"
-        )
+        print(f"📊 Target validation: {valid_target_mask.sum()}/{len(targets)} valid targets")
 
         # Create sequences and track valid indices
         X, y, valid_indices = [], [], []
 
-        for i in range(
-            self.lstm_sequence_length, len(feature_data) - self.prediction_horizon
-        ):
+        for i in range(self.lstm_sequence_length, len(feature_data) - self.prediction_horizon):
             # Check if current sequence and target are valid
             sequence = feature_data[i - self.lstm_sequence_length : i]
             target = targets[i]
@@ -833,13 +814,9 @@ class HybridModelTrainer:
             valid_indices = valid_indices[extreme_mask]
 
             if len(y) < original_count:
-                print(
-                    f"📉 Removed {original_count - len(y)} extreme target values (>{clip_threshold:.6f})"
-                )
+                print(f"📉 Removed {original_count - len(y)} extreme target values (>{clip_threshold:.6f})")
 
-            print(
-                f"📊 Target statistics: mean={y_mean:.6f}, std={y_std:.6f}, range=[{y.min():.6f}, {y.max():.6f}]"
-            )
+            print(f"📊 Target statistics: mean={y_mean:.6f}, std={y_std:.6f}, range=[{y.min():.6f}, {y.max():.6f}]")
 
         # Final validation
         if len(X) == 0 or len(y) == 0:
@@ -865,7 +842,7 @@ class HybridModelTrainer:
 
         # Apply attention weights
         context = Dot(axes=1)([attention, lstm_output])
-        
+
         # Reduce sequence dimension to match expected output shape
         context = GlobalAveragePooling1D()(context)
 
@@ -884,9 +861,9 @@ class HybridModelTrainer:
 
     def get_directional_loss(self):
         """
-        Return the standalone directional loss function for model compilation
+        Return the DirectionalLoss class instance for model compilation.
         """
-        return directional_loss
+        return DirectionalLoss()
 
     def train_lstm_model(
         self,
@@ -921,12 +898,12 @@ class HybridModelTrainer:
         # Calculate class weights for imbalanced data
         unique_classes, class_counts = np.unique(y_train, return_counts=True)
         total_samples = len(y_train)
-        
+
         # Calculate class weights (inverse frequency)
         class_weights = {}
         for class_idx, count in zip(unique_classes, class_counts):
             class_weights[int(class_idx)] = total_samples / (len(unique_classes) * count)
-        
+
         print(f"📊 Class distribution in training data:")
         for class_idx, count in zip(unique_classes, class_counts):
             percentage = (count / total_samples) * 100
@@ -1020,13 +997,13 @@ class HybridModelTrainer:
             )
 
         # Compile with weighted binary crossentropy for class imbalance handling
-        # Use metric function objects instead of strings to avoid 'str' object is not callable error
+        # Use metric class instances instead of strings to avoid compatibility issues
         from tensorflow.keras.metrics import Accuracy, Precision, Recall
-        
+
         model.compile(
             optimizer=optimizer,
             loss="binary_crossentropy",
-            metrics=[Accuracy(name='accuracy'), Precision(name='precision'), Recall(name='recall')],
+            metrics=[Accuracy(name="accuracy"), Precision(name="precision"), Recall(name="recall")],
         )
 
         # Optimized callbacks for faster training
@@ -1042,11 +1019,7 @@ class HybridModelTrainer:
         # Only add ReduceLROnPlateau when the optimizer's learning rate is settable
         lr_param = getattr(optimizer, "_learning_rate", optimizer.learning_rate)
         if not isinstance(lr_param, tf.keras.optimizers.schedules.LearningRateSchedule):
-            callbacks.append(
-                ReduceLROnPlateau(
-                    monitor="val_loss", factor=0.5, patience=5, min_lr=1e-6, verbose=0
-                )
-            )
+            callbacks.append(ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=1e-6, verbose=0))
 
         # Train model with conservative memory management to prevent crashes
         # Start with moderate batch size and implement robust fallback
@@ -1063,9 +1036,7 @@ class HybridModelTrainer:
 
                 # Create optimized TensorFlow datasets
                 train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-                train_dataset = train_dataset.batch(batch_size).prefetch(
-                    tf.data.AUTOTUNE
-                )
+                train_dataset = train_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
                 val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
                 val_dataset = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
@@ -1079,9 +1050,7 @@ class HybridModelTrainer:
                     verbose=0,
                     class_weight=class_weights,  # Apply class weights for imbalanced data
                 )
-                print(
-                    f"✅ LSTM training completed successfully with batch size {batch_size}"
-                )
+                print(f"✅ LSTM training completed successfully with batch size {batch_size}")
                 break  # Success, exit the loop
 
             except (tf.errors.ResourceExhaustedError, tf.errors.InternalError) as e:
@@ -1089,32 +1058,26 @@ class HybridModelTrainer:
                 # Clear memory before trying next batch size
                 tf.keras.backend.clear_session()
                 if batch_size == batch_sizes[-1]:  # Last attempt
-                    raise RuntimeError(
-                        f"Unable to train LSTM model - all batch sizes failed. Last error: {e}"
-                    )
+                    raise RuntimeError(f"Unable to train LSTM model - all batch sizes failed. Last error: {e}")
                 continue
 
         if history is None:
             raise RuntimeError("LSTM training failed - no successful batch size found")
 
-        print(
-            f"✅ LSTM training completed. Best val_loss: {min(history.history['val_loss']):.6f}"
-        )
-        
+        print(f"✅ LSTM training completed. Best val_loss: {min(history.history['val_loss']):.6f}")
+
         # Print final performance metrics
-        if 'val_accuracy' in history.history:
-            best_val_acc = max(history.history['val_accuracy'])
+        if "val_accuracy" in history.history:
+            best_val_acc = max(history.history["val_accuracy"])
             print(f"📊 Best validation accuracy: {best_val_acc:.4f}")
-        if 'val_precision' in history.history and 'val_recall' in history.history:
-            best_val_precision = max(history.history['val_precision'])
-            best_val_recall = max(history.history['val_recall'])
+        if "val_precision" in history.history and "val_recall" in history.history:
+            best_val_precision = max(history.history["val_precision"])
+            best_val_recall = max(history.history["val_recall"])
             print(f"📊 Best validation precision: {best_val_precision:.4f}, recall: {best_val_recall:.4f}")
 
         return model
 
-    def generate_lstm_predictions(
-        self, model: tf.keras.Model, X: np.ndarray
-    ) -> np.ndarray:
+    def generate_lstm_predictions(self, model: tf.keras.Model, X: np.ndarray) -> np.ndarray:
         """
         Generate lstm_delta predictions with conservative memory management
         """
@@ -1126,27 +1089,19 @@ class HybridModelTrainer:
             try:
                 print(f"🚀 Generating predictions with batch size: {batch_size}")
                 predictions = model.predict(X, batch_size=batch_size, verbose=0)
-                print(
-                    f"✅ Predictions generated successfully with batch size {batch_size}"
-                )
+                print(f"✅ Predictions generated successfully with batch size {batch_size}")
                 break  # Success, exit the loop
 
             except (tf.errors.ResourceExhaustedError, tf.errors.InternalError) as e:
-                print(
-                    f"⚠️ Memory error during prediction with batch_size={batch_size}: {str(e)[:100]}..."
-                )
+                print(f"⚠️ Memory error during prediction with batch_size={batch_size}: {str(e)[:100]}...")
                 # Clear memory before trying next batch size
                 tf.keras.backend.clear_session()
                 if batch_size == batch_sizes[-1]:  # Last attempt
-                    raise RuntimeError(
-                        f"Unable to generate predictions - all batch sizes failed. Last error: {e}"
-                    )
+                    raise RuntimeError(f"Unable to generate predictions - all batch sizes failed. Last error: {e}")
                 continue
 
         if predictions is None:
-            raise RuntimeError(
-                "Prediction generation failed - no successful batch size found"
-            )
+            raise RuntimeError("Prediction generation failed - no successful batch size found")
 
         return predictions.flatten()
 
@@ -1186,7 +1141,7 @@ class HybridModelTrainer:
             "price_zscore_50",
             # Multi-timeframe volatility features
             "volatility_15min",
-            "volatility_30min", 
+            "volatility_30min",
             "volatility_1h",
             "volatility_4h",
             "vol_ratio_15min_30min",
@@ -1233,7 +1188,7 @@ class HybridModelTrainer:
             "price_vs_ema50",
             "price_vs_sma200",
             "price_vs_ema_30min",
-            "price_vs_ema_1h", 
+            "price_vs_ema_1h",
             "price_vs_ema_2h",
             "price_vs_ema_4h",
             "ema9_vs_ema21",
@@ -1275,13 +1230,13 @@ class HybridModelTrainer:
             # Multi-timeframe Momentum
             "momentum_10",
             "momentum_30min",
-            "momentum_1h", 
+            "momentum_1h",
             "momentum_2h",
             "momentum_4h",
             "momentum_alignment_short",
             "momentum_alignment_all",
             "momentum_ratio_30min_1h",
-            "momentum_ratio_1h_2h", 
+            "momentum_ratio_1h_2h",
             "momentum_ratio_2h_4h",
             "roc_10",
             # Support/Resistance
@@ -1310,12 +1265,8 @@ class HybridModelTrainer:
         # Persist feature column order for inference
         feature_dir = os.path.join(self.models_dir, "feature_columns")
         os.makedirs(feature_dir, exist_ok=True)
-        columns_path = os.path.join(
-            feature_dir, f"{symbol.lower()}_window_{window_idx}.pkl"
-        )
-        selected_path = os.path.join(
-            feature_dir, f"{symbol.lower()}_window_{window_idx}_selected.pkl"
-        )
+        columns_path = os.path.join(feature_dir, f"{symbol.lower()}_window_{window_idx}.pkl")
+        selected_path = os.path.join(feature_dir, f"{symbol.lower()}_window_{window_idx}_selected.pkl")
 
         try:
             with open(columns_path, "wb") as f:
@@ -1324,18 +1275,19 @@ class HybridModelTrainer:
             print(f"⚠️  Failed to save feature columns: {e}")
 
         # Filter available columns
-        available_features = [
-            col for col in feature_columns if col in features_df.columns
-        ]
+        available_features = [col for col in feature_columns if col in features_df.columns]
 
         # Create target: binary classification for 0.5%+ price increase within next hour
         # Calculate the maximum price reached within the next 4 periods (1 hour)
-        future_prices = features_df["close"].shift(-self.prediction_horizon).rolling(
-            window=self.prediction_horizon, min_periods=1
-        ).max()
-        # Calculate percentage increase from current price to maximum future price within horizon  
+        future_prices = (
+            features_df["close"]
+            .shift(-self.prediction_horizon)
+            .rolling(window=self.prediction_horizon, min_periods=1)
+            .max()
+        )
+        # Calculate percentage increase from current price to maximum future price within horizon
         max_price_change = (future_prices - features_df["close"]) / features_df["close"]
-        
+
         # Target is 1 if price increases by at least 0.5% within the next hour, 0 otherwise
         features_df["target"] = (max_price_change > self.price_change_threshold).astype(int)
 
@@ -1348,9 +1300,7 @@ class HybridModelTrainer:
         pre_clean_df = pre_clean_df.dropna()
         rows_dropped_pre = rows_before - len(pre_clean_df)
         if rows_dropped_pre > 0:
-            print(
-                f"📉 Dropped {rows_dropped_pre} rows with NaN before feature selection"
-            )
+            print(f"📉 Dropped {rows_dropped_pre} rows with NaN before feature selection")
 
         # Feature selection using Boruta on cleaned data
         if is_train:
@@ -1406,19 +1356,11 @@ class HybridModelTrainer:
                 if final_df[col].dtype in ["int64", "float64"]:
                     fill_value = final_df[col].median()
                     final_df[col] = final_df[col].fillna(fill_value)
-                    print(
-                        f"📊 Filled {col} ({nan_pct:.1%} NaN) with median: {fill_value:.6f}"
-                    )
+                    print(f"📊 Filled {col} ({nan_pct:.1%} NaN) with median: {fill_value:.6f}")
                 else:
-                    fill_value = (
-                        final_df[col].mode().iloc[0]
-                        if not final_df[col].mode().empty
-                        else 0
-                    )
+                    fill_value = final_df[col].mode().iloc[0] if not final_df[col].mode().empty else 0
                     final_df[col] = final_df[col].fillna(fill_value)
-                    print(
-                        f"📊 Filled {col} ({nan_pct:.1%} NaN) with mode: {fill_value}"
-                    )
+                    print(f"📊 Filled {col} ({nan_pct:.1%} NaN) with mode: {fill_value}")
 
             elif nan_pct > 0.1:  # Medium NaN percentage - forward fill then median
                 if final_df[col].dtype in ["int64", "float64"]:
@@ -1427,22 +1369,14 @@ class HybridModelTrainer:
                     if remaining_nan > 0:
                         fill_value = final_df[col].median()
                         final_df[col] = final_df[col].fillna(fill_value)
-                    print(
-                        f"📊 Forward filled {col} ({nan_pct:.1%} NaN), then median for remaining"
-                    )
+                    print(f"📊 Forward filled {col} ({nan_pct:.1%} NaN), then median for remaining")
                 else:
                     final_df[col] = final_df[col].ffill()
                     remaining_nan = final_df[col].isnull().sum()
                     if remaining_nan > 0:
-                        fill_value = (
-                            final_df[col].mode().iloc[0]
-                            if not final_df[col].mode().empty
-                            else 0
-                        )
+                        fill_value = final_df[col].mode().iloc[0] if not final_df[col].mode().empty else 0
                         final_df[col] = final_df[col].fillna(fill_value)
-                    print(
-                        f"📊 Forward filled {col} ({nan_pct:.1%} NaN), then mode for remaining"
-                    )
+                    print(f"📊 Forward filled {col} ({nan_pct:.1%} NaN), then mode for remaining")
 
         # After intelligent filling, drop remaining rows with NaN (should be minimal)
         rows_before_final_drop = len(final_df)
@@ -1453,19 +1387,14 @@ class HybridModelTrainer:
             print(f"📉 Dropped {rows_dropped} rows with remaining NaN values")
 
         # Additional validation: ensure no infinite values remain
-        if (
-            len(final_df) > 0
-            and np.isinf(final_df.select_dtypes(include=[np.number]).values).any()
-        ):
+        if len(final_df) > 0 and np.isinf(final_df.select_dtypes(include=[np.number]).values).any():
             print("⚠️  Warning: Infinite values still present after cleaning")
             # Force remove any remaining infinite values
             numeric_cols = final_df.select_dtypes(include=[np.number]).columns
             for col in numeric_cols:
                 final_df = final_df[np.isfinite(final_df[col])]
 
-        print(
-            f"📊 XGBoost features: {len(available_features)} features, {len(final_df)} samples after cleaning"
-        )
+        print(f"📊 XGBoost features: {len(available_features)} features, {len(final_df)} samples after cleaning")
         print(f"🎯 Target distribution: {final_df['target'].value_counts().to_dict()}")
 
         return final_df
@@ -1526,12 +1455,8 @@ class HybridModelTrainer:
         scale_pos_weight = neg_samples / pos_samples if pos_samples > 0 else 1.0
 
         print(f"📊 Class Distribution:")
-        print(
-            f"   Negative (0): {neg_samples:,} ({neg_samples/total_samples*100:.1f}%)"
-        )
-        print(
-            f"   Positive (1): {pos_samples:,} ({pos_samples/total_samples*100:.1f}%)"
-        )
+        print(f"   Negative (0): {neg_samples:,} ({neg_samples/total_samples*100:.1f}%)")
+        print(f"   Positive (1): {pos_samples:,} ({pos_samples/total_samples*100:.1f}%)")
         print(f"⚖️  Scale Pos Weight: {scale_pos_weight:.3f}")
 
         # Enhanced XGBoost with improved parameters
@@ -1564,11 +1489,7 @@ class HybridModelTrainer:
         model._feature_names = feature_names
 
         # Print training summary
-        best_iteration = (
-            model.best_iteration
-            if hasattr(model, "best_iteration")
-            else self.xgb_params["n_estimators"]
-        )
+        best_iteration = model.best_iteration if hasattr(model, "best_iteration") else self.xgb_params["n_estimators"]
         print(f"✅ XGBoost training completed. Best iteration: {best_iteration}")
 
         return model
@@ -1603,18 +1524,14 @@ class HybridModelTrainer:
         xgb_precision = precision_score(y_test, xgb_pred, zero_division=0)
         xgb_recall = recall_score(y_test, xgb_pred, zero_division=0)
         xgb_f1 = f1_score(y_test, xgb_pred, zero_division=0)
-        xgb_auc = (
-            roc_auc_score(y_test, xgb_pred_proba) if len(np.unique(y_test)) > 1 else 0.5
-        )
+        xgb_auc = roc_auc_score(y_test, xgb_pred_proba) if len(np.unique(y_test)) > 1 else 0.5
 
         # Confidence-based predictions (alternative thresholds)
         high_confidence_buys = (xgb_pred_proba > 0.7).astype(int)
         conservative_pred = (xgb_pred_proba > 0.6).astype(int)
 
         # Calculate metrics for different confidence levels
-        conf_precision_70 = precision_score(
-            y_test, high_confidence_buys, zero_division=0
-        )
+        conf_precision_70 = precision_score(y_test, high_confidence_buys, zero_division=0)
         conf_recall_70 = recall_score(y_test, high_confidence_buys, zero_division=0)
         conf_f1_70 = f1_score(y_test, high_confidence_buys, zero_division=0)
 
@@ -1634,12 +1551,8 @@ class HybridModelTrainer:
         print(f"      F1-Score:  {xgb_f1:.4f}")
         print(f"      AUC:       {xgb_auc:.4f}")
         print(f"   🎯 Confidence-Based Metrics:")
-        print(
-            f"      70% Threshold - P: {conf_precision_70:.4f}, R: {conf_recall_70:.4f}, F1: {conf_f1_70:.4f}"
-        )
-        print(
-            f"      60% Threshold - P: {conf_precision_60:.4f}, R: {conf_recall_60:.4f}, F1: {conf_f1_60:.4f}"
-        )
+        print(f"      70% Threshold - P: {conf_precision_70:.4f}, R: {conf_recall_70:.4f}, F1: {conf_f1_70:.4f}")
+        print(f"      60% Threshold - P: {conf_precision_60:.4f}, R: {conf_recall_60:.4f}, F1: {conf_f1_60:.4f}")
         print(f"   📈 Test Distribution: {dict(test_class_dist)}")
 
         return {
@@ -1734,9 +1647,7 @@ class HybridModelTrainer:
 
         print(f"📝 Results logged to {csv_path}")
 
-    def plot_feature_importance(
-        self, model: xgb.XGBClassifier, symbol: str, window_idx: int
-    ):
+    def plot_feature_importance(self, model: xgb.XGBClassifier, symbol: str, window_idx: int):
         """
         Generate and save feature importance plot
         """
@@ -1779,9 +1690,7 @@ class HybridModelTrainer:
         metrics_file = f"logs/{symbol.lower()}_metrics.csv"
 
         if not os.path.exists(metrics_file):
-            print(
-                f"📄 No existing metrics file found for {symbol}, starting from window 1"
-            )
+            print(f"📄 No existing metrics file found for {symbol}, starting from window 1")
             return 0
 
         try:
@@ -1825,12 +1734,8 @@ class HybridModelTrainer:
         start_window_idx = last_completed_window  # 0-based index
 
         if start_window_idx > 0:
-            print(
-                f"\n🔄 RESUME MODE: Skipping first {start_window_idx} completed windows"
-            )
-            print(
-                f"📊 Total windows: {len(windows)}, Starting from window: {start_window_idx + 1}"
-            )
+            print(f"\n🔄 RESUME MODE: Skipping first {start_window_idx} completed windows")
+            print(f"📊 Total windows: {len(windows)}, Starting from window: {start_window_idx + 1}")
         else:
             print(f"\n🆕 FRESH START: Training all {len(windows)} windows")
 
@@ -1852,9 +1757,7 @@ class HybridModelTrainer:
             test_data = df_features[test_start:test_end]
 
             if len(train_data) < self.min_training_samples:
-                print(
-                    f"⚠️  Skipping window {i+1}: insufficient training data ({len(train_data)} samples)"
-                )
+                print(f"⚠️  Skipping window {i+1}: insufficient training data ({len(train_data)} samples)")
                 continue
 
             # Prepare LSTM data for training window
@@ -1866,9 +1769,7 @@ class HybridModelTrainer:
                 continue
 
             if len(X_lstm) < 1000:
-                print(
-                    f"⚠️  Skipping window {i+1}: insufficient LSTM sequences ({len(X_lstm)})"
-                )
+                print(f"⚠️  Skipping window {i+1}: insufficient LSTM sequences ({len(X_lstm)})")
                 continue
 
             # Additional validation for LSTM targets
@@ -1885,12 +1786,10 @@ class HybridModelTrainer:
 
             # Scale LSTM data
             scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(
-                X_train_lstm.reshape(-1, X_train_lstm.shape[-1])
-            ).reshape(X_train_lstm.shape)
-            X_val_scaled = scaler.transform(
-                X_val_lstm.reshape(-1, X_val_lstm.shape[-1])
-            ).reshape(X_val_lstm.shape)
+            X_train_scaled = scaler.fit_transform(X_train_lstm.reshape(-1, X_train_lstm.shape[-1])).reshape(
+                X_train_lstm.shape
+            )
+            X_val_scaled = scaler.transform(X_val_lstm.reshape(-1, X_val_lstm.shape[-1])).reshape(X_val_lstm.shape)
 
             # Train LSTM with timing
             print(f"🧠 Starting LSTM training for window {i+1}...")
@@ -1903,31 +1802,24 @@ class HybridModelTrainer:
                         lstm_model = tf.keras.models.load_model(
                             prev_path,
                             compile=False,
-                            custom_objects={
-                                "directional_loss": directional_loss,
-                                "QuantileLoss": QuantileLoss
-                            },
+                            custom_objects={"DirectionalLoss": DirectionalLoss, "QuantileLoss": QuantileLoss},
                         )
-                        lr = tf.keras.optimizers.schedules.ExponentialDecay(
-                            1e-4, 1000, 0.96
-                        )
-                        # Use a proper loss function reference instead of calling quantile_loss
+                        lr = tf.keras.optimizers.schedules.ExponentialDecay(1e-4, 1000, 0.96)
+                        # Use proper loss class instance instead of calling quantile_loss
                         # which returns a closure and can cause serialization issues
                         from tensorflow.keras.metrics import MeanAbsoluteError, MeanSquaredError
-                        
+
                         lstm_model.compile(
                             optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
                             loss="binary_crossentropy",  # Use standard loss for binary classification
-                            metrics=[MeanAbsoluteError(name='mae'), MeanSquaredError(name='mse')],
+                            metrics=[MeanAbsoluteError(name="mae"), MeanSquaredError(name="mse")],
                         )
                         lstm_model.fit(
                             X_train_scaled,
                             y_train_lstm,
                             validation_data=(X_val_scaled, y_val_lstm),
                             epochs=50,
-                            callbacks=[
-                                EarlyStopping(patience=5, restore_best_weights=True)
-                            ],
+                            callbacks=[EarlyStopping(patience=5, restore_best_weights=True)],
                             verbose=0,
                         )
                         print("♻️ Warm started from previous window")
@@ -1946,9 +1838,7 @@ class HybridModelTrainer:
             print(f"✅ LSTM training completed in {lstm_time:.1f} minutes")
 
             # Generate LSTM predictions for full training period
-            X_full_scaled = scaler.transform(
-                X_lstm.reshape(-1, X_lstm.shape[-1])
-            ).reshape(X_lstm.shape)
+            X_full_scaled = scaler.transform(X_lstm.reshape(-1, X_lstm.shape[-1])).reshape(X_lstm.shape)
             lstm_delta_full = self.generate_lstm_predictions(lstm_model, X_full_scaled)
 
             # Prepare XGBoost data for training
@@ -1962,9 +1852,7 @@ class HybridModelTrainer:
             )
 
             if len(xgb_df) < 500:
-                print(
-                    f"⚠️  Skipping window {i+1}: insufficient XGBoost data ({len(xgb_df)} samples)"
-                )
+                print(f"⚠️  Skipping window {i+1}: insufficient XGBoost data ({len(xgb_df)} samples)")
                 continue
 
             # Split XGBoost data (80% train, 20% val)
@@ -1976,11 +1864,7 @@ class HybridModelTrainer:
             print(f"🌳 Starting XGBoost training for window {i+1}...")
             xgb_start = time.time()
             prev_xgb_path = f"{self.models_dir}/xgboost/{symbol.lower()}_window_{i}.json"
-            warm_start_path = (
-                prev_xgb_path
-                if (self.warm_start and i > 0 and os.path.exists(prev_xgb_path))
-                else None
-            )
+            warm_start_path = prev_xgb_path if (self.warm_start and i > 0 and os.path.exists(prev_xgb_path)) else None
             xgb_model = self.train_xgboost_model(
                 train_df_xgb,
                 val_df_xgb,
@@ -1990,9 +1874,7 @@ class HybridModelTrainer:
             print(f"✅ XGBoost training completed in {xgb_time:.1f} minutes")
 
             # Prepare test data
-            X_test_lstm, y_test_lstm, test_timestamps = self.prepare_lstm_data(
-                test_data
-            )
+            X_test_lstm, y_test_lstm, test_timestamps = self.prepare_lstm_data(test_data)
 
             # Validate test data preparation
             if len(X_test_lstm) == 0 or len(y_test_lstm) == 0:
@@ -2004,9 +1886,7 @@ class HybridModelTrainer:
                 print(f"⚠️  Skipping window {i+1}: invalid test LSTM targets detected")
                 continue
 
-            X_test_scaled = scaler.transform(
-                X_test_lstm.reshape(-1, X_test_lstm.shape[-1])
-            ).reshape(X_test_lstm.shape)
+            X_test_scaled = scaler.transform(X_test_lstm.reshape(-1, X_test_lstm.shape[-1])).reshape(X_test_lstm.shape)
             lstm_delta_test = self.generate_lstm_predictions(lstm_model, X_test_scaled)
 
             xgb_test_df = self.prepare_xgboost_features(
@@ -2029,9 +1909,7 @@ class HybridModelTrainer:
                 "xgb_df": xgb_test_df,
             }
 
-            window_results = self.evaluate_window(
-                i + 1, lstm_model, xgb_model, test_data_dict
-            )
+            window_results = self.evaluate_window(i + 1, lstm_model, xgb_model, test_data_dict)
             window_results["symbol"] = symbol
             window_results["train_start"] = train_start.strftime("%Y-%m-%d")
             window_results["train_end"] = train_end.strftime("%Y-%m-%d")
@@ -2042,16 +1920,12 @@ class HybridModelTrainer:
             # Calculate and display window timing
             window_time = (time.time() - window_start_time) / 60
             print(f"⏱️  Window {i+1} completed in {window_time:.1f} minutes")
-            print(
-                f"📊 Progress: {i+1}/{len(windows)} windows ({(i+1)/len(windows)*100:.1f}%)"
-            )
+            print(f"📊 Progress: {i+1}/{len(windows)} windows ({(i+1)/len(windows)*100:.1f}%)")
 
             # Estimate remaining time (account for resumed training)
             windows_completed_this_session = (i - start_window_idx) + 1
             if windows_completed_this_session > 0:
-                avg_time_per_window = (
-                    (time.time() - start_time) / windows_completed_this_session / 60
-                )
+                avg_time_per_window = (time.time() - start_time) / windows_completed_this_session / 60
                 remaining_windows = len(windows) - (i + 1)
                 estimated_remaining = avg_time_per_window * remaining_windows
                 print(f"🕐 Estimated remaining time: {estimated_remaining:.1f} minutes")
@@ -2068,12 +1942,8 @@ class HybridModelTrainer:
                 self.plot_feature_importance(xgb_model, symbol, i + 1)
 
             # Save models per window
-            lstm_model.save(
-                f"{self.models_dir}/lstm/{symbol.lower()}_window_{i+1}.keras"
-            )
-            xgb_model.save_model(
-                f"{self.models_dir}/xgboost/{symbol.lower()}_window_{i+1}.json"
-            )
+            lstm_model.save(f"{self.models_dir}/lstm/{symbol.lower()}_window_{i+1}.keras")
+            xgb_model.save_model(f"{self.models_dir}/xgboost/{symbol.lower()}_window_{i+1}.json")
             with open(
                 f"{self.models_dir}/scalers/{symbol.lower()}_window_{i+1}_scaler.pkl",
                 "wb",
@@ -2084,12 +1954,8 @@ class HybridModelTrainer:
             if i == len(windows) - 1:  # Last window
                 # Save final models
                 lstm_model.save(f"{self.models_dir}/lstm/{symbol.lower()}_lstm.h5")
-                xgb_model.save_model(
-                    f"{self.models_dir}/xgboost/{symbol.lower()}_xgboost.json"
-                )
-                with open(
-                    f"{self.models_dir}/scalers/{symbol.lower()}_scaler.pkl", "wb"
-                ) as f:
+                xgb_model.save_model(f"{self.models_dir}/xgboost/{symbol.lower()}_xgboost.json")
+                with open(f"{self.models_dir}/scalers/{symbol.lower()}_scaler.pkl", "wb") as f:
                     pickle.dump(scaler, f)
 
                 # Save feature importance
@@ -2100,9 +1966,7 @@ class HybridModelTrainer:
                         "importance": xgb_model.feature_importances_,
                     }
                 ).sort_values("importance", ascending=False)
-                importance_df.to_csv(
-                    f"results/{symbol.lower()}_feature_importance.csv", index=False
-                )
+                importance_df.to_csv(f"results/{symbol.lower()}_feature_importance.csv", index=False)
 
                 print(f"✅ Final models saved for {symbol}")
                 print(f"🔍 Top 5 features: {importance_df.head()['feature'].tolist()}")
@@ -2115,9 +1979,7 @@ class HybridModelTrainer:
         total_time = (time.time() - start_time) / 60
         if start_window_idx > 0:
             print(f"\n✅ RESUME TRAINING COMPLETED for {symbol}")
-            print(
-                f"📊 Resumed from window {start_window_idx + 1}, completed {len(results)} additional windows"
-            )
+            print(f"📊 Resumed from window {start_window_idx + 1}, completed {len(results)} additional windows")
             print(f"⏱️  Session time: {total_time:.1f} minutes")
         else:
             print(f"\n✅ FULL TRAINING COMPLETED for {symbol}")
@@ -2144,12 +2006,8 @@ class HybridModelTrainer:
 
         for i, symbol in enumerate(self.symbols, 1):
             symbol_start = time.time()
-            print(
-                f"\n🚀 Starting training for symbol {i}/{len(self.symbols)}: {symbol}"
-            )
-            print(
-                f"⏰ Symbol training started at: {datetime.now().strftime('%H:%M:%S')}"
-            )
+            print(f"\n🚀 Starting training for symbol {i}/{len(self.symbols)}: {symbol}")
+            print(f"⏰ Symbol training started at: {datetime.now().strftime('%H:%M:%S')}")
 
             try:
                 symbol_results = self.train_symbol_walkforward(symbol)
@@ -2158,20 +2016,14 @@ class HybridModelTrainer:
                 symbol_time = (time.time() - symbol_start) / 60
                 print(f"\n🎯 {symbol} Training Summary:")
                 print(f"⏱️  Total time: {symbol_time:.1f} minutes")
-                print(
-                    f"📊 Windows processed: {len(symbol_results)}/{len(windows) if 'windows' in locals() else 'N/A'}"
-                )
+                print(f"📊 Windows processed: {len(symbol_results)}")
 
                 if symbol_results:
                     # Calculate aggregated metrics
                     avg_lstm_mae = np.mean([r["lstm_mae"] for r in symbol_results])
                     avg_lstm_rmse = np.mean([r["lstm_rmse"] for r in symbol_results])
-                    avg_xgb_accuracy = np.mean(
-                        [r["xgb_accuracy"] for r in symbol_results]
-                    )
-                    avg_xgb_precision = np.mean(
-                        [r["xgb_precision"] for r in symbol_results]
-                    )
+                    avg_xgb_accuracy = np.mean([r["xgb_accuracy"] for r in symbol_results])
+                    avg_xgb_precision = np.mean([r["xgb_precision"] for r in symbol_results])
                     avg_xgb_recall = np.mean([r["xgb_recall"] for r in symbol_results])
                     avg_xgb_f1 = np.mean([r["xgb_f1"] for r in symbol_results])
                     avg_xgb_auc = np.mean([r["xgb_auc"] for r in symbol_results])
@@ -2181,9 +2033,7 @@ class HybridModelTrainer:
                     print(
                         f"   XGBoost: Acc={avg_xgb_accuracy:.4f}, Prec={avg_xgb_precision:.4f}, Rec={avg_xgb_recall:.4f}, F1={avg_xgb_f1:.4f}, AUC={avg_xgb_auc:.4f}"
                     )
-                    print(
-                        f"⏱️  Average time per window: {symbol_time/len(symbol_results):.1f} minutes"
-                    )
+                    print(f"⏱️  Average time per window: {symbol_time/len(symbol_results):.1f} minutes")
                 else:
                     print(f"⚠️  {symbol}: No valid windows processed")
 
@@ -2195,16 +2045,8 @@ class HybridModelTrainer:
         total_time = (time.time() - start_time) / 60
 
         # Calculate overall statistics
-        successful_symbols = [
-            s
-            for s in all_results
-            if isinstance(all_results[s], list) and all_results[s]
-        ]
-        failed_symbols = [
-            s
-            for s in all_results
-            if "error" in str(all_results[s]) or not all_results[s]
-        ]
+        successful_symbols = [s for s in all_results if isinstance(all_results[s], list) and all_results[s]]
+        failed_symbols = [s for s in all_results if "error" in str(all_results[s]) or not all_results[s]]
 
         # Aggregate metrics across all symbols
         all_window_results = []
@@ -2235,31 +2077,15 @@ class HybridModelTrainer:
         # Add aggregated metrics if we have results
         if all_window_results:
             summary["aggregated_metrics"] = {
-                "avg_lstm_mae": float(
-                    np.mean([r["lstm_mae"] for r in all_window_results])
-                ),
-                "avg_lstm_rmse": float(
-                    np.mean([r["lstm_rmse"] for r in all_window_results])
-                ),
-                "avg_xgb_accuracy": float(
-                    np.mean([r["xgb_accuracy"] for r in all_window_results])
-                ),
-                "avg_xgb_precision": float(
-                    np.mean([r["xgb_precision"] for r in all_window_results])
-                ),
-                "avg_xgb_recall": float(
-                    np.mean([r["xgb_recall"] for r in all_window_results])
-                ),
+                "avg_lstm_mae": float(np.mean([r["lstm_mae"] for r in all_window_results])),
+                "avg_lstm_rmse": float(np.mean([r["lstm_rmse"] for r in all_window_results])),
+                "avg_xgb_accuracy": float(np.mean([r["xgb_accuracy"] for r in all_window_results])),
+                "avg_xgb_precision": float(np.mean([r["xgb_precision"] for r in all_window_results])),
+                "avg_xgb_recall": float(np.mean([r["xgb_recall"] for r in all_window_results])),
                 "avg_xgb_f1": float(np.mean([r["xgb_f1"] for r in all_window_results])),
-                "avg_xgb_auc": float(
-                    np.mean([r["xgb_auc"] for r in all_window_results])
-                ),
-                "std_lstm_mae": float(
-                    np.std([r["lstm_mae"] for r in all_window_results])
-                ),
-                "std_xgb_accuracy": float(
-                    np.std([r["xgb_accuracy"] for r in all_window_results])
-                ),
+                "avg_xgb_auc": float(np.mean([r["xgb_auc"] for r in all_window_results])),
+                "std_lstm_mae": float(np.std([r["lstm_mae"] for r in all_window_results])),
+                "std_xgb_accuracy": float(np.std([r["xgb_accuracy"] for r in all_window_results])),
                 "std_xgb_f1": float(np.std([r["xgb_f1"] for r in all_window_results])),
             }
 
@@ -2301,9 +2127,7 @@ class HybridModelTrainer:
             print(
                 f"   XGBoost: Acc={agg['avg_xgb_accuracy']:.4f}±{agg['std_xgb_accuracy']:.4f}, F1={agg['avg_xgb_f1']:.4f}±{agg['std_xgb_f1']:.4f}, AUC={agg['avg_xgb_auc']:.4f}"
             )
-            print(
-                f"   Precision={agg['avg_xgb_precision']:.4f}, Recall={agg['avg_xgb_recall']:.4f}"
-            )
+            print(f"   Precision={agg['avg_xgb_precision']:.4f}, Recall={agg['avg_xgb_recall']:.4f}")
 
         print(f"📁 Results saved to: {results_file}")
 
