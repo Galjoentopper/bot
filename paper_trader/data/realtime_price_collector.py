@@ -39,8 +39,8 @@ class RealtimePriceCollector:
         # Price history for volatility calculations (last 60 updates per symbol)
         self.price_history: Dict[str, deque] = {}
         
-        # WebSocket connections per symbol
-        self.websocket_connections: Dict[str, websockets.WebSocketServerProtocol] = {}
+        # WebSocket connections per symbol  
+        self.websocket_connections: Dict[str, object] = {}
         
         # Callback functions for price updates
         self.price_update_callbacks: List[Callable[[PriceUpdate], None]] = []
@@ -112,8 +112,11 @@ class RealtimePriceCollector:
             
         # Close WebSocket connections
         for symbol, ws in list(self.websocket_connections.items()):
-            if ws and not ws.closed:
-                await ws.close()
+            if ws and hasattr(ws, 'closed') and not ws.closed:
+                try:
+                    await ws.close()
+                except Exception as e:
+                    self.logger.debug(f"Error closing WebSocket for {symbol}: {e}")
                 
         # Close HTTP client
         if self.http_client:
@@ -360,7 +363,11 @@ class RealtimePriceCollector:
             current_price = self.current_prices.get(symbol)
             
             status[symbol] = {
-                'connected': ws is not None and not ws.closed if ws else False,
+                'connected': (
+                    ws is not None and 
+                    hasattr(ws, 'closed') and 
+                    not ws.closed
+                ) if ws else False,
                 'last_update': last_update.isoformat() if last_update else None,
                 'seconds_since_update': (
                     (current_time - last_update).total_seconds() 
