@@ -397,8 +397,8 @@ class WindowBasedModelLoader:
         self.xgb_models: Dict[str, Dict[int, xgb.XGBRegressor]] = {}
         self.caboose_models: Dict[str, Dict[int, cb.CatBoostRegressor]] = {}
         self.scalers: Dict[str, Dict[int, StandardScaler]] = {}
-        # Feature column order used during training
-        self.feature_columns: Dict[str, Dict[int, List[str]]] = {}
+        # Feature column order used during training: {symbol: {model_type: {window: features}}}
+        self.feature_columns: Dict[str, Dict[str, Dict[int, List[str]]]] = {}
         
         # Available windows for each symbol
         self.available_windows: Dict[str, List[int]] = {}
@@ -416,7 +416,7 @@ class WindowBasedModelLoader:
             self.xgb_models[symbol] = {}
             self.caboose_models[symbol] = {}
             self.scalers[symbol] = {}
-            self.feature_columns[symbol] = {}
+            self.feature_columns[symbol] = {'lstm': {}, 'xgb': {}, 'caboose': {}}
             self.available_windows[symbol] = []
             
             # Discover available windows by scanning directories
@@ -511,108 +511,101 @@ class WindowBasedModelLoader:
             # Load feature column order per window
             feature_dir = self.model_path / 'feature_columns'
             if feature_dir.exists():
-                # First try to load selected features, but validate against model expectations
+                # Load selected features for XGBoost models (these are the correct features to use)
                 for fc_file in feature_dir.glob(f"{symbol_lower}_window_*_selected.pkl"):
                     try:
                         window_num = int(fc_file.stem.split('_window_')[1].split('_')[0])
                         with open(fc_file, 'rb') as f:
                             selected_cols = pickle.load(f)
                         
-                        # Check if we have a corresponding scaler to validate feature count
-                        scaler_file = self.model_path / 'scalers' / f"{symbol_lower}_window_{window_num}_scaler.pkl"
-                        expected_feature_count = None
-                        if scaler_file.exists():
-                            try:
-                                with open(scaler_file, 'rb') as sf:
-                                    scaler = pickle.load(sf)
-                                if hasattr(scaler, 'n_features_in_'):
-                                    expected_feature_count = scaler.n_features_in_
-                            except Exception as e:
-                                self.logger.warning(f"Could not load scaler to check feature count: {e}")
-                        
-                        # If selected features don't match expected count, try to find the right features
-                        if expected_feature_count and len(selected_cols) != expected_feature_count:
-                            self.logger.warning(
-                                f"Selected features count mismatch for {symbol} window {window_num}: "
-                                f"have {len(selected_cols)}, expected {expected_feature_count}. "
-                                f"Attempting to find compatible feature set."
-                            )
-                            
-                            # Try to load the full feature set instead
-                            full_features_file = feature_dir / f"{symbol_lower}_window_{window_num}.pkl"
-                            if full_features_file.exists():
-                                try:
-                                    with open(full_features_file, 'rb') as ff:
-                                        full_cols = pickle.load(ff)
-                                    
-                                    # Use the first N features from the full set that match expected count
-                                    if len(full_cols) >= expected_feature_count:
-                                        # Remove 'lstm_delta' if present as it's computed dynamically
-                                        filtered_cols = [col for col in full_cols if col != 'lstm_delta']
-                                        if len(filtered_cols) >= expected_feature_count:
-                                            compatible_cols = filtered_cols[:expected_feature_count]
-                                            self.feature_columns[symbol][window_num] = compatible_cols
-                                            self.logger.info(
-                                                f"✅ Feature fix applied for {symbol} window {window_num}: "
-                                                f"Using first {expected_feature_count} features from full set "
-                                                f"(was {len(selected_cols)} selected features)"
-                                            )
-                                        else:
-                                            self.feature_columns[symbol][window_num] = selected_cols
-                                            self.logger.warning(
-                                                f"Could not find {expected_feature_count} compatible features, using selected features"
-                                            )
-                                    else:
-                                        self.feature_columns[symbol][window_num] = selected_cols
-                                except Exception as e:
-                                    self.logger.warning(f"Failed to load full features: {e}")
-                                    self.feature_columns[symbol][window_num] = selected_cols
-                            else:
-                                self.feature_columns[symbol][window_num] = selected_cols
-                        else:
-                            self.feature_columns[symbol][window_num] = selected_cols
-                        
+                        # Store XGBoost features separately
+                        self.feature_columns[symbol]['xgb'][window_num] = selected_cols
                         windows_found.add(window_num)
                         self.logger.debug(
-                            f"Loaded {len(self.feature_columns[symbol][window_num])} feature columns for {symbol} window {window_num}"
+                            f"Loaded {len(selected_cols)} XGBoost feature columns for {symbol} window {window_num}"
                         )
                     except (ValueError, Exception) as e:
                         self.logger.warning(
-                            f"Failed to load feature columns {fc_file}: {e}"
+                            f"Failed to load selected feature columns {fc_file}: {e}"
+                        )
+                
+                # Load full features for LSTM models (different from selected XGBoost features)
+                for fc_file in feature_dir.glob(f"{symbol_lower}_window_*.pkl"):
+                    # Skip the _selected files as we already processed them
+                    if '_selected' in fc_file.stem:
+                        continue
+                        
+                    try:
+                        window_num = int(fc_file.stem.split('_window_')[1])
+                        
+                        # Load for LSTM models if we have an LSTM model for this window
+                        if window_num in self.lstm_models.get(symbol, {}):
+                            
+                            with open(fc_file, 'rb') as f:
+                                full_cols = pickle.load(f)
+                            
+                            # For LSTM models, use features based on scaler expectations
+                            scaler_file = self.model_path / 'scalers' / f"{symbol_lower}_window_{window_num}_scaler.pkl"
+                            expected_count = 17  # Default
+                            
+                            if scaler_file.exists():
+                                try:
+                                    with open(scaler_file, 'rb') as sf:
+                                        scaler = pickle.load(sf)
+                                    if hasattr(scaler, 'n_features_in_'):
+                                        expected_count = scaler.n_features_in_
+                                except Exception:
+                                    pass
+                            
+                            # Use the first N features from the full set, excluding dynamic features
+                            filtered_cols = [col for col in full_cols if col != 'lstm_delta']
+                            lstm_features = filtered_cols[:expected_count]
+                            
+                            # Store LSTM features separately
+                            self.feature_columns[symbol]['lstm'][window_num] = lstm_features
+                            windows_found.add(window_num)
+                            self.logger.debug(
+                                f"Loaded {len(lstm_features)} LSTM feature columns for {symbol} window {window_num}"
+                            )
+                            
+                    except (ValueError, Exception) as e:
+                        self.logger.warning(
+                            f"Failed to load full feature columns {fc_file}: {e}"
                         )
             
             # Ensure we have feature columns for all loaded models
-            for window in list(self.lstm_models[symbol].keys()) + list(self.xgb_models[symbol].keys()):
-                if window not in self.feature_columns[symbol]:
-                    # Fallback to LSTM_FEATURES for LSTM models or a sensible default
-                    if window in self.lstm_models[symbol]:
-                        # For LSTM models, use a subset of LSTM_FEATURES that matches model expectations
-                        scaler_file = self.model_path / 'scalers' / f"{symbol_lower}_window_{window}_scaler.pkl"
-                        expected_count = 17  # Default expectation based on error message
-                        
-                        if scaler_file.exists():
-                            try:
-                                with open(scaler_file, 'rb') as sf:
-                                    scaler = pickle.load(sf)
-                                if hasattr(scaler, 'n_features_in_'):
-                                    expected_count = scaler.n_features_in_
-                            except Exception:
-                                pass
-                        
-                        # Use the first N features from LSTM_FEATURES, excluding price columns that may not be appropriate
-                        feature_candidates = [f for f in LSTM_FEATURES if f not in ['close', 'open', 'high', 'low']]
-                        fallback_features = feature_candidates[:expected_count]
-                        self.feature_columns[symbol][window] = fallback_features
-                        self.logger.info(
-                            f"Using fallback LSTM features for {symbol} window {window}: {len(fallback_features)} features"
-                        )
-                    else:
-                        # For XGB models, use TRAINING_FEATURES
-                        from .feature_engineer import TRAINING_FEATURES
-                        self.feature_columns[symbol][window] = TRAINING_FEATURES
-                        self.logger.info(
-                            f"Using fallback training features for {symbol} window {window}: {len(TRAINING_FEATURES)} features"
-                        )
+            for window in list(self.lstm_models[symbol].keys()):
+                if window not in self.feature_columns[symbol]['lstm']:
+                    # For LSTM models, we need to determine the correct features based on scaler or architecture
+                    scaler_file = self.model_path / 'scalers' / f"{symbol_lower}_window_{window}_scaler.pkl"
+                    expected_count = 17  # Default expectation based on common LSTM model architecture
+                    
+                    if scaler_file.exists():
+                        try:
+                            with open(scaler_file, 'rb') as sf:
+                                scaler = pickle.load(sf)
+                            if hasattr(scaler, 'n_features_in_'):
+                                expected_count = scaler.n_features_in_
+                        except Exception:
+                            pass
+                    
+                    # Use a compatible subset of LSTM_FEATURES that matches expected count
+                    feature_candidates = [f for f in LSTM_FEATURES if f not in ['close', 'open', 'high', 'low']]
+                    fallback_features = feature_candidates[:expected_count]
+                    self.feature_columns[symbol]['lstm'][window] = fallback_features
+                    self.logger.info(
+                        f"Using fallback LSTM features for {symbol} window {window}: {len(fallback_features)} features"
+                    )
+                    windows_found.add(window)
+                    
+            for window in list(self.xgb_models[symbol].keys()):
+                if window not in self.feature_columns[symbol]['xgb']:
+                    # For XGBoost models, use TRAINING_FEATURES as fallback
+                    from .feature_engineer import TRAINING_FEATURES
+                    self.feature_columns[symbol]['xgb'][window] = TRAINING_FEATURES
+                    self.logger.info(
+                        f"Using fallback training features for {symbol} window {window}: {len(TRAINING_FEATURES)} features"
+                    )
                     windows_found.add(window)
             
             # Update available windows
@@ -740,18 +733,32 @@ class WindowBasedEnsemblePredictor:
                 self.logger.warning(f"No models available for {symbol}")
                 return None
 
-            required_cols = self.model_loader.feature_columns.get(symbol, {}).get(optimal_window)
-            if required_cols:
-                missing = [c for c in required_cols if c not in features.columns]
-                # Allow computing lstm_delta later if missing
-                if 'lstm_delta' in missing:
-                    missing.remove('lstm_delta')
-                if missing:
-                    self.logger.warning(f"Missing required feature columns for {symbol}: {missing}")
-                    return None
-            
             # Get available models for the selected window
             available_models = self.model_loader.get_available_models(symbol, optimal_window)
+            
+            # Check feature requirements for available models
+            feature_check_passed = True
+            if available_models['lstm']:
+                lstm_cols = self.model_loader.feature_columns.get(symbol, {}).get('lstm', {}).get(optimal_window)
+                if lstm_cols:
+                    missing = [c for c in lstm_cols if c not in features.columns]
+                    # Allow computing lstm_delta later if missing
+                    if 'lstm_delta' in missing:
+                        missing.remove('lstm_delta')
+                    if missing:
+                        self.logger.warning(f"Missing LSTM feature columns for {symbol}: {missing}")
+                        feature_check_passed = False
+                        
+            if available_models['xgb']:
+                xgb_cols = self.model_loader.feature_columns.get(symbol, {}).get('xgb', {}).get(optimal_window)
+                if xgb_cols:
+                    missing = [c for c in xgb_cols if c not in features.columns]
+                    if missing:
+                        self.logger.warning(f"Missing XGBoost feature columns for {symbol}: {missing}")
+                        # XGBoost can still work with missing features filled with zeros
+                        
+            if not feature_check_passed:
+                return None
             
             predictions = {}
             confidence_scores = {}
@@ -772,12 +779,17 @@ class WindowBasedEnsemblePredictor:
                 except Exception as e:
                     self.logger.warning(f"LSTM model failed for {symbol} window {optimal_window}, skipping: {e}")
 
-            # Append lstm_delta to features if required
-            if lstm_pred is not None and required_cols and 'lstm_delta' in required_cols:
-                base_price = current_price if current_price is not None else features['close'].iloc[-1]
-                delta = (lstm_pred - base_price) / base_price
-                features = features.copy()
-                features['lstm_delta'] = delta
+            # Append lstm_delta to features if required by any model
+            if lstm_pred is not None:
+                # Check if any model needs lstm_delta
+                lstm_cols = self.model_loader.feature_columns.get(symbol, {}).get('lstm', {}).get(optimal_window, [])
+                xgb_cols = self.model_loader.feature_columns.get(symbol, {}).get('xgb', {}).get(optimal_window, [])
+                
+                if 'lstm_delta' in lstm_cols or 'lstm_delta' in xgb_cols:
+                    base_price = current_price if current_price is not None else features['close'].iloc[-1]
+                    delta = (lstm_pred - base_price) / base_price
+                    features = features.copy()
+                    features['lstm_delta'] = delta
             
             # XGBoost Prediction with selected window
             if available_models['xgb']:
@@ -877,24 +889,25 @@ class WindowBasedEnsemblePredictor:
             
             # Use stored feature columns if available, otherwise fall back to TRAINING_FEATURES
             if (symbol in self.model_loader.feature_columns and 
-                window in self.model_loader.feature_columns[symbol]):
-                expected_feature_cols = self.model_loader.feature_columns[symbol][window]
+                'lstm' in self.model_loader.feature_columns[symbol] and
+                window in self.model_loader.feature_columns[symbol]['lstm']):
+                expected_feature_cols = self.model_loader.feature_columns[symbol]['lstm'][window]
                 feature_cols = [col for col in expected_feature_cols if col in feature_data.columns]
                 missing_features = [col for col in expected_feature_cols if col not in feature_data.columns]
                 
                 if missing_features:
-                    self.logger.warning(f"Missing features for {symbol} window {window}: {missing_features}")
+                    self.logger.warning(f"Missing LSTM features for {symbol} window {window}: {missing_features}")
                     # Fill missing features with zeros
                     for col in missing_features:
                         feature_data[col] = 0.0
                     feature_cols = expected_feature_cols
                 
-                self.logger.debug(f"Using {len(feature_cols)} features for {symbol} window {window}: {feature_cols}")
+                self.logger.debug(f"Using {len(feature_cols)} LSTM features for {symbol} window {window}: {feature_cols}")
             else:
                 # Fallback to TRAINING_FEATURES for compatibility with older models
                 from .feature_engineer import TRAINING_FEATURES
                 feature_cols = [col for col in TRAINING_FEATURES if col in feature_data.columns]
-                self.logger.warning(f"No feature columns found for {symbol} window {window}, using TRAINING_FEATURES fallback")
+                self.logger.warning(f"No LSTM feature columns found for {symbol} window {window}, using TRAINING_FEATURES fallback")
                 
             if scaler is not None and feature_cols:
                 try:
@@ -978,7 +991,15 @@ class WindowBasedEnsemblePredictor:
                 return None, 0.0
             
             model = self.model_loader.xgb_models[symbol][window]
-            feature_columns = self.model_loader.feature_columns.get(symbol, {}).get(window)
+            
+            # Get XGBoost-specific feature columns
+            if (symbol in self.model_loader.feature_columns and 
+                'xgb' in self.model_loader.feature_columns[symbol] and
+                window in self.model_loader.feature_columns[symbol]['xgb']):
+                feature_columns = self.model_loader.feature_columns[symbol]['xgb'][window]
+            else:
+                self.logger.warning(f"No XGBoost feature columns found for {symbol} window {window}")
+                return None, 0.0
 
             if not feature_columns:
                 self.logger.warning(
