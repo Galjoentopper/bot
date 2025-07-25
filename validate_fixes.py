@@ -12,7 +12,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 def test_window_selection():
-    """Test that first 15 windows are now being used"""
+    """Test that the 15 most recent windows are now being used"""
     print("=== Testing Window Selection ===")
     
     config = BacktestConfig()
@@ -26,12 +26,12 @@ def test_window_selection():
     print(f"Using first window: {available_windows[0]}")
     print(f"Using last window: {available_windows[-1]}")
     
-    # Verify these are the first 15 windows (should be 3-17)
-    expected_first_15 = list(range(3, 18))  # 3, 4, 5, ..., 17
+    # Verify these are the 15 most recent windows (should be 1-15)
+    expected_first_15 = list(range(1, 16))  # 1, 2, 3, ..., 15
     actual_first_15 = available_windows[:15] if len(available_windows) >= 15 else available_windows
     
     if actual_first_15 == expected_first_15:
-        print("✅ PASS: Using first 15 windows as expected (3-17)")
+        print("✅ PASS: Using 15 most recent windows as expected (1-15)")
     else:
         print(f"❌ FAIL: Expected {expected_first_15}, got {actual_first_15}")
     

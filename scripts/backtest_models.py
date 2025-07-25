@@ -1321,7 +1321,7 @@ class ModelBacktester:
         return None
 
     def _get_available_windows(self, symbol: str) -> List[int]:
-        """Get list of available window numbers for a symbol, limited to windows 2-15"""
+        """Get list of available window numbers for a symbol, limited to the 15 most recent windows"""
         import glob
         import re
         
@@ -1350,12 +1350,14 @@ class ModelBacktester:
                 print(f"    ⚠️ No common windows found for {symbol}")
             return []
         
-        # Use specific windows 2-15 instead of last 15 windows
-        target_windows = list(range(2, 16))  # Windows 2-15
-        available_target_windows = [w for w in target_windows if w in common_windows]
+        # Use the 15 most recent windows available
+        if len(common_windows) >= 15:
+            available_target_windows = common_windows[-15:]  # Last 15 windows
+        else:
+            available_target_windows = common_windows  # All available windows if less than 15
         
         if self.config.verbose:
-            print(f"    📊 Available windows for {symbol}: {len(common_windows)} total, using windows 2-15: {available_target_windows}")
+            print(f"    📊 Available windows for {symbol}: {len(common_windows)} total, using 15 most recent: {available_target_windows}")
         
         return available_target_windows
     

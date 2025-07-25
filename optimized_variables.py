@@ -1005,8 +1005,8 @@ Examples:
                        help='Optimization method (default: bayesian)')
     
     parser.add_argument('--mode', choices=['conservative', 'balanced', 'aggressive', 'profit_focused', 'high_frequency'],
-                       default='high_frequency',
-                       help='Optimization mode determining parameter ranges (default: high_frequency)')
+                       default='profit_focused',
+                       help='Optimization mode determining parameter ranges (default: profit_focused)')
     
     parser.add_argument('--objective', choices=['sharpe_ratio', 'total_return', 'calmar_ratio', 'profit_factor'],
                        default='profit_factor',

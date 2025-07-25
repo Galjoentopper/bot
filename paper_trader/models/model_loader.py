@@ -566,18 +566,21 @@ class WindowBasedModelLoader:
         return status
     
     def get_optimal_window(self, symbol: str, market_volatility: float, trend_strength: float) -> Optional[int]:
-        """Select optimal window based on market conditions."""
+        """Select optimal window based on market conditions from the 15 most recent windows."""
         if symbol not in self.available_windows or not self.available_windows[symbol]:
             return None
 
         windows = sorted(self.available_windows[symbol])
 
+        # For high volatility, use the most recent windows (last 5)
         if market_volatility > 0.7:
             return max(windows[-5:])
+        # For strong trends, use a window from the more recent ones
         elif trend_strength > 0.6 and len(windows) >= 10:
             return windows[-10]
+        # Default: use the most recent window available
         else:
-            return windows[-15] if len(windows) >= 15 else windows[-1]
+            return windows[-1] if windows else None
     
     def get_available_models(self, symbol: str, window: int) -> Dict[str, bool]:
         """Check which models are available for a specific symbol and window."""
