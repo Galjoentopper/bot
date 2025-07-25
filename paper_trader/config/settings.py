@@ -37,14 +37,15 @@ class TradingSettings:
     position_cooldown_minutes: int = int(os.getenv('POSITION_COOLDOWN_MINUTES', '5'))
     max_daily_trades_per_symbol: int = int(os.getenv('MAX_DAILY_TRADES_PER_SYMBOL', '50'))
 
-    # Data interval for candles
-    candle_interval: str = os.getenv('CANDLE_INTERVAL', '1m')
+    # Data interval for candles - using 15m to match ML model training data
+    candle_interval: str = os.getenv('CANDLE_INTERVAL', '15m')
     
     # Symbols
     symbols: List[str] = None
     
-    # Model Configuration
+    # Model Configuration  
     model_path: str = os.getenv('MODEL_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'models'))
+    # Sequence length: 96 candles = 24 hours of 15-minute data (matches training)
     sequence_length: int = int(os.getenv('SEQUENCE_LENGTH', '96'))
     
     # Window-based Model Configuration
@@ -78,19 +79,21 @@ class TradingSettings:
     bitvavo_base_url: str = os.getenv('BITVAVO_BASE_URL', 'https://api.bitvavo.com/v2')
     bitvavo_ws_url: str = os.getenv('BITVAVO_WS_URL', 'wss://ws.bitvavo.com/v2')
     
-    # Data Collection Configuration
+    # Data Collection Configuration (optimized for 15-minute candles)
     data_cache_max_size: int = int(os.getenv('DATA_CACHE_MAX_SIZE', '1000'))
     buffer_initialization_limit: int = int(os.getenv('BUFFER_INITIALIZATION_LIMIT', '300'))
     min_data_length: int = int(os.getenv('MIN_DATA_LENGTH', '250'))
     max_buffer_size: int = int(os.getenv('MAX_BUFFER_SIZE', '500'))
+    # Update API every 15 minutes to align with candle intervals
     api_update_interval_minutes: int = int(os.getenv('API_UPDATE_INTERVAL_MINUTES', '15'))
     sufficient_data_multiplier: int = int(os.getenv('SUFFICIENT_DATA_MULTIPLIER', '2'))
     healthy_buffer_threshold: int = int(os.getenv('HEALTHY_BUFFER_THRESHOLD', '100'))
     
-    # Network Configuration
+    # Network Configuration (adjusted for 15-minute data intervals)
     api_timeout_seconds: int = int(os.getenv('API_TIMEOUT_SECONDS', '20'))
     price_api_timeout_seconds: int = int(os.getenv('PRICE_API_TIMEOUT_SECONDS', '5'))
-    websocket_sleep_seconds: int = int(os.getenv('WEBSOCKET_SLEEP_SECONDS', '60'))
+    # WebSocket sleep adjusted for 15-minute intervals - check more frequently than candle updates
+    websocket_sleep_seconds: int = int(os.getenv('WEBSOCKET_SLEEP_SECONDS', '300'))  # 5 minutes
     api_retry_delay_min: float = float(os.getenv('API_RETRY_DELAY_MIN', '0.2'))
     api_retry_delay_max: float = float(os.getenv('API_RETRY_DELAY_MAX', '0.6'))
     

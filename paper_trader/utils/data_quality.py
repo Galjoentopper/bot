@@ -45,9 +45,9 @@ class DataQualityMonitor:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         
-        # Quality thresholds
+        # Quality thresholds (adjusted for 15-minute data)
         self.thresholds = {
-            'max_gap_minutes': 5,
+            'max_gap_minutes': 30,  # 30 minutes for 15-minute candles (2 periods)
             'min_volume_threshold': 1000,
             'max_price_deviation': 0.1,  # 10% single-candle move
             'max_spread_pct': 0.05,  # 5% bid-ask spread
@@ -251,7 +251,8 @@ class DataQualityMonitor:
         
         # Check for time gaps
         time_diffs = data.index.to_series().diff().dropna()
-        expected_interval = time_diffs.mode().iloc[0] if not time_diffs.empty else pd.Timedelta(minutes=1)
+        # Calculate expected interval (should be 15 minutes for our data)
+        expected_interval = time_diffs.mode().iloc[0] if not time_diffs.empty else pd.Timedelta(minutes=15)
         
         large_gaps = time_diffs > expected_interval * 2
         if large_gaps.any():
