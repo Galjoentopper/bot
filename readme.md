@@ -182,9 +182,32 @@ The bot supports multiple cryptocurrency pairs on Bitvavo, including:
 - ETH-EUR
 - And other major pairs (configurable in settings)
 
+## 🧪 Testing
+
+The project includes a comprehensive test suite to ensure reliability:
+
+```bash
+# Run core tests (recommended)
+python run_tests.py core
+
+# Run specific test categories
+python run_tests.py config      # Configuration tests
+python run_tests.py portfolio   # Portfolio management tests
+
+# Run all tests
+python run_tests.py all -v
+```
+
+For detailed testing information, see [docs/TESTING.md](docs/TESTING.md).
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+When contributing:
+1. Run the test suite: `python run_tests.py core`
+2. Add tests for new functionality
+3. Update documentation as needed
 
 ## ⚠️ Disclaimer
 
