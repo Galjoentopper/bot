@@ -736,7 +736,7 @@ class EnhancedPaperTrader:
             self.api_update_task = asyncio.create_task(
                 self.data_collector.update_data_periodically(
                     self.settings.symbols,
-                    interval_minutes=1
+                    interval_minutes=self.settings.api_update_interval_minutes  # Use settings value (15 min)
                 )
             )
 
