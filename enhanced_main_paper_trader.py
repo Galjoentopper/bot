@@ -413,9 +413,7 @@ class EnhancedPaperTrader:
 
         # Get current price
         await self.data_collector.refresh_latest_price(symbol)
-        current_price = self.data_collector.get_latest_price(symbol)
-        if current_price is None:
-            current_price = await self.data_collector.get_current_price(symbol)
+        current_price = await self.data_collector.get_current_price_for_trading(symbol)
         if current_price is None:
             return False
 
@@ -513,7 +511,7 @@ class EnhancedPaperTrader:
             
             for symbol, pos_list in list(self.portfolio_manager.positions.items()):
                 try:
-                    current_price = await self.data_collector.get_current_price(symbol)
+                    current_price = await self.data_collector.get_current_price_for_trading(symbol)
                     if current_price is None:
                         continue
 
@@ -584,7 +582,7 @@ class EnhancedPaperTrader:
             # Get current prices
             current_prices = {}
             for symbol in self.portfolio_manager.positions.keys():
-                price = await self.data_collector.get_current_price(symbol)
+                price = await self.data_collector.get_current_price_for_trading(symbol)
                 if price:
                     current_prices[symbol] = price
             

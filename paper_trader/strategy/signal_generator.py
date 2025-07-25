@@ -198,9 +198,24 @@ class SignalGenerator:
             self.logger.warning(f"Invalid confidence value: {prediction['confidence']}")
             return False
         
-        if abs(prediction['price_change_pct']) > 0.5:  # More than 50% change seems unrealistic
-            self.logger.warning(f"Unrealistic price change: {prediction['price_change_pct']}")
+        # More sophisticated unrealistic price change detection
+        price_change_pct = abs(prediction['price_change_pct'])
+        max_reasonable_change = 0.15  # 15% maximum for crypto markets
+        
+        if price_change_pct > max_reasonable_change:
+            self.logger.warning(
+                f"⚠️ Potentially unrealistic price change prediction for trade: {prediction['price_change_pct']*100:.2f}% "
+                f"(threshold: {max_reasonable_change*100:.1f}%) - current: {prediction.get('current_price', 'N/A')}, "
+                f"predicted: {prediction.get('predicted_price', 'N/A')}"
+            )
             return False
+        
+        # Warn for moderately high changes but still allow them
+        if price_change_pct > 0.08:  # 8% warning threshold
+            self.logger.info(
+                f"📈 High price change prediction: {prediction['price_change_pct']*100:.2f}% - "
+                f"current: {prediction.get('current_price', 'N/A')}, predicted: {prediction.get('predicted_price', 'N/A')}"
+            )
         
         return True
 

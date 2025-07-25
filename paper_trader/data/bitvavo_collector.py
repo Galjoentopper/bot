@@ -434,6 +434,47 @@ class BitvavoDataCollector:
             self.logger.error(f"Error fetching current price for {symbol}: {e}")
             return None
 
+    async def get_current_price_for_trading(self, symbol: str) -> Optional[float]:
+        """Get the most current price for trading decisions, always using live API."""
+        try:
+            url = f"{self.base_url}/ticker/price"
+            params = {'market': symbol}
+
+            response = requests.get(url, params=params, timeout=self.settings.price_api_timeout_seconds)
+            response.raise_for_status()
+
+            data = response.json()
+            current_price = float(data['price'])
+            
+            # Log price comparison for monitoring
+            if (symbol in self.data_buffers and not self.data_buffers[symbol].empty):
+                buffer_price = float(self.data_buffers[symbol]['close'].iloc[-1])
+                price_diff = abs(current_price - buffer_price) / buffer_price if buffer_price else 0
+                latest_ts = self.data_buffers[symbol].index[-1]
+                age_minutes = (datetime.now() - latest_ts).total_seconds() / 60
+                
+                self.logger.debug(
+                    f"Trading price for {symbol}: live={current_price:.4f}, buffer={buffer_price:.4f}, "
+                    f"diff={price_diff*100:.2f}%, buffer_age={age_minutes:.1f}min"
+                )
+                
+                # Warn if there's a significant difference
+                if price_diff > 0.02:  # 2% difference
+                    self.logger.warning(
+                        f"⚠️ Price discrepancy for {symbol}: live API={current_price:.4f}, "
+                        f"buffer={buffer_price:.4f} (diff: {price_diff*100:.2f}%, age: {age_minutes:.1f}min)"
+                    )
+            
+            return current_price
+
+        except Exception as e:
+            self.logger.error(f"Error fetching current trading price for {symbol}: {e}")
+            # Fallback to buffer price if API fails
+            if (symbol in self.data_buffers and not self.data_buffers[symbol].empty):
+                self.logger.warning(f"Falling back to buffer price for {symbol}")
+                return float(self.data_buffers[symbol]['close'].iloc[-1])
+            return None
+
     async def refresh_latest_price(self, symbol: str) -> None:
         """Update the latest candle close with the most recent price."""
         try:
@@ -445,16 +486,42 @@ class BitvavoDataCollector:
             ):
                 last_close = float(self.data_buffers[symbol]['close'].iloc[-1])
                 price_diff = abs(price - last_close) / last_close if last_close else 0
-                if price_diff < 0.05:  # avoid overwriting with stale data
+                
+                # More sophisticated price validation logic
+                # Check how old the last candle is to determine appropriate threshold
+                latest_candle_time = self.data_buffers[symbol].index[-1]
+                time_since_candle = (datetime.now() - latest_candle_time).total_seconds() / 60  # minutes
+                
+                # Dynamic threshold based on time since last candle update
+                # Allow larger differences for older candles (up to 15% for very old data)
+                max_threshold = min(0.15, 0.02 + (time_since_candle / 60) * 0.10)  # 2% base + up to 10% for age
+                
+                self.logger.debug(
+                    f"Price validation for {symbol}: current={price:.4f}, buffer={last_close:.4f}, "
+                    f"diff={price_diff:.4f} ({price_diff*100:.2f}%), threshold={max_threshold:.4f} ({max_threshold*100:.2f}%), "
+                    f"age={time_since_candle:.1f}min"
+                )
+                
+                if price_diff <= max_threshold:
                     self.data_buffers[symbol].iloc[-1, self.data_buffers[symbol].columns.get_loc('close')] = price
                     # Keep last_update in sync with the candle timestamp to
                     # avoid triggering multiple predictions for interim updates
                     self.last_update[symbol] = self.data_buffers[symbol].index[-1]
-                    self.logger.debug(f"Refreshed {symbol} price to {price}")
+                    self.logger.debug(f"✅ Refreshed {symbol} price: {last_close:.4f} -> {price:.4f} (diff: {price_diff*100:.2f}%)")
                 else:
-                    self.logger.warning(
-                        f"Skipped refreshing {symbol} price due to large difference: {last_close} -> {price}"
-                    )
+                    # Log detailed warning but still update if the data is very old (>30 min)
+                    if time_since_candle > 30:
+                        self.logger.warning(
+                            f"⚠️ Large price difference for {symbol} but updating due to stale data (>{time_since_candle:.1f}min old): "
+                            f"{last_close:.4f} -> {price:.4f} (diff: {price_diff*100:.2f}%)"
+                        )
+                        self.data_buffers[symbol].iloc[-1, self.data_buffers[symbol].columns.get_loc('close')] = price
+                        self.last_update[symbol] = self.data_buffers[symbol].index[-1]
+                    else:
+                        self.logger.warning(
+                            f"❌ Rejected price update for {symbol} due to large difference: "
+                            f"{last_close:.4f} -> {price:.4f} (diff: {price_diff*100:.2f}% > {max_threshold*100:.2f}%)"
+                        )
         except Exception as e:
             self.logger.warning(f"Failed to refresh price for {symbol}: {e}")
 

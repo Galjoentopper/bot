@@ -463,11 +463,9 @@ class PaperTrader:
                 self.trading_logger.warning(f"❌ INSUFFICIENT FEATURES for {symbol}: {actual_features}/{self.settings.sequence_length}")
                 return False
             
-            # Refresh and get current price using buffer first for consistency
+            # Refresh buffer price first, then get most current price for trading
             await self.data_collector.refresh_latest_price(symbol)
-            current_price = self.data_collector.get_latest_price(symbol)
-            if current_price is None:
-                current_price = await self.data_collector.get_current_price(symbol)
+            current_price = await self.data_collector.get_current_price_for_trading(symbol)
             if current_price is None:
                 self.trading_logger.warning(f"❌ COULD NOT GET CURRENT PRICE for {symbol}")
                 return False
@@ -568,8 +566,8 @@ class PaperTrader:
             
             for symbol, pos_list in list(self.portfolio_manager.positions.items()):
                 try:
-                    # Get current price
-                    current_price = await self.data_collector.get_current_price(symbol)
+                    # Get current price for exit checks
+                    current_price = await self.data_collector.get_current_price_for_trading(symbol)
                     if current_price is None:
                         continue
 
@@ -642,9 +640,7 @@ class PaperTrader:
                 return None
 
             await self.data_collector.refresh_latest_price(symbol)
-            current_price = self.data_collector.get_latest_price(symbol)
-            if current_price is None:
-                current_price = await self.data_collector.get_current_price(symbol)
+            current_price = await self.data_collector.get_current_price_for_trading(symbol)
             if current_price is None:
                 return None
 
@@ -669,7 +665,7 @@ class PaperTrader:
         positions = self.portfolio_manager.positions.get(symbol, [])
 
         for position in list(positions):
-            current_price = await self.data_collector.get_current_price(symbol)
+            current_price = await self.data_collector.get_current_price_for_trading(symbol)
             if current_price is None:
                 continue
 
@@ -728,7 +724,7 @@ class PaperTrader:
             self.trading_logger.warning(f"❌ Max positions reached for {symbol}: {len(current_positions)}/{self.settings.max_positions_per_symbol}")
             return False
 
-        current_price = await self.data_collector.get_current_price(symbol)
+        current_price = await self.data_collector.get_current_price_for_trading(symbol)
         if current_price is None:
             self.trading_logger.warning(f"❌ Could not get current price for {symbol}")
             return False
@@ -822,7 +818,7 @@ class PaperTrader:
             # Get current prices for all positions
             current_prices = {}
             for symbol in self.portfolio_manager.positions.keys():
-                price = await self.data_collector.get_current_price(symbol)
+                price = await self.data_collector.get_current_price_for_trading(symbol)
                 if price:
                     current_prices[symbol] = price
             
