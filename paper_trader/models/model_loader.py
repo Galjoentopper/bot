@@ -553,7 +553,9 @@ class WindowBasedModelLoader:
                                             compatible_cols = filtered_cols[:expected_feature_count]
                                             self.feature_columns[symbol][window_num] = compatible_cols
                                             self.logger.info(
-                                                f"Using first {expected_feature_count} features from full set for {symbol} window {window_num}"
+                                                f"✅ Feature fix applied for {symbol} window {window_num}: "
+                                                f"Using first {expected_feature_count} features from full set "
+                                                f"(was {len(selected_cols)} selected features)"
                                             )
                                         else:
                                             self.feature_columns[symbol][window_num] = selected_cols
