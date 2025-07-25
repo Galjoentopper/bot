@@ -12,6 +12,7 @@ import pandas as pd
 import time
 import zipfile
 import io
+import random
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 import logging
@@ -38,9 +39,102 @@ class BinanceDataCollector:
         # Create data directory if it doesn't exist
         os.makedirs(self.data_dir, exist_ok=True)
         
-        # Rate limiting
-        self.request_delay = 0.1  # 100ms between requests
-        self.bulk_request_delay = 0.5  # 500ms between bulk file downloads
+        # Rate limiting with improved defaults
+        self.request_delay = 1.0  # 1 second between requests (increased from 0.1)
+        self.bulk_request_delay = 2.0  # 2 seconds between bulk file downloads (increased from 0.5) 
+        
+        # Retry configuration
+        self.max_retries = 3
+        self.base_backoff_delay = 2.0  # Base delay for exponential backoff
+        self.max_backoff_delay = 60.0  # Maximum backoff delay
+        
+        # Adaptive batch sizing
+        self.default_api_batch_size = 1000
+        self.default_regular_batch_size = 500
+        self.min_batch_size = 50
+        self.current_api_batch_size = self.default_api_batch_size
+        self.current_regular_batch_size = self.default_regular_batch_size
+        
+    def _retry_with_backoff(self, func, *args, **kwargs):
+        """
+        Execute a function with retry logic and exponential backoff
+        
+        Args:
+            func: Function to execute
+            *args: Arguments for the function
+            **kwargs: Keyword arguments for the function
+            
+        Returns:
+            Function result or None if all retries failed
+        """
+        for attempt in range(self.max_retries):
+            try:
+                result = func(*args, **kwargs)
+                
+                # If we got a result, reset batch sizes to default on success
+                if result is not None:
+                    self.current_api_batch_size = min(
+                        self.current_api_batch_size + 50, 
+                        self.default_api_batch_size
+                    )
+                    self.current_regular_batch_size = min(
+                        self.current_regular_batch_size + 25, 
+                        self.default_regular_batch_size
+                    )
+                
+                return result
+                
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 451:  # Rate limit error
+                    # Reduce batch sizes on rate limit
+                    self.current_api_batch_size = max(
+                        self.current_api_batch_size // 2, 
+                        self.min_batch_size
+                    )
+                    self.current_regular_batch_size = max(
+                        self.current_regular_batch_size // 2, 
+                        self.min_batch_size
+                    )
+                    
+                    if attempt < self.max_retries - 1:
+                        # Calculate exponential backoff with jitter
+                        backoff_delay = min(
+                            self.base_backoff_delay * (2 ** attempt),
+                            self.max_backoff_delay
+                        )
+                        # Add jitter to prevent thundering herd
+                        jitter = random.uniform(0.1, 0.3) * backoff_delay
+                        total_delay = backoff_delay + jitter
+                        
+                        logger.warning(
+                            f"Rate limit hit (attempt {attempt + 1}/{self.max_retries}), "
+                            f"reduced batch sizes to API:{self.current_api_batch_size}, "
+                            f"Regular:{self.current_regular_batch_size}, "
+                            f"waiting {total_delay:.1f}s before retry"
+                        )
+                        
+                        time.sleep(total_delay)
+                    else:
+                        logger.error(f"All {self.max_retries} retry attempts failed due to rate limiting")
+                        return None
+                else:
+                    # Non-rate-limit HTTP error, don't retry
+                    logger.error(f"HTTP error {e.response.status_code}: {e}")
+                    return None
+                    
+            except Exception as e:
+                if attempt < self.max_retries - 1:
+                    backoff_delay = min(
+                        self.base_backoff_delay * (2 ** attempt),
+                        self.max_backoff_delay
+                    )
+                    logger.warning(f"Request failed (attempt {attempt + 1}/{self.max_retries}): {e}, retrying in {backoff_delay}s")
+                    time.sleep(backoff_delay)
+                else:
+                    logger.error(f"All {self.max_retries} retry attempts failed: {e}")
+                    return None
+        
+        return None
         
     def create_database(self, symbol: str) -> str:
         """
@@ -150,20 +244,24 @@ class BinanceDataCollector:
             logger.warning(f"Bulk file download failed for {symbol} {year}-{month:02d}: {e}")
             return None
     
-    def get_klines_api(self, symbol: str, start_time: int, end_time: int, limit: int = 1000) -> Optional[List]:
+    def get_klines_api(self, symbol: str, start_time: int, end_time: int, limit: int = None) -> Optional[List]:
         """
-        Get historical klines using API method (fallback)
+        Get historical klines using API method (fallback) with retry and adaptive batch sizing
         
         Args:
             symbol: Trading pair symbol
             start_time: Start timestamp in milliseconds
             end_time: End timestamp in milliseconds
-            limit: Number of candles to fetch (max 1000)
+            limit: Number of candles to fetch (uses adaptive batch size if None)
             
         Returns:
             List of kline data or None if failed
         """
-        try:
+        # Use adaptive batch size if limit not specified
+        if limit is None:
+            limit = self.current_api_batch_size
+            
+        def _make_api_request():
             # Don't try to fetch future data
             current_time = int(time.time() * 1000)
             if start_time >= current_time:
@@ -171,13 +269,13 @@ class BinanceDataCollector:
                 return None
                 
             # Adjust end_time if it's in the future
-            end_time = min(end_time, current_time)
+            adjusted_end_time = min(end_time, current_time)
             
             params = {
                 "symbol": symbol,
                 "interval": self.interval,
                 "startTime": start_time,
-                "endTime": end_time,
+                "endTime": adjusted_end_time,
                 "limit": limit
             }
             
@@ -185,32 +283,28 @@ class BinanceDataCollector:
             response.raise_for_status()
             
             data = response.json()
-            logger.info(f"API fetch: {len(data)} candles for {symbol}")
+            logger.info(f"API fetch: {len(data)} candles for {symbol} (batch size: {limit})")
             return data
-            
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 451:
-                logger.error(f"API fetch failed for {symbol}: 451 error (rate limit or data unavailable) for timestamp {start_time}")
-            else:
-                logger.error(f"API fetch failed for {symbol}: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"API fetch failed for {symbol}: {e}")
-            return None
+        
+        return self._retry_with_backoff(_make_api_request)
     
-    def get_klines_regular(self, symbol: str, start_time: int, limit: int = 500) -> Optional[List]:
+    def get_klines_regular(self, symbol: str, start_time: int, limit: int = None) -> Optional[List]:
         """
-        Get historical klines using regular method (fallback)
+        Get historical klines using regular method (fallback) with retry and adaptive batch sizing
         
         Args:
             symbol: Trading pair symbol
             start_time: Start timestamp in milliseconds
-            limit: Number of candles to fetch (max 500 for regular)
+            limit: Number of candles to fetch (uses adaptive batch size if None)
             
         Returns:
             List of kline data or None if failed
         """
-        try:
+        # Use adaptive batch size if limit not specified
+        if limit is None:
+            limit = self.current_regular_batch_size
+            
+        def _make_regular_request():
             # Don't try to fetch future data
             current_time = int(time.time() * 1000)
             if start_time >= current_time:
@@ -228,18 +322,10 @@ class BinanceDataCollector:
             response.raise_for_status()
             
             data = response.json()
-            logger.info(f"Regular fetch: {len(data)} candles for {symbol}")
+            logger.info(f"Regular fetch: {len(data)} candles for {symbol} (batch size: {limit})")
             return data
-            
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 451:
-                logger.error(f"Regular fetch failed for {symbol}: 451 error (rate limit or data unavailable) for timestamp {start_time}")
-            else:
-                logger.error(f"Regular fetch failed for {symbol}: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Regular fetch failed for {symbol}: {e}")
-            return None
+        
+        return self._retry_with_backoff(_make_regular_request)
     
     def process_klines_data(self, klines_data: List) -> pd.DataFrame:
         """
@@ -482,18 +568,18 @@ class BinanceDataCollector:
                     logger.warning(f"{symbol}: Skipping future timestamp {current_ts} (current: {current_timestamp})")
                     break
                 
-                # Use API method
-                klines_data = self.get_klines_api(symbol, current_ts, batch_end, 1000)
+                # Use API method with adaptive batch sizing
+                klines_data = self.get_klines_api(symbol, current_ts, batch_end)
                 
-                # Fallback to smaller batches if needed
+                # Fallback to regular method if API failed
                 if klines_data is None:
-                    logger.warning(f"Large API batch failed for {symbol}, trying smaller batch")
-                    klines_data = self.get_klines_regular(symbol, current_ts, 500)
+                    logger.warning(f"API method failed for {symbol}, trying regular method")
+                    klines_data = self.get_klines_regular(symbol, current_ts)
                     
                     if klines_data is None:
-                        logger.error(f"API methods failed for {symbol} at timestamp {current_ts}")
+                        logger.error(f"Both API methods failed for {symbol} at timestamp {current_ts}")
                         # Skip this batch and continue
-                        current_ts += (100 * 15 * 60 * 1000)  # Skip ahead by 100 candles
+                        current_ts += (50 * 15 * 60 * 1000)  # Skip ahead by 50 candles
                         continue
                 
                 # Process and save data
