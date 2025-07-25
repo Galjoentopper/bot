@@ -412,13 +412,13 @@ class BitvavoDataCollector:
     async def get_current_price(self, symbol: str) -> Optional[float]:
         """Get current price for a symbol."""
         try:
-            # Prefer price from buffer if it was updated recently
+            # Prefer price from buffer if it was updated recently (within 15 minutes for 15-min candles)
             if (
                 symbol in self.data_buffers
                 and not self.data_buffers[symbol].empty
             ):
                 latest_ts = self.data_buffers[symbol].index[-1]
-                if datetime.now() - latest_ts < timedelta(minutes=1):
+                if datetime.now() - latest_ts < timedelta(minutes=15):
                     return float(self.data_buffers[symbol]['close'].iloc[-1])
 
             url = f"{self.base_url}/ticker/price"
