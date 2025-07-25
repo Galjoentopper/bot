@@ -838,7 +838,7 @@ class HybridModelTrainer:
         """
         Create attention mechanism for LSTM
         """
-        from tensorflow.keras.layers import Dense, Activation, Dot, Concatenate
+        from tensorflow.keras.layers import Dense, Activation, Dot, Concatenate, GlobalAveragePooling1D
 
         # Attention mechanism
         attention = Dense(attention_units, activation="tanh")(lstm_output)
@@ -846,6 +846,9 @@ class HybridModelTrainer:
 
         # Apply attention weights
         context = Dot(axes=1)([attention, lstm_output])
+        
+        # Reduce sequence dimension to match expected output shape
+        context = GlobalAveragePooling1D()(context)
 
         return context
 
@@ -903,12 +906,12 @@ class HybridModelTrainer:
         # Calculate class weights (inverse frequency)
         class_weights = {}
         for class_idx, count in zip(unique_classes, class_counts):
-            class_weights[class_idx] = total_samples / (len(unique_classes) * count)
+            class_weights[int(class_idx)] = total_samples / (len(unique_classes) * count)
         
         print(f"📊 Class distribution in training data:")
         for class_idx, count in zip(unique_classes, class_counts):
             percentage = (count / total_samples) * 100
-            weight = class_weights[class_idx]
+            weight = class_weights[int(class_idx)]
             print(f"   Class {int(class_idx)}: {count:,} samples ({percentage:.1f}%) - Weight: {weight:.3f}")
 
         # Use a cosine decay with restarts learning rate schedule
