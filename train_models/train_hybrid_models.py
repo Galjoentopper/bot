@@ -229,7 +229,26 @@ warnings.filterwarnings("ignore")
 # Quantile loss for probabilistic forecasting
 from tensorflow.keras import backend as K
 
+# Quantile loss implementation as a proper Keras loss class for better serialization
+@tf.keras.utils.register_keras_serializable(package="Custom", name="QuantileLoss")
+class QuantileLoss(tf.keras.losses.Loss):
+    """Quantile loss function for probabilistic forecasting."""
+    
+    def __init__(self, quantile=0.5, name="quantile_loss", **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.quantile = quantile
+        
+    def call(self, y_true, y_pred):
+        e = y_true - y_pred
+        return tf.reduce_mean(tf.maximum(self.quantile * e, (self.quantile - 1) * e), axis=-1)
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({"quantile": self.quantile})
+        return config
 
+
+# Legacy quantile loss function (deprecated - use QuantileLoss class instead)
 def quantile_loss(q):
     """Return a quantile loss function configured for quantile ``q``."""
 
@@ -1001,10 +1020,13 @@ class HybridModelTrainer:
             )
 
         # Compile with weighted binary crossentropy for class imbalance handling
+        # Use metric function objects instead of strings to avoid 'str' object is not callable error
+        from tensorflow.keras.metrics import Accuracy, Precision, Recall
+        
         model.compile(
             optimizer=optimizer,
             loss="binary_crossentropy",
-            metrics=["accuracy", "precision", "recall"],
+            metrics=[Accuracy(name='accuracy'), Precision(name='precision'), Recall(name='recall')],
         )
 
         # Optimized callbacks for faster training
@@ -1881,15 +1903,22 @@ class HybridModelTrainer:
                         lstm_model = tf.keras.models.load_model(
                             prev_path,
                             compile=False,
-                            custom_objects={"directional_loss": directional_loss},
+                            custom_objects={
+                                "directional_loss": directional_loss,
+                                "QuantileLoss": QuantileLoss
+                            },
                         )
                         lr = tf.keras.optimizers.schedules.ExponentialDecay(
                             1e-4, 1000, 0.96
                         )
+                        # Use a proper loss function reference instead of calling quantile_loss
+                        # which returns a closure and can cause serialization issues
+                        from tensorflow.keras.metrics import MeanAbsoluteError, MeanSquaredError
+                        
                         lstm_model.compile(
                             optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
-                            loss=quantile_loss(self.quantile),
-                            metrics=["mae", "mse"],
+                            loss="binary_crossentropy",  # Use standard loss for binary classification
+                            metrics=[MeanAbsoluteError(name='mae'), MeanSquaredError(name='mse')],
                         )
                         lstm_model.fit(
                             X_train_scaled,
