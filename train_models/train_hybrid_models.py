@@ -131,6 +131,21 @@ class TechnicalIndicators:
         return 100 - (100 / (1 + rs))
     
     @staticmethod
+    def ema(prices, length=14):
+        """Calculate Exponential Moving Average"""
+        return prices.ewm(span=length).mean()
+    
+    @staticmethod
+    def sma(prices, length=14):
+        """Calculate Simple Moving Average"""
+        return prices.rolling(window=length).mean()
+    
+    @staticmethod
+    def mom(prices, length=10):
+        """Calculate Momentum"""
+        return prices.diff(length)
+    
+    @staticmethod
     def macd(prices, fast=12, slow=26, signal=9):
         """Calculate MACD"""
         ema_fast = prices.ewm(span=fast).mean()
@@ -171,6 +186,32 @@ class TechnicalIndicators:
         tr3 = abs(low - close.shift())
         true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         return true_range.rolling(window=length).mean()
+    
+    @staticmethod
+    def roc(prices, length=10):
+        """Calculate Rate of Change"""
+        return ((prices - prices.shift(length)) / prices.shift(length)) * 100
+    
+    @staticmethod
+    def stoch(high, low, close, k=14, d=3):
+        """Calculate Stochastic Oscillator"""
+        lowest_low = low.rolling(window=k).min()
+        highest_high = high.rolling(window=k).max()
+        k_percent = 100 * ((close - lowest_low) / (highest_high - lowest_low))
+        d_percent = k_percent.rolling(window=d).mean()
+        # Return as DataFrame to match pandas_ta format
+        result = pd.DataFrame({
+            'STOCHk_14_3_3': k_percent,
+            'STOCHd_14_3_3': d_percent
+        })
+        return result
+    
+    @staticmethod
+    def willr(high, low, close, length=14):
+        """Calculate Williams %R"""
+        highest_high = high.rolling(window=length).max()
+        lowest_low = low.rolling(window=length).min()
+        return -100 * ((highest_high - close) / (highest_high - lowest_low))
 
 # Only use fallback implementation if pandas_ta is not available
 if not pandas_ta_available:
@@ -274,10 +315,10 @@ class HybridModelTrainer:
 
         # Enhanced Model parameters
         self.lstm_sequence_length = 96  # 24 hours of 15-min candles (increased from 60)
-        self.prediction_horizon = 1  # Next 15-min candle
+        self.prediction_horizon = 4  # Next 4 candles (1 hour) for 0.5%+ price increase detection
         # Binary classification target: predict if price will rise at least 0.5%
-        # by the next candle. Adjust the threshold here to retrain models with
-        # a different price change objective.
+        # within the next hour (4 periods of 15 minutes). This focuses on identifying
+        # profitable trading opportunities with sufficient time horizon.
         self.price_change_threshold = 0.005
 
         # Advanced LSTM parameters (optimized for better GPU utilization)
@@ -355,12 +396,27 @@ class HybridModelTrainer:
         """
         data = df.copy()
 
-        # Enhanced Price-based features
+        # Enhanced Price-based features with multi-timeframe analysis
         data["returns"] = data["close"].pct_change()
         data["log_returns"] = np.log(data["close"] / data["close"].shift(1))
         data["price_change_1h"] = data["close"].pct_change(4)  # 4 * 15min = 1h
         data["price_change_4h"] = data["close"].pct_change(16)  # 16 * 15min = 4h
         data["price_change_24h"] = data["close"].pct_change(96)  # 96 * 15min = 24h
+        
+        # Add 30-minute timeframe features for multi-timeframe analysis
+        data["price_change_30min"] = data["close"].pct_change(2)  # 2 * 15min = 30min
+        data["returns_30min"] = data["close"].rolling(2).apply(lambda x: (x.iloc[-1] / x.iloc[0]) - 1 if len(x) == 2 else 0)
+        
+        # Multi-timeframe volatility features
+        data["volatility_15min"] = data["returns"].rolling(4).std()  # 4 periods = 1 hour of 15min data
+        data["volatility_30min"] = data["returns"].rolling(8).std()  # 8 periods = 2 hours  
+        data["volatility_1h"] = data["returns"].rolling(16).std()   # 16 periods = 4 hours
+        data["volatility_4h"] = data["returns"].rolling(64).std()   # 64 periods = 16 hours
+        
+        # Cross-timeframe volatility ratios for regime detection
+        data["vol_ratio_15min_30min"] = data["volatility_15min"] / data["volatility_30min"]
+        data["vol_ratio_30min_1h"] = data["volatility_30min"] / data["volatility_1h"] 
+        data["vol_ratio_1h_4h"] = data["volatility_1h"] / data["volatility_4h"]
 
         # Price normalization features
         data["price_zscore_20"] = (
@@ -425,18 +481,30 @@ class HybridModelTrainer:
             data["volatility_20"] > data["volatility_20"].rolling(100).quantile(0.75)
         ).astype(int)
 
-        # Enhanced Moving Averages
+        # Enhanced Moving Averages with multi-timeframe analysis
         data["ema_9"] = ta.ema(data["close"], length=9)
         data["ema_21"] = ta.ema(data["close"], length=21)
         data["ema_50"] = ta.ema(data["close"], length=50)
         data["ema_100"] = ta.ema(data["close"], length=100)
         data["sma_200"] = ta.sma(data["close"], length=200)
+        
+        # Multi-timeframe EMA for different horizons
+        data["ema_30min"] = ta.ema(data["close"], length=2)   # 30 minutes
+        data["ema_1h"] = ta.ema(data["close"], length=4)      # 1 hour  
+        data["ema_2h"] = ta.ema(data["close"], length=8)      # 2 hours
+        data["ema_4h"] = ta.ema(data["close"], length=16)     # 4 hours
 
-        # Price relative to MAs
+        # Price relative to MAs (existing)
         data["price_vs_ema9"] = (data["close"] - data["ema_9"]) / data["ema_9"]
         data["price_vs_ema21"] = (data["close"] - data["ema_21"]) / data["ema_21"]
         data["price_vs_ema50"] = (data["close"] - data["ema_50"]) / data["ema_50"]
         data["price_vs_sma200"] = (data["close"] - data["sma_200"]) / data["sma_200"]
+        
+        # Multi-timeframe price position relative to EMAs
+        data["price_vs_ema_30min"] = (data["close"] - data["ema_30min"]) / data["ema_30min"]
+        data["price_vs_ema_1h"] = (data["close"] - data["ema_1h"]) / data["ema_1h"]
+        data["price_vs_ema_2h"] = (data["close"] - data["ema_2h"]) / data["ema_2h"]
+        data["price_vs_ema_4h"] = (data["close"] - data["ema_4h"]) / data["ema_4h"]
 
         # MA crossovers and trends
         data["ema9_vs_ema21"] = (data["ema_9"] - data["ema_21"]) / data["ema_21"]
@@ -509,9 +577,33 @@ class HybridModelTrainer:
         data["day_of_week"] = data.index.dayofweek
         data["is_weekend"] = (data.index.dayofweek >= 5).astype(int)
 
-        # Momentum indicators
+        # Momentum indicators (existing)
         data["momentum_10"] = ta.mom(data["close"], length=10)
         data["roc_10"] = ta.roc(data["close"], length=10)
+        
+        # Multi-timeframe momentum indicators
+        data["momentum_30min"] = ta.mom(data["close"], length=2)   # 30 minutes
+        data["momentum_1h"] = ta.mom(data["close"], length=4)      # 1 hour
+        data["momentum_2h"] = ta.mom(data["close"], length=8)      # 2 hours
+        data["momentum_4h"] = ta.mom(data["close"], length=16)     # 4 hours
+        
+        # Multi-timeframe momentum alignment (all timeframes bullish)
+        data["momentum_alignment_short"] = (
+            (data["momentum_30min"] > 0) & 
+            (data["momentum_1h"] > 0)
+        ).astype(int)
+        
+        data["momentum_alignment_all"] = (
+            (data["momentum_30min"] > 0) & 
+            (data["momentum_1h"] > 0) & 
+            (data["momentum_2h"] > 0) & 
+            (data["momentum_4h"] > 0)
+        ).astype(int)
+        
+        # Cross-timeframe momentum strength ratios
+        data["momentum_ratio_30min_1h"] = data["momentum_30min"] / (data["momentum_1h"] + 1e-8)
+        data["momentum_ratio_1h_2h"] = data["momentum_1h"] / (data["momentum_2h"] + 1e-8)
+        data["momentum_ratio_2h_4h"] = data["momentum_2h"] / (data["momentum_4h"] + 1e-8)
 
         # Support/Resistance levels
         data["high_20"] = data["high"].rolling(20).max()
@@ -669,15 +761,16 @@ class HybridModelTrainer:
         # Use available features
         feature_data = df[available_features].values
 
-        # Create target: binary jump detection (≥0.5% price increase) for LSTM consistency with XGBoost
-        # This aligns both models to focus specifically on jump detection
-        targets = (
-            (df["close"]
-             .pct_change(self.prediction_horizon)
-             .shift(-self.prediction_horizon) >= self.price_change_threshold)
-            .astype(float)
-            .values
-        )
+        # Create target: binary jump detection (≥0.5% price increase) within next hour (4 periods)
+        # This aligns both models to focus specifically on identifying profitable hourly opportunities
+        
+        # Calculate the maximum price reached within the next 4 periods (1 hour)
+        future_prices = df["close"].shift(-self.prediction_horizon).rolling(window=self.prediction_horizon, min_periods=1).max()
+        # Calculate percentage increase from current price to maximum future price within horizon
+        max_price_change = (future_prices - df["close"]) / df["close"]
+        
+        # Target is 1 if price increases by at least 0.5% within the next hour, 0 otherwise
+        targets = (max_price_change >= self.price_change_threshold).astype(float).values
 
         # Validate targets before creating sequences
         valid_target_mask = ~(np.isnan(targets) | np.isinf(targets))
@@ -781,9 +874,9 @@ class HybridModelTrainer:
         y_val: np.ndarray,
     ) -> tf.keras.Model:
         """
-        Train enhanced LSTM model with attention mechanism
+        Train enhanced LSTM model with attention mechanism and class balancing
         """
-        print(f"🧠 Training Enhanced LSTM model with attention...")
+        print(f"🧠 Training Enhanced LSTM model with attention and class balancing...")
 
         from tensorflow.keras.layers import (
             Input,
@@ -802,6 +895,21 @@ class HybridModelTrainer:
         except ImportError:
             # Fallback to Adam if AdamW is not available
             from tensorflow.keras.optimizers import Adam as AdamW
+
+        # Calculate class weights for imbalanced data
+        unique_classes, class_counts = np.unique(y_train, return_counts=True)
+        total_samples = len(y_train)
+        
+        # Calculate class weights (inverse frequency)
+        class_weights = {}
+        for class_idx, count in zip(unique_classes, class_counts):
+            class_weights[class_idx] = total_samples / (len(unique_classes) * count)
+        
+        print(f"📊 Class distribution in training data:")
+        for class_idx, count in zip(unique_classes, class_counts):
+            percentage = (count / total_samples) * 100
+            weight = class_weights[class_idx]
+            print(f"   Class {int(class_idx)}: {count:,} samples ({percentage:.1f}%) - Weight: {weight:.3f}")
 
         # Use a cosine decay with restarts learning rate schedule
         lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
@@ -889,7 +997,7 @@ class HybridModelTrainer:
                 beta_2=0.999,
             )
 
-        # Compile with binary crossentropy for jump detection
+        # Compile with weighted binary crossentropy for class imbalance handling
         model.compile(
             optimizer=optimizer,
             loss="binary_crossentropy",
@@ -919,14 +1027,6 @@ class HybridModelTrainer:
         # Start with moderate batch size and implement robust fallback
         batch_size = 2048  # Start with larger batch size to better utilize GPU
 
-        # Disable XLA compilation to prevent CUDA graph conflicts
-        model.compile(
-            optimizer=optimizer,
-            loss=quantile_loss(self.quantile),
-            metrics=["mae", "mse"],
-            jit_compile=False,
-        )
-
         # Implement robust batch size fallback with memory clearing
         batch_sizes = [2048, 1024, 512, 256, 128, 64]  # Try larger batches first
         history = None
@@ -952,6 +1052,7 @@ class HybridModelTrainer:
                     epochs=100,  # Reduced epochs for faster training
                     callbacks=callbacks,
                     verbose=0,
+                    class_weight=class_weights,  # Apply class weights for imbalanced data
                 )
                 print(
                     f"✅ LSTM training completed successfully with batch size {batch_size}"
@@ -974,6 +1075,15 @@ class HybridModelTrainer:
         print(
             f"✅ LSTM training completed. Best val_loss: {min(history.history['val_loss']):.6f}"
         )
+        
+        # Print final performance metrics
+        if 'val_accuracy' in history.history:
+            best_val_acc = max(history.history['val_accuracy'])
+            print(f"📊 Best validation accuracy: {best_val_acc:.4f}")
+        if 'val_precision' in history.history and 'val_recall' in history.history:
+            best_val_precision = max(history.history['val_precision'])
+            best_val_recall = max(history.history['val_recall'])
+            print(f"📊 Best validation precision: {best_val_precision:.4f}, recall: {best_val_recall:.4f}")
 
         return model
 
@@ -1040,14 +1150,23 @@ class HybridModelTrainer:
 
         # Enhanced feature set for XGBoost (comprehensive technical analysis)
         feature_columns = [
-            # Enhanced Price features
+            # Enhanced Price features with multi-timeframe analysis
             "returns",
             "log_returns",
+            "price_change_30min",
             "price_change_1h",
             "price_change_4h",
             "price_change_24h",
             "price_zscore_20",
             "price_zscore_50",
+            # Multi-timeframe volatility features
+            "volatility_15min",
+            "volatility_30min", 
+            "volatility_1h",
+            "volatility_4h",
+            "vol_ratio_15min_30min",
+            "vol_ratio_30min_1h",
+            "vol_ratio_1h_4h",
             # Lag features (important for time series)
             "returns_lag_1",
             "returns_lag_2",
@@ -1083,11 +1202,15 @@ class HybridModelTrainer:
             "realized_vol_5",
             "realized_vol_20",
             "vol_regime",
-            # Enhanced Moving averages
+            # Enhanced Moving averages with multi-timeframe analysis
             "price_vs_ema9",
             "price_vs_ema21",
             "price_vs_ema50",
             "price_vs_sma200",
+            "price_vs_ema_30min",
+            "price_vs_ema_1h", 
+            "price_vs_ema_2h",
+            "price_vs_ema_4h",
             "ema9_vs_ema21",
             "ema21_vs_ema50",
             "ema50_vs_ema100",
@@ -1124,8 +1247,17 @@ class HybridModelTrainer:
             "hour",
             "day_of_week",
             "is_weekend",
-            # Momentum
+            # Multi-timeframe Momentum
             "momentum_10",
+            "momentum_30min",
+            "momentum_1h", 
+            "momentum_2h",
+            "momentum_4h",
+            "momentum_alignment_short",
+            "momentum_alignment_all",
+            "momentum_ratio_30min_1h",
+            "momentum_ratio_1h_2h", 
+            "momentum_ratio_2h_4h",
             "roc_10",
             # Support/Resistance
             "near_resistance",
@@ -1171,13 +1303,16 @@ class HybridModelTrainer:
             col for col in feature_columns if col in features_df.columns
         ]
 
-        # Create target: binary classification
-        features_df["target"] = (
-            features_df["close"]
-            .pct_change(self.prediction_horizon)
-            .shift(-self.prediction_horizon)
-            > self.price_change_threshold
-        ).astype(int)
+        # Create target: binary classification for 0.5%+ price increase within next hour
+        # Calculate the maximum price reached within the next 4 periods (1 hour)
+        future_prices = features_df["close"].shift(-self.prediction_horizon).rolling(
+            window=self.prediction_horizon, min_periods=1
+        ).max()
+        # Calculate percentage increase from current price to maximum future price within horizon  
+        max_price_change = (future_prices - features_df["close"]) / features_df["close"]
+        
+        # Target is 1 if price increases by at least 0.5% within the next hour, 0 otherwise
+        features_df["target"] = (max_price_change > self.price_change_threshold).astype(int)
 
         # Select final dataset
         final_df = features_df[available_features + ["target"]].copy()
