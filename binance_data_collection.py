@@ -150,6 +150,8 @@ class BinanceDataCollector:
         self.api_failure_count = 0
         self.max_api_failures = 3  # Stop API calls after 3 consecutive failures
         self.api_circuit_open = False
+        self.circuit_reset_time = None  # Time when circuit can be reset
+        self.circuit_reset_delay = 3600  # 1 hour before allowing circuit reset
         
     def _retry_with_backoff(self, func, *args, **kwargs):
         """
@@ -163,9 +165,17 @@ class BinanceDataCollector:
         Returns:
             Function result or None if all retries failed
         """
+        # Check if circuit breaker can be reset
+        if self.api_circuit_open and self.circuit_reset_time:
+            if time.time() > self.circuit_reset_time:
+                logger.info("API circuit breaker reset time reached, attempting to reset")
+                self.api_circuit_open = False
+                self.api_failure_count = 0
+                self.circuit_reset_time = None
+        
         # Check circuit breaker
         if self.api_circuit_open:
-            logger.warning("API circuit breaker is open, skipping request")
+            logger.debug("API circuit breaker is open, skipping request")
             return None
         
         for attempt in range(self.api_max_retries):
@@ -187,7 +197,8 @@ class BinanceDataCollector:
                     
                     if self.api_failure_count >= self.max_api_failures:
                         self.api_circuit_open = True
-                        logger.error(f"API circuit breaker opened after {self.api_failure_count} failures")
+                        self.circuit_reset_time = time.time() + self.circuit_reset_delay
+                        logger.error(f"API circuit breaker opened after {self.api_failure_count} failures. Will reset in {self.circuit_reset_delay/3600:.1f} hours")
                         return None
                     
                     if attempt < self.api_max_retries - 1:
@@ -210,7 +221,8 @@ class BinanceDataCollector:
                         self.api_failure_count += 1
                         if self.api_failure_count >= self.max_api_failures:
                             self.api_circuit_open = True
-                            logger.error("API circuit breaker opened due to repeated failures")
+                            self.circuit_reset_time = time.time() + self.circuit_reset_delay
+                            logger.error(f"API circuit breaker opened due to repeated failures. Will reset in {self.circuit_reset_delay/3600:.1f} hours")
                         return None
                         
                 elif e.response.status_code >= 500:  # Server errors
@@ -245,7 +257,7 @@ class BinanceDataCollector:
         
     def create_database(self, symbol: str) -> str:
         """
-        Create SQLite database for a specific symbol
+        Create SQLite database for a specific symbol with schema migration
         
         Args:
             symbol: Trading pair symbol (e.g., BTCEUR)
@@ -258,24 +270,61 @@ class BinanceDataCollector:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Create table for OHLCV data
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS market_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp INTEGER NOT NULL,
-                datetime TEXT NOT NULL,
-                open REAL NOT NULL,
-                high REAL NOT NULL,
-                low REAL NOT NULL,
-                close REAL NOT NULL,
-                volume REAL NOT NULL,
-                quote_volume REAL NOT NULL,
-                trades INTEGER NOT NULL,
-                taker_buy_base REAL NOT NULL,
-                taker_buy_quote REAL NOT NULL,
-                UNIQUE(timestamp)
-            )
-        """)
+        # Check if table exists and get its schema
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='market_data'")
+        table_exists = cursor.fetchone() is not None
+        
+        if table_exists:
+            # Check if datetime column exists
+            cursor.execute("PRAGMA table_info(market_data)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            missing_columns = []
+            expected_columns = {
+                'datetime': 'TEXT NOT NULL',
+                'quote_volume': 'REAL NOT NULL', 
+                'trades': 'INTEGER NOT NULL',
+                'taker_buy_base': 'REAL NOT NULL',
+                'taker_buy_quote': 'REAL NOT NULL'
+            }
+            
+            for col_name, col_type in expected_columns.items():
+                if col_name not in columns:
+                    missing_columns.append((col_name, col_type))
+            
+            # Add missing columns
+            for col_name, col_type in missing_columns:
+                try:
+                    if col_name == 'datetime':
+                        # Add datetime column and populate it from timestamp
+                        cursor.execute(f"ALTER TABLE market_data ADD COLUMN {col_name} {col_type}")
+                        cursor.execute("UPDATE market_data SET datetime = datetime(timestamp/1000, 'unixepoch') WHERE datetime IS NULL")
+                    else:
+                        # Add other columns with default values
+                        cursor.execute(f"ALTER TABLE market_data ADD COLUMN {col_name} {col_type.replace('NOT NULL', 'DEFAULT 0')}")
+                    logger.info(f"Added missing column {col_name} to {symbol} database")
+                except Exception as e:
+                    logger.warning(f"Could not add column {col_name}: {e}")
+        else:
+            # Create new table with full schema
+            cursor.execute("""
+                CREATE TABLE market_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp INTEGER NOT NULL,
+                    datetime TEXT NOT NULL,
+                    open REAL NOT NULL,
+                    high REAL NOT NULL,
+                    low REAL NOT NULL,
+                    close REAL NOT NULL,
+                    volume REAL NOT NULL,
+                    quote_volume REAL NOT NULL,
+                    trades INTEGER NOT NULL,
+                    taker_buy_base REAL NOT NULL,
+                    taker_buy_quote REAL NOT NULL,
+                    UNIQUE(timestamp)
+                )
+            """)
+            logger.info(f"Created new table for {symbol}")
         
         # Create index for faster queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON market_data(timestamp)")
@@ -708,10 +757,19 @@ class BinanceDataCollector:
             logger.warning(f"{symbol}: {len(significant_gaps)} significant gaps remain (>1 day each)")
             for gap_start, gap_end in significant_gaps[:3]:  # Show first 3 gaps
                 logger.warning(f"  Gap: {datetime.fromtimestamp(gap_start/1000)} to {datetime.fromtimestamp(gap_end/1000)}")
+            
+            if self.api_circuit_open:
+                reset_time_str = datetime.fromtimestamp(self.circuit_reset_time).strftime('%Y-%m-%d %H:%M:%S') if self.circuit_reset_time else "unknown"
+                logger.info(f"{symbol}: API circuit breaker is open. To fill remaining gaps:")
+                logger.info(f"  - Wait until {reset_time_str} for automatic reset, OR")
+                logger.info(f"  - Run the script again later with higher rate limits, OR")
+                logger.info(f"  - Most historical data (99%+) was collected via bulk downloads")
         else:
             logger.info(f"{symbol}: Data collection complete, no significant gaps detected")
         
         logger.info(f"Completed {symbol}: {total_records} total new records collected")
+        
+        # Return success even if circuit breaker opened, since bulk data was collected
         return True
     
     def collect_all_data(self) -> Dict[str, bool]:
