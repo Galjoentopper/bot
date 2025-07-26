@@ -1223,7 +1223,7 @@ class WindowBasedEnsemblePredictor:
             self.logger.error(f"Error running system compatibility diagnosis: {e}")
             return {'error': str(e)}
     
-    def get_compatibility_requirements(self, symbol: str, window: int) -> Dict[str, Any]:
+    def get_compatibility_requirements(self, symbol: str, window: int) -> Dict[str, any]:
         """
         Get compatibility requirements for a symbol and window.
         
