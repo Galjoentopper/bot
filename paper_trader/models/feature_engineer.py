@@ -114,10 +114,44 @@ LSTM_SEQUENCE_LENGTH: int = 96
 
 # Full feature list used during model training
 TRAINING_FEATURES: List[str] = [
-    'returns', 'log_returns', 'price_change_1h', 'price_change_4h',
-    'volatility_20', 'atr_ratio', 'rsi', 'macd', 'bb_position',
-    'volume_ratio', 'price_vs_ema9', 'price_vs_ema21', 'buying_pressure',
-    'selling_pressure', 'spread_ratio', 'momentum_10', 'price_zscore_20'
+    # Enhanced Price features with multi-timeframe analysis
+    'returns', 'log_returns', 'price_change_30min', 'price_change_1h', 
+    'price_change_4h', 'price_change_24h', 'price_zscore_20', 'price_zscore_50',
+    # Multi-timeframe volatility features
+    'volatility_15min', 'volatility_30min', 'volatility_1h', 'volatility_4h',
+    'vol_ratio_15min_30min', 'vol_ratio_30min_1h', 'vol_ratio_1h_4h',
+    # Lag features (important for time series)
+    'returns_lag_1', 'returns_lag_2', 'returns_lag_3', 'returns_lag_5', 
+    'returns_lag_10', 'log_returns_lag_1', 'log_returns_lag_2', 'log_returns_lag_3',
+    # Rolling statistics
+    'returns_mean_10', 'returns_std_10', 'returns_skew_20', 'returns_kurt_20',
+    # Enhanced Volume features
+    'volume_ratio', 'volume_change', 'volume_zscore', 'volume_price_trend', 
+    'volume_weighted_price',
+    # Market microstructure
+    'spread', 'spread_ratio', 'buying_pressure', 'selling_pressure', 'net_pressure',
+    # Enhanced Volatility
+    'volatility_20', 'volatility_50', 'volatility_ratio', 'atr', 'atr_ratio', 
+    'realized_vol_5', 'realized_vol_20',
+    # Technical indicators
+    'rsi', 'rsi_9', 'rsi_21', 'rsi_oversold', 'rsi_overbought', 'rsi_divergence',
+    'macd', 'macd_signal', 'macd_hist', 'macd_bullish',
+    'bb_upper', 'bb_middle', 'bb_lower', 'bb_width', 'bb_position',
+    # VWAP and price vs MA features
+    'vwap', 'price_vs_vwap', 'sma_20', 'sma_50', 'sma_200',
+    'ema_9', 'ema_21', 'ema_50', 'ema_100',
+    'price_vs_sma20', 'price_vs_sma50', 'price_vs_sma200',
+    'price_vs_ema9', 'price_vs_ema21', 'price_vs_ema50',
+    # MA alignment and momentum
+    'ma_alignment', 'ema9_vs_ema21', 'ema21_vs_ema50', 'ema50_vs_ema100',
+    'ma_slope_9', 'ma_slope_21', 'momentum_10', 'roc_10',
+    # Candle patterns and time features
+    'candle_body', 'upper_wick', 'lower_wick', 'hour', 'day_of_week', 'is_weekend',
+    # Support/Resistance and Stochastic
+    'high_20', 'low_20', 'near_resistance', 'near_support',
+    'stoch_k', 'stoch_d', 'stoch_oversold', 'stoch_overbought', 'williams_r',
+    # Volume regime
+    'vol_regime'
 ]
 
 class FeatureEngineer:
@@ -155,9 +189,12 @@ class FeatureEngineer:
             # Basic price features
             features['returns'] = df['close'].pct_change()
             features['log_returns'] = np.log(df['close'] / df['close'].shift(1))
-            features['price_change_1h'] = df['close'].pct_change(4)
-            features['price_change_4h'] = df['close'].pct_change(16)
-            features['price_change_24h'] = df['close'].pct_change(96)
+            
+            # Multi-timeframe price changes (assuming 15-minute intervals as in training)
+            features['price_change_30min'] = df['close'].pct_change(2)  # 2 * 15min = 30min
+            features['price_change_1h'] = df['close'].pct_change(4)    # 4 * 15min = 1h
+            features['price_change_4h'] = df['close'].pct_change(16)   # 16 * 15min = 4h
+            features['price_change_24h'] = df['close'].pct_change(96)  # 96 * 15min = 24h
 
             # Price statistics
             price_rolling_20 = df['close'].rolling(20)
@@ -201,6 +238,17 @@ class FeatureEngineer:
             features['volatility_ratio'] = features['volatility_5'] / features['volatility_20']
             features['realized_vol_5'] = features['returns'].rolling(5).std() * np.sqrt(5)
             features['realized_vol_20'] = features['returns'].rolling(20).std() * np.sqrt(20)
+            
+            # Multi-timeframe volatility features (assuming 15-minute intervals as in training)
+            features['volatility_15min'] = features['returns'].rolling(4).std()   # 4 periods = 1 hour of 15min data
+            features['volatility_30min'] = features['returns'].rolling(8).std()   # 8 periods = 2 hours
+            features['volatility_1h'] = features['returns'].rolling(16).std()     # 16 periods = 4 hours
+            features['volatility_4h'] = features['returns'].rolling(64).std()     # 64 periods = 16 hours
+            
+            # Cross-timeframe volatility ratios for regime detection
+            features['vol_ratio_15min_30min'] = features['volatility_15min'] / features['volatility_30min']
+            features['vol_ratio_30min_1h'] = features['volatility_30min'] / features['volatility_1h']
+            features['vol_ratio_1h_4h'] = features['volatility_1h'] / features['volatility_4h']
 
             # Technical indicators using pandas_ta
             df_temp = pd.concat([df, pd.DataFrame(features)], axis=1)
