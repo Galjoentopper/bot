@@ -57,9 +57,9 @@ class PaperTrader:
         
         self.logger.info("Paper Trader initialized")
         self.trading_logger.info("=== PAPER TRADER STARTING ===")
-        self.trading_logger.info(f"Settings: MIN_CONFIDENCE={self.settings.min_confidence_threshold}, MIN_SIGNAL={self.settings.min_signal_strength}")
+        self.trading_logger.info(f"Settings: MIN_CONFIDENCE={self.settings.model_settings.min_confidence_threshold}, MIN_SIGNAL={self.settings.model_settings.min_signal_strength}")
         self.trading_logger.info(f"Symbols: {self.settings.symbols}")
-        self.trading_logger.info(f"Capital: €{self.settings.initial_capital}, Max positions: {self.settings.max_positions}")
+        self.trading_logger.info(f"Capital: €{self.settings.trading_settings.initial_capital}, Max positions: {self.settings.trading_settings.max_positions}")
 
     async def debug_data_pipeline(self, symbol: str): 
         """Debug the data pipeline to identify issues.""" 
@@ -155,7 +155,7 @@ class PaperTrader:
                 # Test historical data fetch
                 try:
                     test_data = await self.data_collector.get_historical_data(
-                        symbol, self.settings.candle_interval, 10
+                        symbol, self.settings.trading_settings.candle_interval, 10
                     )
                     if test_data is not None and len(test_data) > 0:
                         self.logger.info(f"    ✅ Can fetch historical data: {len(test_data)} candles")
@@ -318,7 +318,7 @@ class PaperTrader:
             self.data_collector = BitvavoDataCollector(
                 api_key=self.settings.bitvavo_api_key,
                 api_secret=self.settings.bitvavo_api_secret,
-                interval=self.settings.candle_interval,
+                interval=self.settings.trading_settings.candle_interval,
                 settings=self.settings
             )
             
@@ -326,43 +326,43 @@ class PaperTrader:
             self.feature_engineer = FeatureEngineer()
             
             # Initialize window-based model loader
-            self.model_loader = WindowBasedModelLoader(self.settings.model_path)
+            self.model_loader = WindowBasedModelLoader(self.settings.model_settings.model_path)
             
             # Initialize enhanced ensemble predictor with confidence thresholds
             self.predictor = WindowBasedEnsemblePredictor(
                 model_loader=self.model_loader,
-                min_confidence_threshold=self.settings.min_confidence_threshold,
-                min_signal_strength=self.settings.min_signal_strength,
+                min_confidence_threshold=self.settings.model_settings.min_confidence_threshold,
+                min_signal_strength=self.settings.model_settings.min_signal_strength,
                 settings=self.settings
             )
             
             # Set ensemble weights from settings
-            self.predictor.lstm_weight = self.settings.lstm_weight
-            self.predictor.xgb_weight = self.settings.xgb_weight
-            self.predictor.caboose_weight = self.settings.caboose_weight
+            self.predictor.lstm_weight = self.settings.model_settings.lstm_weight
+            self.predictor.xgb_weight = self.settings.model_settings.xgb_weight
+            self.predictor.caboose_weight = self.settings.model_settings.caboose_weight
             
             # Initialize signal generator
             self.signal_generator = SignalGenerator(
-                max_positions=self.settings.max_positions,
-                max_positions_per_symbol=self.settings.max_positions_per_symbol,
-                base_position_size=self.settings.base_position_size,
-                max_position_size=self.settings.max_position_size,
-                min_position_size=self.settings.min_position_size,
-                take_profit_pct=self.settings.take_profit_pct,
-                stop_loss_pct=self.settings.stop_loss_pct,
-                min_confidence=self.settings.min_confidence_threshold,
-                min_signal_strength=self.settings.min_signal_strength,
+                max_positions=self.settings.trading_settings.max_positions,
+                max_positions_per_symbol=self.settings.trading_settings.max_positions_per_symbol,
+                base_position_size=self.settings.trading_settings.base_position_size,
+                max_position_size=self.settings.trading_settings.max_position_size,
+                min_position_size=self.settings.trading_settings.min_position_size,
+                take_profit_pct=self.settings.trading_settings.take_profit_pct,
+                stop_loss_pct=self.settings.trading_settings.stop_loss_pct,
+                min_confidence=self.settings.model_settings.min_confidence_threshold,
+                min_signal_strength=self.settings.model_settings.min_signal_strength,
                 min_expected_gain_pct=self.settings.min_expected_gain_pct,
-                position_cooldown_minutes=self.settings.position_cooldown_minutes,
+                position_cooldown_minutes=self.settings.trading_settings.position_cooldown_minutes,
                 data_collector=self.data_collector,
-                max_daily_trades_per_symbol=self.settings.max_daily_trades_per_symbol,
+                max_daily_trades_per_symbol=self.settings.trading_settings.max_daily_trades_per_symbol,
                 settings=self.settings
             )
             
             # Initialize exit manager
             self.exit_manager = ExitManager(
-                trailing_stop_pct=self.settings.trailing_stop_pct,
-                max_hold_hours=self.settings.max_hold_hours,
+                trailing_stop_pct=self.settings.trading_settings.trailing_stop_pct,
+                max_hold_hours=self.settings.trading_settings.max_hold_hours,
                 enable_prediction_exits=self.settings.enable_prediction_exits,
                 prediction_exit_min_confidence=self.settings.prediction_exit_min_confidence,
                 prediction_exit_min_strength=self.settings.prediction_exit_min_strength,
@@ -372,8 +372,8 @@ class PaperTrader:
             
             # Initialize portfolio manager
             self.portfolio_manager = PortfolioManager(
-                initial_capital=self.settings.initial_capital,
-                max_positions_per_symbol=self.settings.max_positions_per_symbol
+                initial_capital=self.settings.trading_settings.initial_capital,
+                max_positions_per_symbol=self.settings.trading_settings.max_positions_per_symbol
             )
             
             # Initialize Telegram notifier
@@ -464,9 +464,9 @@ class PaperTrader:
             
             # Feature engineering
             features_df = self.feature_engineer.engineer_features(data)
-            if features_df is None or len(features_df) < self.settings.sequence_length:
+            if features_df is None or len(features_df) < self.settings.model_settings.sequence_length:
                 actual_features = len(features_df) if features_df is not None else 0
-                self.trading_logger.warning(f"❌ INSUFFICIENT FEATURES for {symbol}: {actual_features}/{self.settings.sequence_length}")
+                self.trading_logger.warning(f"❌ INSUFFICIENT FEATURES for {symbol}: {actual_features}/{self.settings.model_settings.sequence_length}")
                 return False
             
             # Refresh buffer price first, then get most current price for trading
@@ -512,8 +512,8 @@ class PaperTrader:
             
             # Check if we already have too many positions for this symbol
             current_positions = self.portfolio_manager.positions.get(symbol, [])
-            if len(current_positions) >= self.settings.max_positions_per_symbol:
-                self.trading_logger.warning(f"❌ MAX POSITIONS REACHED for {symbol}: {len(current_positions)}/{self.settings.max_positions_per_symbol}")
+            if len(current_positions) >= self.settings.trading_settings.max_positions_per_symbol:
+                self.trading_logger.warning(f"❌ MAX POSITIONS REACHED for {symbol}: {len(current_positions)}/{self.settings.trading_settings.max_positions_per_symbol}")
                 return False  # Skip if limit reached
             
             # Generate signal
@@ -642,7 +642,7 @@ class PaperTrader:
                 return None
 
             features_df = self.feature_engineer.engineer_features(data)
-            if features_df is None or len(features_df) < self.settings.sequence_length:
+            if features_df is None or len(features_df) < self.settings.model_settings.sequence_length:
                 return None
 
             await self.data_collector.refresh_latest_price(symbol)
@@ -726,8 +726,8 @@ class PaperTrader:
             return False
 
         current_positions = self.portfolio_manager.positions.get(symbol, [])
-        if len(current_positions) >= self.settings.max_positions_per_symbol:
-            self.trading_logger.warning(f"❌ Max positions reached for {symbol}: {len(current_positions)}/{self.settings.max_positions_per_symbol}")
+        if len(current_positions) >= self.settings.trading_settings.max_positions_per_symbol:
+            self.trading_logger.warning(f"❌ Max positions reached for {symbol}: {len(current_positions)}/{self.settings.trading_settings.max_positions_per_symbol}")
             return False
 
         current_price = await self.data_collector.get_current_price_for_trading(symbol)
@@ -847,14 +847,14 @@ class PaperTrader:
             
             # Log current settings for verification
             self.trading_logger.info("⚙️ CURRENT SETTINGS:")
-            self.trading_logger.info(f"   📊 Min Confidence: {self.settings.min_confidence_threshold}")
-            self.trading_logger.info(f"   💪 Min Signal Strength: {self.settings.min_signal_strength}")
+            self.trading_logger.info(f"   📊 Min Confidence: {self.settings.model_settings.min_confidence_threshold}")
+            self.trading_logger.info(f"   💪 Min Signal Strength: {self.settings.model_settings.min_signal_strength}")
             self.trading_logger.info(f"   📈 Min Expected Gain: {self.settings.min_expected_gain_pct}")
             self.trading_logger.info(f"   🔒 Strict Entry Conditions: {self.settings.enable_strict_entry_conditions}")
             self.trading_logger.info(f"   🎯 Max Prediction Uncertainty: {self.settings.max_prediction_uncertainty}")
             self.trading_logger.info(f"   🤝 Min Ensemble Agreement: {self.settings.min_ensemble_agreement_count}")
             self.trading_logger.info(f"   📊 Trend Strength Threshold: {self.settings.trend_strength_threshold}")
-            self.trading_logger.info(f"   💰 Initial Capital: €{self.settings.initial_capital}")
+            self.trading_logger.info(f"   💰 Initial Capital: €{self.settings.trading_settings.initial_capital}")
             self.trading_logger.info(f"   📋 Symbols: {self.settings.symbols}")
             
             # Initialize components

@@ -171,6 +171,9 @@ class FeatureEngineer:
             self.logger.warning(f"Missing features: {missing_features}")
             return False
         return True
+    def create_features(self, data: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """Create features - alias for engineer_features to maintain compatibility."""
+        return self.engineer_features(data)
         
     def engineer_features(self, data: pd.DataFrame) -> Optional[pd.DataFrame]:
         """Create the same technical indicators used during model training."""
