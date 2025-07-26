@@ -1207,7 +1207,7 @@ class WindowBasedEnsemblePredictor:
                     if signal_strength in ["MODERATE", "STRONG", "VERY_STRONG"]:
                         return True
 
-    def diagnose_system_compatibility(self, symbols: List[str]) -> Dict[str, Any]:
+    def diagnose_system_compatibility(self, symbols: List[str]) -> Dict[str, any]:
         """
         Run system-wide compatibility diagnosis.
         
