@@ -91,8 +91,16 @@ class TechnicalIndicators:
 # Use fallback implementation
 ta = TechnicalIndicators()
 
-# Feature order used during model training for LSTM scaling
+# Feature order used during model training for LSTM scaling - Updated to match trained models
 LSTM_FEATURES: List[str] = [
+    'price_vs_ema_30min', 'price_vs_ema_1h', 'price_vs_ema_2h', 'price_vs_ema_4h',
+    'rsi_14', 'rsi_7', 'macd', 'macd_signal', 'macd_hist',
+    'bb_upper', 'bb_middle', 'bb_lower', 'volume_change_24h',
+    'atr_14', 'adx_14', 'momentum_30min', 'volume_ema_ratio'
+]
+
+# Legacy LSTM features list (36 features) - kept for compatibility
+LSTM_FEATURES_LEGACY: List[str] = [
     'close', 'volume', 'returns', 'log_returns',
     'volatility_20', 'atr_ratio', 'rsi', 'macd', 'bb_position',
     'volume_ratio', 'price_vs_ema9', 'price_vs_ema21',
@@ -225,11 +233,16 @@ class FeatureEngineer:
             features['volume_sma_20'] = volume_sma_20
             features['volume_ratio'] = df['volume'] / volume_sma_20
             features['volume_change'] = df['volume'].pct_change()
+            features['volume_change_24h'] = df['volume'].pct_change(96)  # Required for LSTM
             features['volume_zscore'] = (df['volume'] - volume_sma_20) / volume_std_20
             features['volume_price_trend'] = df['volume'] * features['returns']
             features['volume_weighted_price'] = (
                 (df['volume'] * df['close']).rolling(20).sum() / df['volume'].rolling(20).sum()
             )
+            
+            # Volume EMA features (required for LSTM)
+            features['volume_ema_14'] = df['volume'].ewm(span=14).mean()
+            features['volume_ema_ratio'] = df['volume'] / features['volume_ema_14']
 
             # Market microstructure
             features['spread'] = (df['high'] - df['low']) / df['close']
@@ -259,6 +272,8 @@ class FeatureEngineer:
             # RSI
             rsi_values = ta.rsi(df['close'], length=14)
             features['rsi'] = rsi_values
+            features['rsi_14'] = rsi_values  # Alias for LSTM compatibility
+            features['rsi_7'] = ta.rsi(df['close'], length=7)  # Required for LSTM
             features['rsi_9'] = ta.rsi(df['close'], length=9)
             features['rsi_21'] = ta.rsi(df['close'], length=21)
             features['rsi_oversold'] = (rsi_values < 30).astype(int)
@@ -301,7 +316,28 @@ class FeatureEngineer:
             # ATR
             atr_values = ta.atr(df['high'], df['low'], df['close'], length=14)
             features['atr'] = atr_values if atr_values is not None else pd.Series(0, index=df.index)
+            features['atr_14'] = features['atr']  # Alias for LSTM compatibility
             features['atr_ratio'] = features['atr'] / df['close']
+            
+            # ADX (required for LSTM)
+            # Simple approximation using directional movement
+            high_diff = df['high'].diff()
+            low_diff = df['low'].diff()
+            plus_dm = ((high_diff > low_diff) & (high_diff > 0)) * high_diff
+            minus_dm = ((low_diff > high_diff) & (low_diff > 0)) * low_diff
+            
+            # Smooth the directional movements
+            plus_dm_smooth = plus_dm.rolling(14).mean()
+            minus_dm_smooth = minus_dm.rolling(14).mean()
+            tr_smooth = features['atr']
+            
+            # Calculate DI+ and DI-
+            plus_di = 100 * plus_dm_smooth / tr_smooth
+            minus_di = 100 * minus_dm_smooth / tr_smooth
+            
+            # Calculate ADX
+            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+            features['adx_14'] = dx.rolling(14).mean().fillna(25)  # Default neutral ADX
 
             # VWAP
             vwap = (df['close'] * df['volume']).cumsum() / df['volume'].cumsum()
@@ -324,6 +360,12 @@ class FeatureEngineer:
             features['price_vs_ema9'] = (df['close'] - features['ema_9']) / features['ema_9']
             features['price_vs_ema21'] = (df['close'] - features['ema_21']) / features['ema_21']
             features['price_vs_ema50'] = (df['close'] - features['ema_50']) / features['ema_50']
+            
+            # LSTM-specific price vs EMA features (using different timeframe approximations)
+            features['price_vs_ema_30min'] = features['price_vs_ema9']  # Short-term
+            features['price_vs_ema_1h'] = features['price_vs_ema21']    # Medium-term  
+            features['price_vs_ema_2h'] = features['price_vs_ema50']    # Longer-term
+            features['price_vs_ema_4h'] = (df['close'] - features['ema_100']) / features['ema_100']  # Very long-term
 
             # MA alignment and crossovers
             ma_9_vs_21 = (features['ema_9'] > features['ema_21']).astype(int)
@@ -343,6 +385,7 @@ class FeatureEngineer:
 
             # Momentum
             features['momentum_10'] = df['close'] / df['close'].shift(10) - 1
+            features['momentum_30min'] = df['close'].pct_change(periods=2)  # Approximation for 30min momentum
             features['roc_10'] = ta.roc(df['close'], length=10)
 
             # Candle patterns
