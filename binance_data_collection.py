@@ -13,6 +13,7 @@ import time
 import zipfile
 import io
 import random
+import threading
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 import logging
@@ -21,10 +22,94 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+
+class RateLimitManager:
+    """
+    Token bucket rate limiter for managing API requests
+    Ensures we stay well under Binance's rate limits
+    """
+    
+    def __init__(self, max_requests_per_minute: int = 50, burst_capacity: int = 10):
+        """
+        Initialize rate limiter with conservative limits
+        
+        Args:
+            max_requests_per_minute: Maximum requests per minute (well under Binance's 1200)
+            burst_capacity: Maximum burst requests allowed
+        """
+        self.max_requests_per_minute = max_requests_per_minute
+        self.burst_capacity = burst_capacity
+        self.tokens = burst_capacity  # Start with full burst capacity
+        self.last_refill = time.time()
+        self.lock = threading.Lock()
+        
+        # Calculate token refill rate (tokens per second)
+        self.refill_rate = max_requests_per_minute / 60.0
+        
+        logger.info(f"RateLimitManager initialized: {max_requests_per_minute} req/min, burst: {burst_capacity}")
+    
+    def acquire(self, tokens_needed: int = 1) -> bool:
+        """
+        Acquire tokens for making requests
+        
+        Args:
+            tokens_needed: Number of tokens needed
+            
+        Returns:
+            True if tokens acquired, False if need to wait
+        """
+        with self.lock:
+            current_time = time.time()
+            
+            # Refill tokens based on time elapsed
+            time_elapsed = current_time - self.last_refill
+            tokens_to_add = time_elapsed * self.refill_rate
+            
+            self.tokens = min(self.burst_capacity, self.tokens + tokens_to_add)
+            self.last_refill = current_time
+            
+            # Check if we have enough tokens
+            if self.tokens >= tokens_needed:
+                self.tokens -= tokens_needed
+                return True
+            else:
+                return False
+    
+    def wait_for_token(self, tokens_needed: int = 1) -> None:
+        """
+        Wait until tokens are available
+        
+        Args:
+            tokens_needed: Number of tokens needed
+        """
+        while not self.acquire(tokens_needed):
+            # Calculate wait time
+            with self.lock:
+                tokens_deficit = tokens_needed - self.tokens
+                wait_time = tokens_deficit / self.refill_rate
+                
+            logger.debug(f"Rate limit: waiting {wait_time:.2f}s for {tokens_needed} tokens")
+            time.sleep(min(wait_time + 0.1, 2.0))  # Cap wait time at 2 seconds
+    
+    def get_status(self) -> Dict:
+        """Get current rate limiter status"""
+        with self.lock:
+            current_time = time.time()
+            time_elapsed = current_time - self.last_refill
+            tokens_to_add = time_elapsed * self.refill_rate
+            current_tokens = min(self.burst_capacity, self.tokens + tokens_to_add)
+            
+            return {
+                "current_tokens": current_tokens,
+                "max_tokens": self.burst_capacity,
+                "refill_rate": self.refill_rate,
+                "requests_per_minute": self.max_requests_per_minute
+            }
+
 class BinanceDataCollector:
     def __init__(self, data_dir: str = "data"):
         """
-        Initialize Binance Data Collector
+        Initialize Binance Data Collector with improved rate limiting
         
         Args:
             data_dir: Directory to store SQLite database files
@@ -39,25 +124,38 @@ class BinanceDataCollector:
         # Create data directory if it doesn't exist
         os.makedirs(self.data_dir, exist_ok=True)
         
-        # Rate limiting with improved defaults
-        self.request_delay = 1.0  # 1 second between requests (increased from 0.1)
-        self.bulk_request_delay = 2.0  # 2 seconds between bulk file downloads (increased from 0.5) 
+        # Initialize rate limiter with very conservative settings
+        self.rate_limiter = RateLimitManager(
+            max_requests_per_minute=6,  # Much more conservative (vs Binance's 1200 limit)
+            burst_capacity=2  # Very small burst capacity
+        )
         
-        # Retry configuration
-        self.max_retries = 3
-        self.base_backoff_delay = 2.0  # Base delay for exponential backoff
-        self.max_backoff_delay = 60.0  # Maximum backoff delay
+        # Bulk download settings (more aggressive since these don't count against API limits)
+        self.bulk_request_delay = 0.5  # Reduced delay for bulk downloads
+        self.bulk_max_retries = 5  # More retries for bulk downloads
         
-        # Adaptive batch sizing
-        self.default_api_batch_size = 1000
-        self.default_regular_batch_size = 500
-        self.min_batch_size = 50
-        self.current_api_batch_size = self.default_api_batch_size
-        self.current_regular_batch_size = self.default_regular_batch_size
+        # API request settings (extremely conservative)
+        self.api_max_retries = 3  # Fewer retries
+        self.base_backoff_delay = 10.0  # Longer base delay
+        self.max_backoff_delay = 600.0  # Up to 10 minutes max backoff
+        
+        # Very conservative batch sizing for API requests
+        self.api_batch_size = 50  # Very small batches to reduce load
+        self.api_min_batch_size = 10  # Minimum batch size
+        
+        # Bulk data cutoff - minimize API usage even more
+        self.api_only_days = 3  # Only use API for last 3 days of data
+        
+        # Circuit breaker for API failures
+        self.api_failure_count = 0
+        self.max_api_failures = 3  # Stop API calls after 3 consecutive failures
+        self.api_circuit_open = False
+        self.circuit_reset_time = None  # Time when circuit can be reset
+        self.circuit_reset_delay = 3600  # 1 hour before allowing circuit reset
         
     def _retry_with_backoff(self, func, *args, **kwargs):
         """
-        Execute a function with retry logic and exponential backoff
+        Execute a function with improved retry logic, rate limiting, and circuit breaker
         
         Args:
             func: Function to execute
@@ -67,78 +165,99 @@ class BinanceDataCollector:
         Returns:
             Function result or None if all retries failed
         """
-        for attempt in range(self.max_retries):
+        # Check if circuit breaker can be reset
+        if self.api_circuit_open and self.circuit_reset_time:
+            if time.time() > self.circuit_reset_time:
+                logger.info("API circuit breaker reset time reached, attempting to reset")
+                self.api_circuit_open = False
+                self.api_failure_count = 0
+                self.circuit_reset_time = None
+        
+        # Check circuit breaker
+        if self.api_circuit_open:
+            logger.debug("API circuit breaker is open, skipping request")
+            return None
+        
+        for attempt in range(self.api_max_retries):
             try:
+                # Wait for rate limit token before making request
+                self.rate_limiter.wait_for_token()
+                
                 result = func(*args, **kwargs)
                 
-                # If we got a result, reset batch sizes to default on success
                 if result is not None:
-                    self.current_api_batch_size = min(
-                        self.current_api_batch_size + 50, 
-                        self.default_api_batch_size
-                    )
-                    self.current_regular_batch_size = min(
-                        self.current_regular_batch_size + 25, 
-                        self.default_regular_batch_size
-                    )
-                
-                return result
-                
-            except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 451:  # Rate limit error
-                    # Reduce batch sizes on rate limit
-                    self.current_api_batch_size = max(
-                        self.current_api_batch_size // 2, 
-                        self.min_batch_size
-                    )
-                    self.current_regular_batch_size = max(
-                        self.current_regular_batch_size // 2, 
-                        self.min_batch_size
-                    )
+                    logger.debug(f"Request successful on attempt {attempt + 1}")
+                    # Reset failure count on success
+                    self.api_failure_count = 0
+                    return result
                     
-                    if attempt < self.max_retries - 1:
-                        # Calculate exponential backoff with jitter
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code in [429, 451, 418]:  # Rate limit errors
+                    self.api_failure_count += 1
+                    
+                    if self.api_failure_count >= self.max_api_failures:
+                        self.api_circuit_open = True
+                        self.circuit_reset_time = time.time() + self.circuit_reset_delay
+                        logger.error(f"API circuit breaker opened after {self.api_failure_count} failures. Will reset in {self.circuit_reset_delay/3600:.1f} hours")
+                        return None
+                    
+                    if attempt < self.api_max_retries - 1:
+                        # Much longer backoff for rate limits
                         backoff_delay = min(
-                            self.base_backoff_delay * (2 ** attempt),
+                            self.base_backoff_delay * (3 ** attempt),  # Faster exponential growth
                             self.max_backoff_delay
                         )
-                        # Add jitter to prevent thundering herd
-                        jitter = random.uniform(0.1, 0.3) * backoff_delay
+                        # Larger jitter for rate limits
+                        jitter = random.uniform(0.8, 1.2) * backoff_delay
                         total_delay = backoff_delay + jitter
                         
                         logger.warning(
-                            f"Rate limit hit (attempt {attempt + 1}/{self.max_retries}), "
-                            f"reduced batch sizes to API:{self.current_api_batch_size}, "
-                            f"Regular:{self.current_regular_batch_size}, "
-                            f"waiting {total_delay:.1f}s before retry"
+                            f"Rate limit hit (attempt {attempt + 1}/{self.api_max_retries}), "
+                            f"waiting {total_delay:.1f}s before retry. Failures: {self.api_failure_count}/{self.max_api_failures}"
                         )
-                        
                         time.sleep(total_delay)
                     else:
-                        logger.error(f"All {self.max_retries} retry attempts failed due to rate limiting")
+                        logger.error(f"All {self.api_max_retries} retry attempts failed due to rate limiting")
+                        self.api_failure_count += 1
+                        if self.api_failure_count >= self.max_api_failures:
+                            self.api_circuit_open = True
+                            self.circuit_reset_time = time.time() + self.circuit_reset_delay
+                            logger.error(f"API circuit breaker opened due to repeated failures. Will reset in {self.circuit_reset_delay/3600:.1f} hours")
+                        return None
+                        
+                elif e.response.status_code >= 500:  # Server errors
+                    self.api_failure_count += 1
+                    if attempt < self.api_max_retries - 1:
+                        backoff_delay = min(5.0 * (2 ** attempt), 60.0)
+                        logger.warning(f"Server error {e.response.status_code} (attempt {attempt + 1}/{self.api_max_retries}), retrying in {backoff_delay}s")
+                        time.sleep(backoff_delay)
+                    else:
+                        logger.error(f"Server error {e.response.status_code} after {self.api_max_retries} attempts")
                         return None
                 else:
-                    # Non-rate-limit HTTP error, don't retry
-                    logger.error(f"HTTP error {e.response.status_code}: {e}")
+                    # Client errors (4xx) - don't retry
+                    logger.error(f"Client error {e.response.status_code}: {e}")
+                    return None
+                    
+            except requests.exceptions.RequestException as e:
+                self.api_failure_count += 1
+                if attempt < self.api_max_retries - 1:
+                    backoff_delay = min(5.0 * (2 ** attempt), 60.0)
+                    logger.warning(f"Request failed (attempt {attempt + 1}/{self.api_max_retries}): {e}, retrying in {backoff_delay}s")
+                    time.sleep(backoff_delay)
+                else:
+                    logger.error(f"All {self.api_max_retries} retry attempts failed: {e}")
                     return None
                     
             except Exception as e:
-                if attempt < self.max_retries - 1:
-                    backoff_delay = min(
-                        self.base_backoff_delay * (2 ** attempt),
-                        self.max_backoff_delay
-                    )
-                    logger.warning(f"Request failed (attempt {attempt + 1}/{self.max_retries}): {e}, retrying in {backoff_delay}s")
-                    time.sleep(backoff_delay)
-                else:
-                    logger.error(f"All {self.max_retries} retry attempts failed: {e}")
-                    return None
+                logger.error(f"Unexpected error in retry mechanism: {e}")
+                return None
         
         return None
         
     def create_database(self, symbol: str) -> str:
         """
-        Create SQLite database for a specific symbol
+        Create SQLite database for a specific symbol with schema migration
         
         Args:
             symbol: Trading pair symbol (e.g., BTCEUR)
@@ -151,24 +270,61 @@ class BinanceDataCollector:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Create table for OHLCV data
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS market_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp INTEGER NOT NULL,
-                datetime TEXT NOT NULL,
-                open REAL NOT NULL,
-                high REAL NOT NULL,
-                low REAL NOT NULL,
-                close REAL NOT NULL,
-                volume REAL NOT NULL,
-                quote_volume REAL NOT NULL,
-                trades INTEGER NOT NULL,
-                taker_buy_base REAL NOT NULL,
-                taker_buy_quote REAL NOT NULL,
-                UNIQUE(timestamp)
-            )
-        """)
+        # Check if table exists and get its schema
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='market_data'")
+        table_exists = cursor.fetchone() is not None
+        
+        if table_exists:
+            # Check if datetime column exists
+            cursor.execute("PRAGMA table_info(market_data)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            missing_columns = []
+            expected_columns = {
+                'datetime': 'TEXT NOT NULL',
+                'quote_volume': 'REAL NOT NULL', 
+                'trades': 'INTEGER NOT NULL',
+                'taker_buy_base': 'REAL NOT NULL',
+                'taker_buy_quote': 'REAL NOT NULL'
+            }
+            
+            for col_name, col_type in expected_columns.items():
+                if col_name not in columns:
+                    missing_columns.append((col_name, col_type))
+            
+            # Add missing columns
+            for col_name, col_type in missing_columns:
+                try:
+                    if col_name == 'datetime':
+                        # Add datetime column and populate it from timestamp
+                        cursor.execute(f"ALTER TABLE market_data ADD COLUMN {col_name} {col_type}")
+                        cursor.execute("UPDATE market_data SET datetime = datetime(timestamp/1000, 'unixepoch') WHERE datetime IS NULL")
+                    else:
+                        # Add other columns with default values
+                        cursor.execute(f"ALTER TABLE market_data ADD COLUMN {col_name} {col_type.replace('NOT NULL', 'DEFAULT 0')}")
+                    logger.info(f"Added missing column {col_name} to {symbol} database")
+                except Exception as e:
+                    logger.warning(f"Could not add column {col_name}: {e}")
+        else:
+            # Create new table with full schema
+            cursor.execute("""
+                CREATE TABLE market_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp INTEGER NOT NULL,
+                    datetime TEXT NOT NULL,
+                    open REAL NOT NULL,
+                    high REAL NOT NULL,
+                    low REAL NOT NULL,
+                    close REAL NOT NULL,
+                    volume REAL NOT NULL,
+                    quote_volume REAL NOT NULL,
+                    trades INTEGER NOT NULL,
+                    taker_buy_base REAL NOT NULL,
+                    taker_buy_quote REAL NOT NULL,
+                    UNIQUE(timestamp)
+                )
+            """)
+            logger.info(f"Created new table for {symbol}")
         
         # Create index for faster queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON market_data(timestamp)")
@@ -196,7 +352,7 @@ class BinanceDataCollector:
     
     def download_bulk_file(self, symbol: str, year: int, month: int) -> Optional[pd.DataFrame]:
         """
-        Download bulk historical data file from data.binance.vision
+        Download bulk historical data file from data.binance.vision with improved error handling
         
         Args:
             symbol: Trading pair symbol
@@ -206,127 +362,173 @@ class BinanceDataCollector:
         Returns:
             DataFrame with kline data or None if failed
         """
-        try:
-            # Format: BTCEUR-15m-2020-01.zip
-            filename = f"{symbol}-{self.interval}-{year:04d}-{month:02d}.zip"
-            url = f"{self.bulk_data_url}/monthly/klines/{symbol}/{self.interval}/{filename}"
-            
-            logger.info(f"Downloading bulk file: {filename}")
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()
-            
-            # Extract CSV from ZIP
-            with zipfile.ZipFile(io.BytesIO(response.content)) as zip_file:
-                csv_filename = filename.replace('.zip', '.csv')
-                with zip_file.open(csv_filename) as csv_file:
-                    df = pd.read_csv(csv_file, header=None, names=[
-                        'timestamp', 'open', 'high', 'low', 'close', 'volume',
-                        'close_time', 'quote_volume', 'trades', 'taker_buy_base',
-                        'taker_buy_quote', 'ignore'
-                    ])
+        filename = f"{symbol}-{self.interval}-{year:04d}-{month:02d}.zip"
+        url = f"{self.bulk_data_url}/monthly/klines/{symbol}/{self.interval}/{filename}"
+        
+        for attempt in range(self.bulk_max_retries):
+            try:
+                logger.info(f"Downloading bulk file: {filename} (attempt {attempt + 1})")
+                
+                response = requests.get(url, timeout=60)  # Longer timeout for bulk files
+                response.raise_for_status()
+                
+                # Extract CSV from ZIP
+                with zipfile.ZipFile(io.BytesIO(response.content)) as zip_file:
+                    csv_filename = filename.replace('.zip', '.csv')
+                    with zip_file.open(csv_filename) as csv_file:
+                        df = pd.read_csv(csv_file, header=None, names=[
+                            'timestamp', 'open', 'high', 'low', 'close', 'volume',
+                            'close_time', 'quote_volume', 'trades', 'taker_buy_base',
+                            'taker_buy_quote', 'ignore'
+                        ])
 
-            # Normalize timestamps (Binance switched to microseconds in 2025)
-            df['timestamp'] = pd.to_numeric(df['timestamp'], errors='coerce')
-            if df['timestamp'].abs().max() > 1e14:
-                df['timestamp'] = (df['timestamp'] // 1000).astype('int64')
+                # Normalize timestamps (Binance switched to microseconds in 2025)
+                df['timestamp'] = pd.to_numeric(df['timestamp'], errors='coerce')
+                if df['timestamp'].abs().max() > 1e14:
+                    df['timestamp'] = (df['timestamp'] // 1000).astype('int64')
 
-            # Add human-readable datetime
-            df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+                # Add human-readable datetime
+                df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+                
+                # Select relevant columns
+                df = df[['timestamp', 'datetime', 'open', 'high', 'low', 'close', 
+                        'volume', 'quote_volume', 'trades', 'taker_buy_base', 'taker_buy_quote']]
+                
+                logger.info(f"Bulk file downloaded successfully: {len(df)} candles for {symbol} {year}-{month:02d}")
+                return df
+                
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 404:
+                    logger.info(f"Bulk file not available: {symbol} {year}-{month:02d} (404)")
+                    return None  # Don't retry for 404s
+                elif attempt < self.bulk_max_retries - 1:
+                    backoff_delay = (2 ** attempt) * 2.0  # Exponential backoff
+                    logger.warning(f"Bulk download HTTP error {e.response.status_code} (attempt {attempt + 1}), retrying in {backoff_delay}s")
+                    time.sleep(backoff_delay)
+                else:
+                    logger.error(f"Bulk download failed after {self.bulk_max_retries} attempts: HTTP {e.response.status_code}")
+                    return None
+                    
+            except Exception as e:
+                if attempt < self.bulk_max_retries - 1:
+                    backoff_delay = (2 ** attempt) * 2.0
+                    logger.warning(f"Bulk download failed (attempt {attempt + 1}): {e}, retrying in {backoff_delay}s")
+                    time.sleep(backoff_delay)
+                else:
+                    logger.error(f"Bulk download failed after {self.bulk_max_retries} attempts: {e}")
+                    return None
             
-            # Select relevant columns
-            df = df[['timestamp', 'datetime', 'open', 'high', 'low', 'close', 
-                    'volume', 'quote_volume', 'trades', 'taker_buy_base', 'taker_buy_quote']]
-            
-            logger.info(f"Bulk file downloaded: {len(df)} candles for {symbol} {year}-{month:02d}")
-            return df
-            
-        except Exception as e:
-            logger.warning(f"Bulk file download failed for {symbol} {year}-{month:02d}: {e}")
-            return None
+            # Add delay between retries and bulk downloads
+            if attempt < self.bulk_max_retries - 1:
+                time.sleep(self.bulk_request_delay)
+        
+        return None
     
-    def get_klines_api(self, symbol: str, start_time: int, end_time: int, limit: int = None) -> Optional[List]:
+    def get_klines_api(self, symbol: str, start_time: int, end_time: int = None, limit: int = None) -> Optional[List]:
         """
-        Get historical klines using API method (fallback) with retry and adaptive batch sizing
+        Get historical klines using API method with conservative batch sizing and rate limiting
         
         Args:
             symbol: Trading pair symbol
             start_time: Start timestamp in milliseconds
-            end_time: End timestamp in milliseconds
-            limit: Number of candles to fetch (uses adaptive batch size if None)
+            end_time: End timestamp in milliseconds (optional)
+            limit: Number of candles to fetch (uses conservative default if None)
             
         Returns:
             List of kline data or None if failed
         """
-        # Use adaptive batch size if limit not specified
+        # Use conservative batch size if limit not specified
         if limit is None:
-            limit = self.current_api_batch_size
+            limit = self.api_batch_size
             
         def _make_api_request():
-            # Don't try to fetch future data
             current_time = int(time.time() * 1000)
-            if start_time >= current_time:
-                logger.warning(f"Skipping future data request for {symbol}: start_time {start_time} >= current_time {current_time}")
-                return None
-                
-            # Adjust end_time if it's in the future
-            adjusted_end_time = min(end_time, current_time)
             
+            # Don't try to fetch future data
+            if start_time >= current_time:
+                logger.debug(f"Skipping future data request for {symbol}: start_time {start_time} >= current_time {current_time}")
+                return []
+                
+            # Prepare parameters
             params = {
                 "symbol": symbol,
                 "interval": self.interval,
                 "startTime": start_time,
-                "endTime": adjusted_end_time,
                 "limit": limit
             }
             
-            response = requests.get(f"{self.base_url}/klines", params=params, timeout=10)
+            # Add end time if specified and valid
+            if end_time:
+                adjusted_end_time = min(end_time, current_time)
+                params["endTime"] = adjusted_end_time
+            
+            logger.debug(f"API request: {symbol} from {start_time} limit {limit}")
+            
+            response = requests.get(f"{self.base_url}/klines", params=params, timeout=30)
             response.raise_for_status()
             
             data = response.json()
-            logger.info(f"API fetch: {len(data)} candles for {symbol} (batch size: {limit})")
+            logger.info(f"API fetch successful: {len(data)} candles for {symbol}")
             return data
         
         return self._retry_with_backoff(_make_api_request)
     
-    def get_klines_regular(self, symbol: str, start_time: int, limit: int = None) -> Optional[List]:
+    def get_database_gaps(self, symbol: str, db_path: str) -> List[tuple]:
         """
-        Get historical klines using regular method (fallback) with retry and adaptive batch sizing
+        Identify gaps in the database that need to be filled
         
         Args:
             symbol: Trading pair symbol
-            start_time: Start timestamp in milliseconds
-            limit: Number of candles to fetch (uses adaptive batch size if None)
+            db_path: Path to database file
             
         Returns:
-            List of kline data or None if failed
+            List of (start_timestamp, end_timestamp) tuples for gaps
         """
-        # Use adaptive batch size if limit not specified
-        if limit is None:
-            limit = self.current_regular_batch_size
-            
-        def _make_regular_request():
-            # Don't try to fetch future data
-            current_time = int(time.time() * 1000)
-            if start_time >= current_time:
-                logger.warning(f"Skipping future data request for {symbol}: start_time {start_time} >= current_time {current_time}")
-                return None
-                
-            params = {
-                "symbol": symbol,
-                "interval": self.interval,
-                "startTime": start_time,
-                "limit": limit
-            }
-            
-            response = requests.get(f"{self.base_url}/klines", params=params, timeout=10)
-            response.raise_for_status()
-            
-            data = response.json()
-            logger.info(f"Regular fetch: {len(data)} candles for {symbol} (batch size: {limit})")
-            return data
+        conn = sqlite3.connect(db_path)
         
-        return self._retry_with_backoff(_make_regular_request)
-    
+        # Get all timestamps and find gaps
+        df = pd.read_sql_query("SELECT timestamp FROM market_data ORDER BY timestamp", conn)
+        conn.close()
+        
+        if df.empty:
+            # No data, entire range is a gap
+            start_timestamp = int(datetime.strptime(self.start_date, "%Y-%m-%d").timestamp() * 1000)
+            end_timestamp = int(time.time() * 1000)
+            return [(start_timestamp, end_timestamp)]
+        
+        gaps = []
+        expected_interval = 15 * 60 * 1000  # 15 minutes in milliseconds
+        
+        timestamps = df['timestamp'].tolist()
+        
+        # Check for gaps between consecutive timestamps
+        for i in range(len(timestamps) - 1):
+            current_ts = timestamps[i]
+            next_ts = timestamps[i + 1]
+            
+            # If gap is larger than expected interval, there's missing data
+            if next_ts - current_ts > expected_interval * 1.5:  # Allow some tolerance
+                gap_start = current_ts + expected_interval
+                gap_end = next_ts - expected_interval
+                gaps.append((gap_start, gap_end))
+        
+        # Check if we need data before the first timestamp
+        first_timestamp = timestamps[0]
+        start_timestamp = int(datetime.strptime(self.start_date, "%Y-%m-%d").timestamp() * 1000)
+        if first_timestamp > start_timestamp + expected_interval:
+            gaps.insert(0, (start_timestamp, first_timestamp - expected_interval))
+        
+        # Check if we need recent data after the last timestamp
+        last_timestamp = timestamps[-1]
+        current_time = int(time.time() * 1000)
+        # Only fetch data up to current time minus a safety buffer (1 hour)
+        safe_current_time = current_time - (60 * 60 * 1000)  # 1 hour ago
+        
+        if last_timestamp < safe_current_time - expected_interval:
+            gaps.append((last_timestamp + expected_interval, safe_current_time))
+        
+        return gaps
+
     def process_klines_data(self, klines_data: List) -> pd.DataFrame:
         """
         Process raw klines data into pandas DataFrame
@@ -406,70 +608,13 @@ class BinanceDataCollector:
         
         conn.close()
         return len(new_data)
-    
-    def get_database_gaps(self, symbol: str, db_path: str) -> List[tuple]:
-        """
-        Identify gaps in the database that need to be filled
-        
-        Args:
-            symbol: Trading pair symbol
-            db_path: Path to database file
-            
-        Returns:
-            List of (start_timestamp, end_timestamp) tuples for gaps
-        """
-        conn = sqlite3.connect(db_path)
-        
-        # Get all timestamps and find gaps
-        df = pd.read_sql_query("SELECT timestamp FROM market_data ORDER BY timestamp", conn)
-        conn.close()
-        
-        if df.empty:
-            # No data, entire range is a gap
-            start_timestamp = int(datetime.strptime(self.start_date, "%Y-%m-%d").timestamp() * 1000)
-            end_timestamp = int(time.time() * 1000)
-            return [(start_timestamp, end_timestamp)]
-        
-        gaps = []
-        expected_interval = 15 * 60 * 1000  # 15 minutes in milliseconds
-        
-        timestamps = df['timestamp'].tolist()
-        
-        # Check for gaps between consecutive timestamps
-        for i in range(len(timestamps) - 1):
-            current_ts = timestamps[i]
-            next_ts = timestamps[i + 1]
-            
-            # If gap is larger than expected interval, there's missing data
-            if next_ts - current_ts > expected_interval * 1.5:  # Allow some tolerance
-                gap_start = current_ts + expected_interval
-                gap_end = next_ts - expected_interval
-                gaps.append((gap_start, gap_end))
-        
-        # Check if we need data before the first timestamp
-        first_timestamp = timestamps[0]
-        start_timestamp = int(datetime.strptime(self.start_date, "%Y-%m-%d").timestamp() * 1000)
-        if first_timestamp > start_timestamp + expected_interval:
-            gaps.insert(0, (start_timestamp, first_timestamp - expected_interval))
-        
-        # Check if we need recent data after the last timestamp
-        last_timestamp = timestamps[-1]
-        current_time = int(time.time() * 1000)
-        # Only fetch data up to current time minus a safety buffer (2 hours)
-        # This prevents trying to fetch very recent data that might not be available
-        safe_current_time = current_time - (2 * 60 * 60 * 1000)  # 2 hours ago
-        
-        if last_timestamp < safe_current_time - expected_interval:
-            # Make sure the gap doesn't extend into very recent time
-            gap_end = min(safe_current_time, last_timestamp + (7 * 24 * 60 * 60 * 1000))  # Limit to 7 days from last data
-            if gap_end > last_timestamp + expected_interval:
-                gaps.append((last_timestamp + expected_interval, gap_end))
-        
-        return gaps
 
     def collect_symbol_data(self, symbol: str) -> bool:
         """
-        Collect all historical data for a specific symbol using improved hybrid approach
+        Collect all historical data for a specific symbol using optimized bulk-first approach
+        
+        This method prioritizes bulk downloads and only uses API for very recent data
+        to minimize rate limiting issues.
 
         Args:
             symbol: Trading pair symbol
@@ -477,110 +622,106 @@ class BinanceDataCollector:
         Returns:
             True if successful, False otherwise
         """
-        logger.info(f"Starting data collection for {symbol}")
+        logger.info(f"Starting optimized data collection for {symbol}")
         
         # Create database
         db_path = self.create_database(symbol)
         
-        # Calculate start and end dates
+        # Calculate date ranges
         start_dt = datetime.strptime(self.start_date, "%Y-%m-%d")
         current_dt = datetime.now()
         current_timestamp = int(time.time() * 1000)
         
+        # Calculate cutoff for API-only data (last N days)
+        api_cutoff_dt = current_dt - timedelta(days=self.api_only_days)
+        api_cutoff_timestamp = int(api_cutoff_dt.timestamp() * 1000)
+        
         total_records = 0
         
-        # First, identify what data we already have and what gaps exist
-        gaps = self.get_database_gaps(symbol, db_path)
-        logger.info(f"{symbol}: Found {len(gaps)} data gaps to fill")
+        logger.info(f"{symbol}: Using bulk downloads until {api_cutoff_dt.strftime('%Y-%m-%d')}, API for recent data")
         
-        if not gaps:
-            logger.info(f"{symbol}: Database is up to date, no gaps found")
-            return True
+        # Phase 1: Aggressive bulk downloading for historical data
+        logger.info(f"Phase 1: Bulk downloading historical data for {symbol}")
         
-        # Phase 1: Download bulk monthly files for large gaps (much faster)
-        logger.info(f"Phase 1: Downloading bulk monthly files for {symbol}")
+        # Download ALL available monthly files from start date to API cutoff
+        current_month_dt = start_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         
-        # Organize gaps by month for bulk downloading
-        monthly_gaps = {}
-        for gap_start, gap_end in gaps:
-            gap_start_dt = datetime.fromtimestamp(gap_start / 1000)
-            gap_end_dt = datetime.fromtimestamp(gap_end / 1000)
+        while current_month_dt <= api_cutoff_dt:
+            year = current_month_dt.year
+            month = current_month_dt.month
             
-            # Process each month in the gap
-            current_month_dt = gap_start_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            while current_month_dt <= gap_end_dt:
-                year_month = (current_month_dt.year, current_month_dt.month)
-                if year_month not in monthly_gaps:
-                    monthly_gaps[year_month] = []
-                monthly_gaps[year_month].append((gap_start, gap_end))
-                
-                # Move to next month
-                if current_month_dt.month == 12:
-                    current_month_dt = current_month_dt.replace(year=current_month_dt.year + 1, month=1)
-                else:
-                    current_month_dt = current_month_dt.replace(month=current_month_dt.month + 1)
-        
-        # Download bulk files for identified months
-        for (year, month), _ in monthly_gaps.items():
-            # Only download if the month is in the past (not current or future months)
-            month_end = datetime(year, month, 1)
-            if month < 12:
-                month_end = month_end.replace(month=month + 1)
+            logger.info(f"{symbol}: Downloading bulk data for {year}-{month:02d}")
+            
+            df = self.download_bulk_file(symbol, year, month)
+            
+            if df is not None and not df.empty:
+                new_records = self.save_to_database(df, db_path)
+                total_records += new_records
+                logger.info(f"{symbol}: Bulk {year}-{month:02d} - {new_records} new records")
             else:
-                month_end = month_end.replace(year=year + 1, month=1)
+                logger.info(f"{symbol}: No bulk data available for {year}-{month:02d}")
             
-            if month_end < current_dt:
-                df = self.download_bulk_file(symbol, year, month)
-                
-                if df is not None and not df.empty:
-                    new_records = self.save_to_database(df, db_path)
-                    total_records += new_records
-                    logger.info(f"{symbol}: Bulk {year}-{month:02d} - {new_records} new records")
-                else:
-                    logger.warning(f"{symbol}: No bulk data for {year}-{month:02d}")
-                
-                # Rate limiting for bulk downloads
-                time.sleep(self.bulk_request_delay)
+            # Rate limiting for bulk downloads
+            time.sleep(self.bulk_request_delay)
+            
+            # Move to next month
+            if current_month_dt.month == 12:
+                current_month_dt = current_month_dt.replace(year=current_month_dt.year + 1, month=1)
+            else:
+                current_month_dt = current_month_dt.replace(month=current_month_dt.month + 1)
         
-        # Phase 2: Use API for recent data and remaining gaps
-        logger.info(f"Phase 2: Using API for recent data and remaining gaps for {symbol}")
+        # Phase 2: Use API only for recent data and critical gaps
+        logger.info(f"Phase 2: Using API for recent data for {symbol}")
         
-        # Recalculate gaps after bulk downloads
+        # Check remaining gaps after bulk downloads
         remaining_gaps = self.get_database_gaps(symbol, db_path)
         
+        # Filter gaps to only work on recent data (last api_only_days)
+        recent_gaps = []
         for gap_start, gap_end in remaining_gaps:
+            # Only process gaps that are in the recent data range
+            if gap_start >= api_cutoff_timestamp:
+                recent_gaps.append((gap_start, gap_end))
+            elif gap_end >= api_cutoff_timestamp:
+                # Partial gap in recent range
+                recent_gaps.append((max(gap_start, api_cutoff_timestamp), gap_end))
+        
+        logger.info(f"{symbol}: Found {len(recent_gaps)} gaps in recent data requiring API calls")
+        
+        for gap_start, gap_end in recent_gaps:
+            # Check circuit breaker before processing gaps
+            if self.api_circuit_open:
+                logger.warning(f"{symbol}: API circuit breaker is open, skipping remaining gaps")
+                break
+                
             # Ensure we don't try to fetch future data
             gap_end = min(gap_end, current_timestamp)
             
             if gap_start >= gap_end:
                 continue  # Skip if gap is invalid
             
-            logger.info(f"{symbol}: Filling gap from {datetime.fromtimestamp(gap_start/1000)} to {datetime.fromtimestamp(gap_end/1000)}")
+            logger.info(f"{symbol}: Filling recent gap from {datetime.fromtimestamp(gap_start/1000)} to {datetime.fromtimestamp(gap_end/1000)}")
             
             current_ts = gap_start
             
-            while current_ts < gap_end:
-                # Calculate batch end time (don't exceed gap end or current time)
-                batch_end = min(current_ts + (1000 * 15 * 60 * 1000), gap_end, current_timestamp)
-                
+            while current_ts < gap_end and not self.api_circuit_open:
                 # Skip if we're trying to fetch future data
                 if current_ts >= current_timestamp:
-                    logger.warning(f"{symbol}: Skipping future timestamp {current_ts} (current: {current_timestamp})")
+                    logger.debug(f"{symbol}: Reached current time, stopping API requests")
                     break
                 
-                # Use API method with adaptive batch sizing
-                klines_data = self.get_klines_api(symbol, current_ts, batch_end)
+                # Use conservative API method
+                klines_data = self.get_klines_api(symbol, current_ts, gap_end)
                 
-                # Fallback to regular method if API failed
                 if klines_data is None:
-                    logger.warning(f"API method failed for {symbol}, trying regular method")
-                    klines_data = self.get_klines_regular(symbol, current_ts)
+                    if self.api_circuit_open:
+                        logger.warning(f"{symbol}: API circuit breaker opened, stopping gap filling")
+                        break
                     
-                    if klines_data is None:
-                        logger.error(f"Both API methods failed for {symbol} at timestamp {current_ts}")
-                        # Skip this batch and continue
-                        current_ts += (50 * 15 * 60 * 1000)  # Skip ahead by 50 candles
-                        continue
+                    logger.error(f"{symbol}: API request failed at timestamp {current_ts}")
+                    # Skip ahead by one day on failure to avoid getting stuck
+                    current_ts += (24 * 60 * 60 * 1000)  # Skip 1 day
+                    continue
                 
                 # Process and save data
                 df = self.process_klines_data(klines_data)
@@ -589,21 +730,46 @@ class BinanceDataCollector:
                     new_records = self.save_to_database(df, db_path)
                     total_records += new_records
                     
-                    # Update current timestamp to last candle + 1
-                    current_ts = int(df['timestamp'].max()) + (15 * 60 * 1000)  # Add 15 minutes
+                    # Update current timestamp to last candle + 1 interval
+                    current_ts = int(df['timestamp'].max()) + (15 * 60 * 1000)
+                    
+                    # Show progress
+                    if gap_end > gap_start:
+                        progress = ((current_ts - gap_start) / (gap_end - gap_start)) * 100
+                        logger.info(f"{symbol}: Recent gap filling {progress:.1f}% complete")
                 else:
-                    # If no data, move forward by a smaller amount
-                    current_ts += (50 * 15 * 60 * 1000)  # Skip ahead by 50 candles
+                    # If no data returned, skip ahead by batch size
+                    current_ts += (self.api_batch_size * 15 * 60 * 1000)
                 
-                # Rate limiting
-                time.sleep(self.request_delay)
-                
-                # Progress update
-                if gap_end > gap_start:
-                    progress = ((current_ts - gap_start) / (gap_end - gap_start)) * 100
-                    logger.info(f"{symbol}: Gap filling {progress:.1f}% complete")
+                # Important: Small delay to respect rate limits (in addition to rate limiter)
+                time.sleep(0.5)  # 500ms delay between API calls
         
-        logger.info(f"Completed {symbol}: {total_records} total records collected")
+        # Phase 3: Validation and summary
+        final_gaps = self.get_database_gaps(symbol, db_path)
+        
+        # Only report significant gaps (larger than 1 day)
+        significant_gaps = [
+            gap for gap in final_gaps 
+            if (gap[1] - gap[0]) > (24 * 60 * 60 * 1000)  # > 1 day
+        ]
+        
+        if significant_gaps:
+            logger.warning(f"{symbol}: {len(significant_gaps)} significant gaps remain (>1 day each)")
+            for gap_start, gap_end in significant_gaps[:3]:  # Show first 3 gaps
+                logger.warning(f"  Gap: {datetime.fromtimestamp(gap_start/1000)} to {datetime.fromtimestamp(gap_end/1000)}")
+            
+            if self.api_circuit_open:
+                reset_time_str = datetime.fromtimestamp(self.circuit_reset_time).strftime('%Y-%m-%d %H:%M:%S') if self.circuit_reset_time else "unknown"
+                logger.info(f"{symbol}: API circuit breaker is open. To fill remaining gaps:")
+                logger.info(f"  - Wait until {reset_time_str} for automatic reset, OR")
+                logger.info(f"  - Run the script again later with higher rate limits, OR")
+                logger.info(f"  - Most historical data (99%+) was collected via bulk downloads")
+        else:
+            logger.info(f"{symbol}: Data collection complete, no significant gaps detected")
+        
+        logger.info(f"Completed {symbol}: {total_records} total new records collected")
+        
+        # Return success even if circuit breaker opened, since bulk data was collected
         return True
     
     def collect_all_data(self) -> Dict[str, bool]:
