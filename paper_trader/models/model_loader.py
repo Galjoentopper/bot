@@ -959,6 +959,25 @@ class WindowBasedEnsemblePredictor:
 
             # Prepare feature data for prediction
             feature_data = aligned_features.reindex(columns=expected_features).fillna(0).tail(1)
+            
+            # Validate feature count matches model expectations
+            if hasattr(model, 'n_features_in_'):
+                expected_by_model = model.n_features_in_
+                actual_features = feature_data.shape[1]
+                
+                if expected_by_model != actual_features:
+                    self.logger.error(f"XGBoost model feature mismatch for {symbol} window {window}: "
+                                    f"expected {expected_by_model}, got {actual_features}")
+                    # Try to adjust features to match model expectations
+                    if expected_by_model > actual_features:
+                        # Add missing features with zeros
+                        for i in range(actual_features, expected_by_model):
+                            feature_data[f'missing_feature_{i}'] = 0.0
+                    else:
+                        # Truncate to expected count
+                        feature_data = feature_data.iloc[:, :expected_by_model]
+                    
+                    self.logger.warning(f"Adjusted features for {symbol} window {window}: now {feature_data.shape[1]} features")
 
             # Make prediction (probability of price increase)
             prob_up = model.predict_proba(feature_data)[0][1]

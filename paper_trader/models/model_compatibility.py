@@ -88,33 +88,10 @@ class ModelCompatibilityHandler:
                 'scaler_loaded': False
             }
             
-            # Load LSTM feature columns
+            # Load LSTM feature columns - Use model's input requirements over scaler
             feature_dir = self.models_dir / "feature_columns"
-            lstm_features_file = feature_dir / f"{symbol_lower}_window_{window}.pkl"
             
-            if lstm_features_file.exists():
-                try:
-                    with open(lstm_features_file, 'rb') as f:
-                        all_features = pickle.load(f)
-                    # Filter out lstm_delta and other dynamic features for LSTM
-                    metadata['lstm_features'] = [f for f in all_features if f != 'lstm_delta']
-                    metadata['feature_columns_loaded'] = True
-                    self.logger.debug(f"Loaded LSTM features for {symbol} window {window}: {len(metadata['lstm_features'])}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to load LSTM features for {symbol} window {window}: {e}")
-            
-            # Load XGBoost selected features
-            xgb_features_file = feature_dir / f"{symbol_lower}_window_{window}_selected.pkl"
-            
-            if xgb_features_file.exists():
-                try:
-                    with open(xgb_features_file, 'rb') as f:
-                        metadata['xgb_features'] = pickle.load(f)
-                    self.logger.debug(f"Loaded XGBoost features for {symbol} window {window}: {len(metadata['xgb_features'])}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to load XGBoost features for {symbol} window {window}: {e}")
-            
-            # Load scaler information
+            # Load scaler information for caching, but don't rely on it for feature count
             scaler_dir = self.models_dir / "scalers"
             scaler_file = scaler_dir / f"{symbol_lower}_window_{window}_scaler.pkl"
             
@@ -126,20 +103,89 @@ class ModelCompatibilityHandler:
                     metadata['scaler_loaded'] = True
                     # Cache the scaler
                     self._scaler_cache[cache_key] = scaler
-                    self.logger.debug(f"Loaded scaler for {symbol} window {window}: {metadata['scaler_features']} features")
+                    self.logger.debug(f"Loaded scaler for {symbol} window {window}: {metadata['scaler_features']} features expected by scaler")
                 except Exception as e:
                     self.logger.warning(f"Failed to load scaler for {symbol} window {window}: {e}")
             
+            # Determine LSTM features based on model requirements (36 features for legacy models)
+            # Most LSTM models in this system expect 36 features from LSTM_FEATURES_LEGACY
+            try:
+                from paper_trader.models.feature_engineer import LSTM_FEATURES, LSTM_FEATURES_LEGACY
+                
+                # Check if we have a model file to inspect its input requirements
+                lstm_model_file = self.models_dir / "lstm" / f"{symbol_lower}_window_{window}.keras"
+                use_legacy_features = True  # Default to legacy (36 features) for existing models
+                
+                if lstm_model_file.exists():
+                    # Most existing models use 36 features (LSTM_FEATURES_LEGACY)
+                    self.logger.debug(f"LSTM model file exists for {symbol} window {window}, using legacy features")
+                
+                if use_legacy_features:
+                    metadata['lstm_features'] = LSTM_FEATURES_LEGACY.copy()
+                    self.logger.debug(f"Using LSTM_FEATURES_LEGACY for {symbol} window {window}: {len(metadata['lstm_features'])} features")
+                else:
+                    metadata['lstm_features'] = LSTM_FEATURES.copy()
+                    self.logger.debug(f"Using LSTM_FEATURES for {symbol} window {window}: {len(metadata['lstm_features'])} features")
+                    
+                metadata['feature_columns_loaded'] = True
+                    
+            except ImportError as e:
+                self.logger.error(f"Could not import LSTM features: {e}")
+                metadata['lstm_features'] = []
+            
+            # Load XGBoost selected features
+            xgb_features_file = feature_dir / f"{symbol_lower}_window_{window}_selected.pkl"
+            
+            if xgb_features_file.exists():
+                try:
+                    with open(xgb_features_file, 'rb') as f:
+                        xgb_features = pickle.load(f)
+                    metadata['xgb_features'] = xgb_features
+                    self.logger.debug(f"Loaded XGBoost selected features for {symbol} window {window}: {len(metadata['xgb_features'])} features")
+                except Exception as e:
+                    self.logger.warning(f"Failed to load XGBoost selected features for {symbol} window {window}: {e}")
+                    # Fallback: try loading full features and use as XGBoost features
+                    full_features_file = feature_dir / f"{symbol_lower}_window_{window}.pkl"
+                    if full_features_file.exists():
+                        try:
+                            with open(full_features_file, 'rb') as f:
+                                all_features = pickle.load(f)
+                            # Use all features including lstm_delta for XGBoost
+                            metadata['xgb_features'] = all_features.copy()
+                            self.logger.debug(f"Loaded full features as XGBoost fallback for {symbol} window {window}: {len(metadata['xgb_features'])} features")
+                        except Exception as e2:
+                            self.logger.warning(f"Failed to load full features as XGBoost fallback: {e2}")
+            else:
+                # Try loading full features as XGBoost features if selected not available
+                full_features_file = feature_dir / f"{symbol_lower}_window_{window}.pkl"
+                if full_features_file.exists():
+                    try:
+                        with open(full_features_file, 'rb') as f:
+                            all_features = pickle.load(f)
+                        metadata['xgb_features'] = all_features.copy()
+                        self.logger.debug(f"Using full features for XGBoost {symbol} window {window}: {len(metadata['xgb_features'])} features")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to load full features for XGBoost: {e}")
+            
             # Fallback to default features if nothing loaded
             if not metadata['feature_columns_loaded']:
-                # Import default features
                 try:
-                    from paper_trader.models.feature_engineer import LSTM_FEATURES, TRAINING_FEATURES
-                    metadata['lstm_features'] = LSTM_FEATURES.copy()
-                    metadata['xgb_features'] = TRAINING_FEATURES.copy()
-                    self.logger.info(f"Using default features for {symbol} window {window}")
+                    from paper_trader.models.feature_engineer import LSTM_FEATURES, LSTM_FEATURES_LEGACY, TRAINING_FEATURES
+                    # Default to legacy LSTM features for existing models
+                    metadata['lstm_features'] = LSTM_FEATURES_LEGACY.copy()
+                    self.logger.info(f"Using default LSTM_FEATURES_LEGACY for {symbol} window {window}")
                 except ImportError:
-                    self.logger.warning(f"Could not import default features for {symbol}")
+                    self.logger.warning(f"Could not import default LSTM features for {symbol}")
+                    metadata['lstm_features'] = []
+                    
+            if not metadata['xgb_features']:
+                try:
+                    from paper_trader.models.feature_engineer import TRAINING_FEATURES
+                    metadata['xgb_features'] = TRAINING_FEATURES.copy()
+                    self.logger.info(f"Using default TRAINING_FEATURES for XGBoost {symbol} window {window}")
+                except ImportError:
+                    self.logger.warning(f"Could not import default TRAINING_FEATURES for {symbol}")
+                    metadata['xgb_features'] = []
             
             # Cache the metadata
             self._compatibility_cache[cache_key] = metadata
