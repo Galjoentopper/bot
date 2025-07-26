@@ -78,6 +78,47 @@ import traceback
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# ENHANCED MODEL SAVE/LOAD COMPATIBILITY LAYER
+# ============================================================================
+"""
+Model Compatibility Enhancement Summary:
+=======================================
+
+This module has been enhanced to support both XGBoost and calibrated models
+(CalibratedClassifierCV) seamlessly. The key improvements are:
+
+1. PROBLEM SOLVED:
+   - Original code used model.save_model() for all models
+   - CalibratedClassifierCV models are sklearn objects that need joblib
+   - This caused compatibility issues when using calibration
+
+2. SOLUTION IMPLEMENTED:
+   - Added safe helper functions that detect model type automatically
+   - XGBoost models: use .save_model()/.load_model() with .json extension
+   - Calibrated models: use joblib.dump()/joblib.load() with .pkl extension
+   - Feature importance extraction works with both model types
+
+3. RATIONALE:
+   - Calibrated models provide better probability estimates for trading
+   - Essential for confidence-based decision making
+   - Maintains backward compatibility with existing XGBoost workflows
+   - Enables advanced model techniques like stacking and calibration
+
+4. IMPLEMENTATION DETAILS:
+   - save_model_safe(): Auto-detects model type and saves appropriately
+   - load_model_safe(): Loads based on file extension with auto-detection
+   - get_feature_importance_safe(): Extracts importance from various model types
+   - Full error handling and logging throughout
+
+5. FILE ORGANIZATION:
+   - models/xgboost/*.json : Pure XGBoost models
+   - models/xgboost/*.pkl  : Calibrated XGBoost models
+   - Automatic extension management in save operations
+   - Backward compatibility with existing .json files
+"""
+
+
 def save_model_safe(model, filepath: str, logger=None) -> bool:
     """
     Safely save a model with appropriate method based on model type.
@@ -525,6 +566,39 @@ class DirectionalLoss(tf.keras.losses.Loss):
 class HybridModelTrainer:
     """
     Hybrid LSTM + XGBoost Model Trainer for Cryptocurrency Trading
+    
+    Enhanced Model Save/Load Logic:
+    ==============================
+    This trainer now supports both pure XGBoost models and calibrated models
+    (CalibratedClassifierCV) through intelligent save/load helpers:
+    
+    1. Model Type Detection:
+       - Pure XGBoost models: saved as .json, loaded with .load_model()
+       - Calibrated/sklearn models: saved as .pkl, loaded with joblib.load()
+       - Auto-detection based on model attributes and file extensions
+    
+    2. Safe Helper Functions:
+       - save_model_safe(): Automatically detects model type and uses appropriate method
+       - load_model_safe(): Loads based on file extension with fallback auto-detection  
+       - get_feature_importance_safe(): Extracts feature importance from various model types
+    
+    3. Error Handling:
+       - Comprehensive error handling with logging
+       - Graceful fallbacks when operations fail
+       - Clear error messages for debugging
+    
+    4. File Extension Management:
+       - .json for XGBoost models (native format)
+       - .pkl for calibrated/sklearn models (joblib format)
+       - Automatic extension adjustment in save operations
+    
+    Scientific Rationale:
+    ====================
+    Calibrated models (CalibratedClassifierCV) provide better probability estimates
+    than raw XGBoost models, which is crucial for confidence-based trading strategies.
+    However, they are sklearn objects that require different serialization methods
+    than XGBoost's native format. This implementation provides seamless compatibility
+    with both model types while maintaining the existing training pipeline.
     """
 
     def __init__(
