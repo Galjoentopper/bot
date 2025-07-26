@@ -16,6 +16,7 @@ import xgboost as xgb
 import catboost as cb
 from sklearn.preprocessing import StandardScaler
 from .feature_engineer import LSTM_FEATURES, LSTM_SEQUENCE_LENGTH
+from .model_compatibility import ModelCompatibilityHandler
 
 # Import settings for configuration
 sys.path.append(str(Path(__file__).parent.parent))
@@ -360,6 +361,9 @@ class WindowBasedModelLoader:
         # Available windows for each symbol
         self.available_windows: Dict[str, List[int]] = {}
 
+        # Initialize compatibility handler
+        self.compatibility_handler = ModelCompatibilityHandler(str(model_path))
+
         self.logger = logging.getLogger(__name__)
 
     async def load_symbol_models(self, symbol: str, custom_objects=None) -> bool:
@@ -626,6 +630,80 @@ class WindowBasedModelLoader:
             "caboose": window in self.caboose_models.get(symbol, {}),
             "scaler": window in self.scalers.get(symbol, {}),
         }
+    
+    def validate_model_compatibility(self, symbol: str, window: int, features_df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Validate model compatibility using the compatibility handler.
+        
+        Args:
+            symbol: Trading symbol
+            window: Model window number
+            features_df: DataFrame with current features
+            
+        Returns:
+            Compatibility validation results
+        """
+        try:
+            return self.compatibility_handler.validate_feature_compatibility(
+                features_df, symbol, window, "both"
+            )
+        except Exception as e:
+            self.logger.error(f"Error validating model compatibility for {symbol} window {window}: {e}")
+            return {
+                'symbol': symbol,
+                'window': window,
+                'lstm_compatible': False,
+                'xgboost_compatible': False,
+                'overall_compatible': False,
+                'error': str(e)
+            }
+    
+    def prepare_features_for_models(
+        self, 
+        symbol: str, 
+        window: int, 
+        features_df: pd.DataFrame,
+        lstm_prediction: Optional[float] = None,
+        current_price: Optional[float] = None
+    ) -> Tuple[Optional[np.ndarray], Optional[pd.DataFrame]]:
+        """
+        Prepare features for both LSTM and XGBoost models using compatibility handler.
+        
+        Args:
+            symbol: Trading symbol
+            window: Model window number
+            features_df: Raw features DataFrame
+            lstm_prediction: LSTM prediction for XGBoost lstm_delta feature
+            current_price: Current market price
+            
+        Returns:
+            Tuple of (lstm_input_array, xgboost_features_df)
+        """
+        try:
+            lstm_input = None
+            xgb_features = None
+            
+            # Prepare LSTM input
+            if window in self.lstm_models.get(symbol, {}):
+                lstm_input = self.compatibility_handler.prepare_lstm_input(
+                    features_df, symbol, window
+                )
+                if lstm_input is None:
+                    self.logger.warning(f"Failed to prepare LSTM input for {symbol} window {window}")
+            
+            # Prepare XGBoost features
+            if window in self.xgb_models.get(symbol, {}):
+                xgb_features, _ = self.compatibility_handler.align_xgboost_features(
+                    features_df, symbol, window, lstm_prediction, current_price
+                )
+                if xgb_features is None or xgb_features.empty:
+                    self.logger.warning(f"Failed to prepare XGBoost features for {symbol} window {window}")
+            
+            return lstm_input, xgb_features
+            
+        except Exception as e:
+            self.logger.error(f"Error preparing features for {symbol} window {window}: {e}")
+            return None, None
 
 
 class WindowBasedEnsemblePredictor:
@@ -688,32 +766,15 @@ class WindowBasedEnsemblePredictor:
                 self.logger.warning(f"No models available for {symbol}")
                 return None
 
+            # Validate feature compatibility before proceeding
+            compatibility_validation = self.model_loader.validate_model_compatibility(symbol, optimal_window, features)
+            if not compatibility_validation.get('overall_compatible', False):
+                self.logger.warning(f"Feature compatibility issues for {symbol} window {optimal_window}")
+                # Continue anyway but log the issues
+                self.logger.debug(f"Compatibility details: {compatibility_validation}")
+
             # Get available models for the selected window
             available_models = self.model_loader.get_available_models(symbol, optimal_window)
-
-            # Check feature requirements for available models
-            feature_check_passed = True
-            if available_models["lstm"]:
-                lstm_cols = self.model_loader.feature_columns.get(symbol, {}).get("lstm", {}).get(optimal_window)
-                if lstm_cols:
-                    missing = [c for c in lstm_cols if c not in features.columns]
-                    # Allow computing lstm_delta later if missing
-                    if "lstm_delta" in missing:
-                        missing.remove("lstm_delta")
-                    if missing:
-                        self.logger.warning(f"Missing LSTM feature columns for {symbol}: {missing}")
-                        feature_check_passed = False
-
-            if available_models["xgb"]:
-                xgb_cols = self.model_loader.feature_columns.get(symbol, {}).get("xgb", {}).get(optimal_window)
-                if xgb_cols:
-                    missing = [c for c in xgb_cols if c not in features.columns]
-                    if missing:
-                        self.logger.warning(f"Missing XGBoost feature columns for {symbol}: {missing}")
-                        # XGBoost can still work with missing features filled with zeros
-
-            if not feature_check_passed:
-                return None
 
             predictions = {}
             confidence_scores = {}
@@ -721,7 +782,8 @@ class WindowBasedEnsemblePredictor:
 
             lstm_pred = None
             lstm_conf = 0.0
-            # LSTM Prediction with selected window (skip if models are corrupted)
+            
+            # LSTM Prediction with enhanced compatibility handling
             if available_models["lstm"]:
                 try:
                     lstm_pred, lstm_conf = await self._predict_lstm_window(
@@ -734,21 +796,18 @@ class WindowBasedEnsemblePredictor:
                 except Exception as e:
                     self.logger.warning(f"LSTM model failed for {symbol} window {optimal_window}, skipping: {e}")
 
-            # Append lstm_delta to features if required by any model
-            if lstm_pred is not None:
-                # Check if any model needs lstm_delta
-                lstm_cols = self.model_loader.feature_columns.get(symbol, {}).get("lstm", {}).get(optimal_window, [])
-                xgb_cols = self.model_loader.feature_columns.get(symbol, {}).get("xgb", {}).get(optimal_window, [])
-
-                if "lstm_delta" in lstm_cols or "lstm_delta" in xgb_cols:
-                    base_price = current_price if current_price is not None else features["close"].iloc[-1]
-                    delta = (lstm_pred - base_price) / base_price
-                    features = features.copy()
-                    features["lstm_delta"] = delta
-
-            # XGBoost Prediction with selected window
+            # XGBoost Prediction with lstm_delta integration
             if available_models["xgb"]:
-                xgb_pred, xgb_conf = await self._predict_xgboost_window(symbol, features, optimal_window, current_price)
+                # Prepare features for XGBoost with lstm_delta if available
+                features_for_xgb = features.copy()
+                if lstm_pred is not None and current_price is not None:
+                    # Add lstm_delta feature for XGBoost
+                    lstm_delta = (lstm_pred - current_price) / current_price
+                    features_for_xgb['lstm_delta'] = lstm_delta
+                
+                xgb_pred, xgb_conf = await self._predict_xgboost_window(
+                    symbol, features_for_xgb, optimal_window, current_price
+                )
                 if xgb_pred is not None:
                     predictions["xgb"] = xgb_pred
                     confidence_scores["xgb"] = xgb_conf
@@ -805,6 +864,7 @@ class WindowBasedEnsemblePredictor:
                 "individual_predictions": predictions,
                 "individual_confidences": confidence_scores,
                 "model_details": model_details,
+                "compatibility_check": compatibility_validation.get('overall_compatible', False),
                 "timestamp": pd.Timestamp.now(),
             }
 
@@ -815,7 +875,8 @@ class WindowBasedEnsemblePredictor:
             self.logger.debug(
                 f"Enhanced prediction for {symbol}: {price_change_pct:.4f}% change, "
                 f"confidence: {avg_confidence:.3f}, uncertainty: {uncertainty:.3f}, "
-                f"window: {optimal_window}, meets_threshold: {meets_threshold}"
+                f"window: {optimal_window}, meets_threshold: {meets_threshold}, "
+                f"compatible: {result['compatibility_check']}"
             )
             return result
 
@@ -830,94 +891,24 @@ class WindowBasedEnsemblePredictor:
         window: int,
         current_price: float | None = None,
     ) -> Tuple[Optional[float], float]:
-        """Generate LSTM prediction using specific window model."""
+        """Generate LSTM prediction using specific window model with compatibility handler."""
         try:
             if symbol not in self.model_loader.lstm_models or window not in self.model_loader.lstm_models[symbol]:
                 return None, 0.0
 
             model = self.model_loader.lstm_models[symbol][window]
-            scaler = self.model_loader.scalers[symbol].get(window)
-
-            # Prepare features using the correct feature columns for this window
-            feature_data = features.copy()
-
-            # Use stored feature columns if available, otherwise fall back to TRAINING_FEATURES
-            if (
-                symbol in self.model_loader.feature_columns
-                and "lstm" in self.model_loader.feature_columns[symbol]
-                and window in self.model_loader.feature_columns[symbol]["lstm"]
-            ):
-                expected_feature_cols = self.model_loader.feature_columns[symbol]["lstm"][window]
-                feature_cols = [col for col in expected_feature_cols if col in feature_data.columns]
-                missing_features = [col for col in expected_feature_cols if col not in feature_data.columns]
-
-                if missing_features:
-                    self.logger.warning(f"Missing LSTM features for {symbol} window {window}: {missing_features}")
-                    # Fill missing features with zeros
-                    for col in missing_features:
-                        feature_data[col] = 0.0
-                    feature_cols = expected_feature_cols
-
-                self.logger.debug(
-                    f"Using {len(feature_cols)} LSTM features for {symbol} window {window}: {feature_cols}"
-                )
-            else:
-                # Fallback to TRAINING_FEATURES for compatibility with older models
-                from .feature_engineer import TRAINING_FEATURES
-
-                feature_cols = [col for col in TRAINING_FEATURES if col in feature_data.columns]
-                self.logger.warning(
-                    f"No LSTM feature columns found for {symbol} window {window}, using TRAINING_FEATURES fallback"
-                )
-
-            if scaler is not None and feature_cols:
-                try:
-                    # Check if the scaler expects the same number of features
-                    if hasattr(scaler, "n_features_in_") and len(feature_cols) != scaler.n_features_in_:
-                        self.logger.warning(
-                            f"Feature count mismatch for {symbol} window {window}: "
-                            f"have {len(feature_cols)} features, scaler expects {scaler.n_features_in_}. "
-                            f"Skipping scaling."
-                        )
-                        # Don't scale if there's a mismatch
-                    else:
-                        feature_data[feature_cols] = scaler.transform(feature_data[feature_cols].to_numpy())
-                except Exception as e:
-                    self.logger.error(
-                        f"Error scaling features for {symbol} window {window}: {e}. " f"Proceeding without scaling."
-                    )
-
-            # Sanitize feature values before sequence creation
-            if (
-                np.isnan(feature_data[feature_cols].to_numpy()).any()
-                or np.isinf(feature_data[feature_cols].to_numpy()).any()
-            ):
-                self.logger.debug("Replacing invalid values in LSTM feature data")
-                feature_data[feature_cols] = np.nan_to_num(
-                    feature_data[feature_cols].to_numpy(), nan=0.0, posinf=0.0, neginf=0.0
-                )
-
-            # Create sequence for LSTM using fixed training length
-            sequence_length = min(LSTM_SEQUENCE_LENGTH, len(feature_data))
-
-            numeric_cols = feature_cols
-
-            sequence = feature_data[numeric_cols].tail(sequence_length).values
-
-            # Replace any remaining invalid values
-            if not np.isfinite(sequence).all():
-                self.logger.debug("Cleaning invalid values in LSTM sequence")
-                sequence = np.nan_to_num(sequence, nan=0.0, posinf=0.0, neginf=0.0)
-
-            # Pad sequence if needed to match training length
-            if sequence.shape[0] < LSTM_SEQUENCE_LENGTH:
-                padding = np.zeros((LSTM_SEQUENCE_LENGTH - sequence.shape[0], sequence.shape[1]))
-                sequence = np.vstack([padding, sequence])
-
-            sequence = sequence.reshape(1, LSTM_SEQUENCE_LENGTH, len(numeric_cols))
-
+            
+            # Use compatibility handler to prepare LSTM input
+            lstm_input = self.model_loader.compatibility_handler.prepare_lstm_input(
+                features, symbol, window
+            )
+            
+            if lstm_input is None:
+                self.logger.warning(f"Failed to prepare LSTM input for {symbol} window {window}")
+                return None, 0.0
+            
             # Make prediction (percentage change from current price)
-            prediction = model.predict(sequence, verbose=0)[0][0]
+            prediction = model.predict(lstm_input, verbose=0)[0][0]
 
             if current_price is None:
                 current_price = features["close"].iloc[-1]
@@ -945,38 +936,29 @@ class WindowBasedEnsemblePredictor:
         window: int,
         current_price: float | None = None,
     ) -> Tuple[Optional[float], float]:
-        """Generate XGBoost prediction using specific window model."""
+        """Generate XGBoost prediction using specific window model with compatibility handler."""
         try:
             if symbol not in self.model_loader.xgb_models or window not in self.model_loader.xgb_models[symbol]:
                 return None, 0.0
 
             model = self.model_loader.xgb_models[symbol][window]
 
-            # Get XGBoost-specific feature columns
-            if (
-                symbol in self.model_loader.feature_columns
-                and "xgb" in self.model_loader.feature_columns[symbol]
-                and window in self.model_loader.feature_columns[symbol]["xgb"]
-            ):
-                feature_columns = self.model_loader.feature_columns[symbol]["xgb"][window]
-            else:
-                self.logger.warning(f"No XGBoost feature columns found for {symbol} window {window}")
+            # Use compatibility handler to align XGBoost features
+            # Note: lstm_prediction would need to be passed from the ensemble predict method
+            aligned_features, expected_features = self.model_loader.compatibility_handler.align_xgboost_features(
+                features, symbol, window, None, current_price  # lstm_prediction will be None here
+            )
+            
+            if aligned_features is None or aligned_features.empty:
+                self.logger.warning(f"Failed to align XGBoost features for {symbol} window {window}")
+                return None, 0.0
+            
+            if not expected_features:
+                self.logger.warning(f"No expected features for XGBoost {symbol} window {window}")
                 return None, 0.0
 
-            if not feature_columns:
-                self.logger.warning(f"No feature column list for {symbol} window {window}")
-                return None, 0.0
-
-            available_features = [c for c in feature_columns if c in features.columns]
-            missing_features = [c for c in feature_columns if c not in features.columns]
-
-            if missing_features:
-                self.logger.warning(
-                    f"Missing features for XGBoost prediction: {symbol} window {window}"
-                    f" -> {missing_features}. Filling with zeros."
-                )
-
-            feature_data = features.reindex(columns=feature_columns).fillna(0).tail(1)
+            # Prepare feature data for prediction
+            feature_data = aligned_features.reindex(columns=expected_features).fillna(0).tail(1)
 
             # Make prediction (probability of price increase)
             prob_up = model.predict_proba(feature_data)[0][1]
@@ -1224,5 +1206,38 @@ class WindowBasedEnsemblePredictor:
                     # Allow MODERATE signals if confidence is very high
                     if signal_strength in ["MODERATE", "STRONG", "VERY_STRONG"]:
                         return True
+
+    def diagnose_system_compatibility(self, symbols: List[str]) -> Dict[str, Any]:
+        """
+        Run system-wide compatibility diagnosis.
+        
+        Args:
+            symbols: List of symbols to diagnose
+            
+        Returns:
+            System compatibility diagnosis
+        """
+        try:
+            return self.compatibility_handler.diagnose_system_compatibility(symbols)
+        except Exception as e:
+            self.logger.error(f"Error running system compatibility diagnosis: {e}")
+            return {'error': str(e)}
+    
+    def get_compatibility_requirements(self, symbol: str, window: int) -> Dict[str, Any]:
+        """
+        Get compatibility requirements for a symbol and window.
+        
+        Args:
+            symbol: Trading symbol
+            window: Model window number
+            
+        Returns:
+            Requirements dictionary
+        """
+        try:
+            return self.compatibility_handler.get_model_requirements(symbol, window)
+        except Exception as e:
+            self.logger.error(f"Error getting compatibility requirements for {symbol} window {window}: {e}")
+            return {'error': str(e)}
 
         return meets_basic
