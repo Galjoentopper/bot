@@ -631,7 +631,7 @@ class WindowBasedModelLoader:
             "scaler": window in self.scalers.get(symbol, {}),
         }
     
-    def validate_model_compatibility(self, symbol: str, window: int, features_df: pd.DataFrame) -> Dict[str, Any]:
+    def validate_model_compatibility(self, symbol: str, window: int, features_df: pd.DataFrame) -> Dict[str, any]:
         """
         Validate model compatibility using the compatibility handler.
         
