@@ -107,25 +107,46 @@ class ModelCompatibilityHandler:
                 except Exception as e:
                     self.logger.warning(f"Failed to load scaler for {symbol} window {window}: {e}")
             
-            # Determine LSTM features based on model requirements (36 features for legacy models)
-            # Most LSTM models in this system expect 36 features from LSTM_FEATURES_LEGACY
+            # Determine LSTM features based on actual model requirements
+            # Different models may expect different numbers of features (17 vs 36)
             try:
                 from paper_trader.models.feature_engineer import LSTM_FEATURES, LSTM_FEATURES_LEGACY
                 
                 # Check if we have a model file to inspect its input requirements
                 lstm_model_file = self.models_dir / "lstm" / f"{symbol_lower}_window_{window}.keras"
-                use_legacy_features = True  # Default to legacy (36 features) for existing models
+                model_expected_features = None
                 
                 if lstm_model_file.exists():
-                    # Most existing models use 36 features (LSTM_FEATURES_LEGACY)
-                    self.logger.debug(f"LSTM model file exists for {symbol} window {window}, using legacy features")
+                    try:
+                        # Try to load the model and inspect its input shape
+                        import tensorflow as tf
+                        from paper_trader.models.model_loader import load_keras_model_robust
+                        
+                        model = load_keras_model_robust(str(lstm_model_file))
+                        if model and hasattr(model, 'input_shape'):
+                            input_shape = model.input_shape
+                            if len(input_shape) >= 3:  # (batch, sequence, features)
+                                model_expected_features = input_shape[-1]  # Last dimension is features
+                                self.logger.debug(f"Detected LSTM model input shape for {symbol} window {window}: {input_shape}")
+                    except Exception as e:
+                        self.logger.debug(f"Could not inspect model input shape for {symbol} window {window}: {e}")
                 
-                if use_legacy_features:
-                    metadata['lstm_features'] = LSTM_FEATURES_LEGACY.copy()
-                    self.logger.debug(f"Using LSTM_FEATURES_LEGACY for {symbol} window {window}: {len(metadata['lstm_features'])} features")
-                else:
+                # Choose features based on model requirements
+                if model_expected_features == 17:
                     metadata['lstm_features'] = LSTM_FEATURES.copy()
-                    self.logger.debug(f"Using LSTM_FEATURES for {symbol} window {window}: {len(metadata['lstm_features'])} features")
+                    self.logger.debug(f"Using LSTM_FEATURES (17 features) for {symbol} window {window} based on model input shape")
+                elif model_expected_features == 36:
+                    metadata['lstm_features'] = LSTM_FEATURES_LEGACY.copy()
+                    self.logger.debug(f"Using LSTM_FEATURES_LEGACY (36 features) for {symbol} window {window} based on model input shape")
+                else:
+                    # Fallback: try to determine from scaler if available
+                    if metadata.get('scaler_features') == 17:
+                        metadata['lstm_features'] = LSTM_FEATURES.copy()
+                        self.logger.debug(f"Using LSTM_FEATURES (17 features) for {symbol} window {window} based on scaler")
+                    else:
+                        # Default to legacy features (most common)
+                        metadata['lstm_features'] = LSTM_FEATURES_LEGACY.copy()
+                        self.logger.debug(f"Using LSTM_FEATURES_LEGACY (36 features) as default for {symbol} window {window}")
                     
                 metadata['feature_columns_loaded'] = True
                     
@@ -171,9 +192,13 @@ class ModelCompatibilityHandler:
             if not metadata['feature_columns_loaded']:
                 try:
                     from paper_trader.models.feature_engineer import LSTM_FEATURES, LSTM_FEATURES_LEGACY, TRAINING_FEATURES
-                    # Default to legacy LSTM features for existing models
-                    metadata['lstm_features'] = LSTM_FEATURES_LEGACY.copy()
-                    self.logger.info(f"Using default LSTM_FEATURES_LEGACY for {symbol} window {window}")
+                    # Try to determine from scaler if available, otherwise default to legacy
+                    if metadata.get('scaler_features') == 17:
+                        metadata['lstm_features'] = LSTM_FEATURES.copy()
+                        self.logger.info(f"Using default LSTM_FEATURES (17 features) for {symbol} window {window}")
+                    else:
+                        metadata['lstm_features'] = LSTM_FEATURES_LEGACY.copy()
+                        self.logger.info(f"Using default LSTM_FEATURES_LEGACY (36 features) for {symbol} window {window}")
                 except ImportError:
                     self.logger.warning(f"Could not import default LSTM features for {symbol}")
                     metadata['lstm_features'] = []
