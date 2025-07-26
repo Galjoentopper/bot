@@ -347,10 +347,16 @@ class FeatureEngineer:
             features['upper_wick'] = (df['high'] - np.maximum(df['open'], df['close'])) / df['open']
             features['lower_wick'] = (np.minimum(df['open'], df['close']) - df['low']) / df['open']
 
-            # Time features
-            features['hour'] = df.index.hour
-            features['day_of_week'] = df.index.dayofweek
-            features['is_weekend'] = (df.index.dayofweek >= 5).astype(int)
+            # Time features (only if index is datetime)
+            if hasattr(df.index, 'hour'):
+                features['hour'] = df.index.hour
+                features['day_of_week'] = df.index.dayofweek
+                features['is_weekend'] = (df.index.dayofweek >= 5).astype(int)
+            else:
+                # Default values when no datetime index available
+                features['hour'] = pd.Series(12, index=df.index)  # Default to noon
+                features['day_of_week'] = pd.Series(2, index=df.index)  # Default to Tuesday
+                features['is_weekend'] = pd.Series(0, index=df.index)  # Default to weekday
 
             # Support/Resistance
             features['high_20'] = df['high'].rolling(20).max()
