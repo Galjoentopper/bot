@@ -1,28 +1,32 @@
-2025-07-26 15:13:58,975 - main_paper_trader - INFO - Paper Trader initialized
-2025-07-26 15:13:58,975 - trading_decisions - INFO - === PAPER TRADER STARTING ===
-2025-07-26 15:13:58,975 - trading_decisions - INFO - Settings: MIN_CONFIDENCE=0.4, MIN_SIGNAL=MODERATE
-2025-07-26 15:13:58,975 - trading_decisions - INFO - Symbols: ['BTC-EUR', 'ETH-EUR', 'ADA-EUR', 'SOL-EUR', 'XRP-EUR']
-2025-07-26 15:13:58,975 - trading_decisions - INFO - Capital: €10000.0, Max positions: 15
-2025-07-26 15:13:58,975 - main_paper_trader - INFO - Initializing Paper Trader components...
-2025-07-26 15:13:59,029 - paper_trader.models.model_compatibility - INFO - ModelCompatibilityHandler initialized with models_dir: models
-2025-07-26 15:13:59,072 - paper_trader.notifications.telegram_notifier - INFO - Telegram bot initialized successfully
-2025-07-26 15:13:59,074 - websockets.server - INFO - server listening on 0.0.0.0:8765
-2025-07-26 15:13:59,074 - paper_trader.notifications.websocket_server - INFO - WebSocket server started on 0.0.0.0:8765
-2025-07-26 15:13:59,517 - main_paper_trader - INFO - All components initialized successfully
-2025-07-26 15:13:59,517 - trading_decisions - INFO - 🔄 STARTING TRADING CYCLE
-2025-07-26 15:13:59,517 - trading_decisions - INFO - 🔍 Analyzing BTC-EUR...
-2025-07-26 15:13:59,517 - trading_decisions - WARNING - ❌ No prediction available for BTC-EUR
-2025-07-26 15:13:59,517 - trading_decisions - INFO - 🔍 Analyzing ETH-EUR...
-2025-07-26 15:13:59,517 - trading_decisions - WARNING - ❌ No prediction available for ETH-EUR
-2025-07-26 15:13:59,517 - trading_decisions - INFO - 🔍 Analyzing ADA-EUR...
-2025-07-26 15:13:59,517 - trading_decisions - WARNING - ❌ No prediction available for ADA-EUR
-2025-07-26 15:13:59,517 - trading_decisions - INFO - 🔍 Analyzing SOL-EUR...
-2025-07-26 15:13:59,518 - trading_decisions - WARNING - ❌ No prediction available for SOL-EUR
-2025-07-26 15:13:59,518 - trading_decisions - INFO - 🔍 Analyzing XRP-EUR...
-2025-07-26 15:13:59,518 - trading_decisions - WARNING - ❌ No prediction available for XRP-EUR
-2025-07-26 15:13:59,518 - trading_decisions - INFO - 🔄 TRADING CYCLE COMPLETE:
-2025-07-26 15:13:59,518 - trading_decisions - INFO -    📊 Symbols analyzed: 5
-2025-07-26 15:13:59,518 - trading_decisions - INFO -    ✅ Successful trades: 0
-2025-07-26 15:13:59,518 - trading_decisions - INFO -    ❌ Failed signals: 5
-2025-07-26 15:13:59,518 - trading_decisions - INFO -    💼 Active positions: 0
-2025-07-26 15:13:59,518 - trading_decisions - INFO -    💰 Available capital: €10000.00
+2025-07-26 15:32:53,714 - main_paper_trader - INFO - Paper Trader initialized
+2025-07-26 15:32:53,715 - trading_decisions - INFO - === PAPER TRADER STARTING ===
+2025-07-26 15:32:53,715 - trading_decisions - INFO - Settings: MIN_CONFIDENCE=0.4, MIN_SIGNAL=MODERATE
+2025-07-26 15:32:53,715 - trading_decisions - INFO - Symbols: ['BTC-EUR', 'ETH-EUR', 'ADA-EUR', 'SOL-EUR', 'XRP-EUR']
+2025-07-26 15:32:53,715 - trading_decisions - INFO - Capital: €10000.0, Max positions: 15
+2025-07-26 15:32:53,715 - main_paper_trader - INFO - Initializing Paper Trader components...
+2025-07-26 15:32:53,768 - paper_trader.models.model_compatibility - INFO - ModelCompatibilityHandler initialized with models_dir: models
+2025-07-26 15:32:53,769 - paper_trader.notifications.telegram_notifier - WARNING - Telegram credentials not provided - notifications disabled
+2025-07-26 15:32:53,772 - websockets.server - INFO - server listening on 0.0.0.0:8765
+2025-07-26 15:32:53,772 - paper_trader.notifications.websocket_server - INFO - WebSocket server started on 0.0.0.0:8765
+2025-07-26 15:32:53,772 - main_paper_trader - INFO - All components initialized successfully
+2025-07-26 15:32:53,772 - __main__ - INFO - ✅ Paper trader initialized successfully
+2025-07-26 15:32:53,772 - __main__ - INFO - 🔄 Testing single trading cycle...
+2025-07-26 15:32:53,772 - trading_decisions - INFO - 🔄 STARTING TRADING CYCLE
+2025-07-26 15:32:53,772 - trading_decisions - INFO - 🔍 Analyzing BTC-EUR...
+2025-07-26 15:32:53,772 - trading_decisions - WARNING - ❌ No prediction available for BTC-EUR
+2025-07-26 15:32:53,772 - trading_decisions - INFO - 🔍 Analyzing ETH-EUR...
+2025-07-26 15:32:53,772 - trading_decisions - WARNING - ❌ No prediction available for ETH-EUR
+2025-07-26 15:32:53,772 - trading_decisions - INFO - 🔍 Analyzing ADA-EUR...
+2025-07-26 15:32:53,772 - trading_decisions - WARNING - ❌ No prediction available for ADA-EUR
+2025-07-26 15:32:53,772 - trading_decisions - INFO - 🔍 Analyzing SOL-EUR...
+2025-07-26 15:32:53,773 - trading_decisions - WARNING - ❌ No prediction available for SOL-EUR
+2025-07-26 15:32:53,773 - trading_decisions - INFO - 🔍 Analyzing XRP-EUR...
+2025-07-26 15:32:53,773 - trading_decisions - WARNING - ❌ No prediction available for XRP-EUR
+2025-07-26 15:32:53,773 - trading_decisions - INFO - 🔄 TRADING CYCLE COMPLETE:
+2025-07-26 15:32:53,773 - trading_decisions - INFO -    📊 Symbols analyzed: 5
+2025-07-26 15:32:53,773 - trading_decisions - INFO -    ✅ Successful trades: 0
+2025-07-26 15:32:53,773 - trading_decisions - INFO -    ❌ Failed signals: 5
+2025-07-26 15:32:53,773 - trading_decisions - INFO -    💼 Active positions: 0
+2025-07-26 15:32:53,773 - trading_decisions - INFO -    💰 Available capital: €10000.00
+2025-07-26 15:32:53,773 - __main__ - INFO - ✅ Trading cycle completed successfully
+2025-07-26 15:32:53,774 - __main__ - INFO - 🎉 MAIN PAPER TRADER TEST PASSED!

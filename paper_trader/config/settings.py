@@ -9,16 +9,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 @dataclass
-class TradingSettings:
-    """Configuration settings for the paper trader."""
+class ModelSettings:
+    """Model-specific configuration settings."""
     
-    # API Configuration
-    bitvavo_api_key: str = os.getenv('BITVAVO_API_KEY', '')
-    bitvavo_api_secret: str = os.getenv('BITVAVO_API_SECRET', '')
+    # Model Configuration  
+    model_path: str = os.getenv('MODEL_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'models'))
+    # Sequence length: 96 candles = 24 hours of 15-minute data (matches training)
+    sequence_length: int = int(os.getenv('SEQUENCE_LENGTH', '96'))
     
-    # Telegram Configuration
-    telegram_bot_token: str = os.getenv('TELEGRAM_BOT_TOKEN', '')
-    telegram_chat_id: str = os.getenv('TELEGRAM_CHAT_ID', '')
+    # Window-based Model Configuration
+    min_window: int = int(os.getenv('MIN_WINDOW', '3'))
+    max_window: int = int(os.getenv('MAX_WINDOW', '41'))
+    default_window: int = int(os.getenv('DEFAULT_WINDOW', '15'))
+    
+    # Prediction Confidence Thresholds
+    min_confidence_threshold: float = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.7'))
+    min_signal_strength: str = os.getenv('MIN_SIGNAL_STRENGTH', 'MODERATE')
+    
+    # Ensemble Model Weights
+    lstm_weight: float = float(os.getenv('LSTM_WEIGHT', '0.6'))
+    xgb_weight: float = float(os.getenv('XGB_WEIGHT', '0.4'))
+    caboose_weight: float = float(os.getenv('CABOOSE_WEIGHT', '0.3'))
+
+@dataclass  
+class TradingSettingsConfig:
+    """Trading-specific configuration settings."""
     
     # Trading Parameters
     initial_capital: float = float(os.getenv('INITIAL_CAPITAL', '10000.0'))
@@ -39,28 +54,25 @@ class TradingSettings:
 
     # Data interval for candles - using 15m to match ML model training data
     candle_interval: str = os.getenv('CANDLE_INTERVAL', '15m')
+
+@dataclass
+class TradingSettings:
+    """Configuration settings for the paper trader."""
+    
+    # API Configuration
+    bitvavo_api_key: str = os.getenv('BITVAVO_API_KEY', '')
+    bitvavo_api_secret: str = os.getenv('BITVAVO_API_SECRET', '')
+    
+    # Telegram Configuration
+    telegram_bot_token: str = os.getenv('TELEGRAM_BOT_TOKEN', '')
+    telegram_chat_id: str = os.getenv('TELEGRAM_chat_ID', '')
     
     # Symbols
     symbols: List[str] = None
     
-    # Model Configuration  
-    model_path: str = os.getenv('MODEL_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'models'))
-    # Sequence length: 96 candles = 24 hours of 15-minute data (matches training)
-    sequence_length: int = int(os.getenv('SEQUENCE_LENGTH', '96'))
-    
-    # Window-based Model Configuration
-    min_window: int = int(os.getenv('MIN_WINDOW', '3'))
-    max_window: int = int(os.getenv('MAX_WINDOW', '41'))
-    default_window: int = int(os.getenv('DEFAULT_WINDOW', '15'))
-    
-    # Prediction Confidence Thresholds
-    min_confidence_threshold: float = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.7'))
-    min_signal_strength: str = os.getenv('MIN_SIGNAL_STRENGTH', 'MODERATE')
-    
-    # Ensemble Model Weights
-    lstm_weight: float = float(os.getenv('LSTM_WEIGHT', '0.6'))
-    xgb_weight: float = float(os.getenv('XGB_WEIGHT', '0.4'))
-    caboose_weight: float = float(os.getenv('CABOOSE_WEIGHT', '0.3'))
+    # Configuration objects
+    model_settings: ModelSettings = None
+    trading_settings: TradingSettingsConfig = None
 
     # Risk Management
     max_daily_loss_pct: float = float(os.getenv('MAX_DAILY_LOSS_PCT', '0.05'))
@@ -120,10 +132,16 @@ class TradingSettings:
     strong_signal_confidence_boost: float = float(os.getenv('STRONG_SIGNAL_CONFIDENCE_BOOST', '0.85'))
     
     def __post_init__(self):
-        """Initialize symbols list from environment variable."""
+        """Initialize symbols list and nested configuration objects."""
         if self.symbols is None:
             symbols_str = os.getenv('SYMBOLS', 'BTC-EUR,ETH-EUR,ADA-EUR,SOL-EUR,XRP-EUR')
             self.symbols = [s.strip() for s in symbols_str.split(',')]
+        
+        # Initialize nested configuration objects
+        if self.model_settings is None:
+            self.model_settings = ModelSettings()
+        if self.trading_settings is None:
+            self.trading_settings = TradingSettingsConfig()
     
     def validate(self) -> bool:
         """Validate configuration settings."""
@@ -137,16 +155,16 @@ class TradingSettings:
         if not all(required_fields):
             return False
             
-        if self.initial_capital <= 0:
+        if self.trading_settings.initial_capital <= 0:
             return False
             
-        if self.max_positions <= 0:
+        if self.trading_settings.max_positions <= 0:
             return False
 
-        if self.max_positions_per_symbol <= 0:
+        if self.trading_settings.max_positions_per_symbol <= 0:
             return False
             
-        if not (0 < self.base_position_size <= 1):
+        if not (0 < self.trading_settings.base_position_size <= 1):
             return False
             
         if not self.symbols:
@@ -156,4 +174,4 @@ class TradingSettings:
     
     def get_position_size(self, current_capital: float) -> float:
         """Calculate position size based on current capital."""
-        return current_capital * self.base_position_size
+        return current_capital * self.trading_settings.base_position_size
