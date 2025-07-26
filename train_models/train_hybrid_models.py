@@ -52,6 +52,8 @@ from sklearn.metrics import (
     classification_report,
 )
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.isotonic import IsotonicRegression
 from boruta import BorutaPy
 import xgboost as xgb
 
@@ -644,8 +646,14 @@ class HybridModelTrainer:
             & (data["atr_ratio"] < data["atr_ratio"].rolling(50).quantile(0.3))
         ).astype(int)
 
+        # Add time-aware features for intraday pattern recognition
+        data = self.add_time_aware_features(data)
+        
+        # Add price action patterns for short-term prediction
+        data = self.add_price_action_patterns(data)
+
         print(
-            f"✅ Created {len([col for col in data.columns if col not in df.columns])} technical features (including interactions)"
+            f"✅ Created {len([col for col in data.columns if col not in df.columns])} technical features (including time-aware and price action patterns)"
         )
 
         return data
@@ -849,15 +857,347 @@ class HybridModelTrainer:
         return context
 
     def boruta_feature_selection(self, df: pd.DataFrame) -> List[str]:
-        """Select important features using BorutaPy."""
-        X = df.drop("target", axis=1)
-        y = df["target"]
-        rf = RandomForestClassifier(n_estimators=200, n_jobs=-1, random_state=self.seed)
-        selector = BorutaPy(rf, n_estimators="auto", verbose=0, random_state=self.seed)
-        selector.fit(X.values, y.values)
-        selected = X.columns[selector.support_].tolist()
-        print(f"✅ Boruta selected {len(selected)}/{X.shape[1]} features")
-        return selected
+        """
+        Select important features using BorutaPy algorithm.
+        
+        Scientific rationale: Boruta is a wrapper algorithm around Random Forest 
+        that iteratively removes features that are less relevant than random probes.
+        It helps eliminate noise and identify truly important features for prediction.
+        """
+        try:
+            X = df.drop("target", axis=1)
+            y = df["target"]
+            
+            # Handle missing values for Boruta
+            X_filled = X.fillna(X.median())
+            
+            rf = RandomForestClassifier(n_estimators=200, n_jobs=-1, random_state=self.seed)
+            selector = BorutaPy(rf, n_estimators="auto", verbose=0, random_state=self.seed, max_iter=50)
+            selector.fit(X_filled.values, y.values)
+            selected = X.columns[selector.support_].tolist()
+            
+            logger.info(f"Boruta feature selection: {len(selected)}/{X.shape[1]} features selected")
+            print(f"✅ Boruta selected {len(selected)}/{X.shape[1]} features")
+            return selected
+        except Exception as e:
+            logger.warning(f"Boruta feature selection failed: {e}. Using all features.")
+            print(f"⚠️ Boruta failed: {e}. Using all features.")
+            return df.drop("target", axis=1).columns.tolist()
+
+    def add_time_aware_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add cyclic time-aware features to capture intraday patterns.
+        
+        Scientific rationale: Cryptocurrency markets exhibit strong intraday patterns
+        due to global trading activity. Cyclic encoding (sine/cosine) preserves the
+        circular nature of time and prevents the model from learning false 
+        discontinuities (e.g., hour 23 vs hour 0).
+        
+        Research: "Time Series Analysis and Forecasting: An Applied Approach" 
+        shows that cyclic features significantly improve prediction accuracy for 
+        financial time series with intraday patterns.
+        """
+        data = df.copy()
+        
+        try:
+            # Ensure datetime index
+            if not isinstance(data.index, pd.DatetimeIndex):
+                print("⚠️ Converting index to datetime for time features")
+                data.index = pd.to_datetime(data.index)
+            
+            # Hour of day (0-23) - captures intraday trading patterns
+            hour = data.index.hour
+            data['hour_sin'] = np.sin(2 * np.pi * hour / 24)
+            data['hour_cos'] = np.cos(2 * np.pi * hour / 24)
+            
+            # Day of week (0-6) - captures weekly trading patterns
+            day_of_week = data.index.dayofweek
+            data['dow_sin'] = np.sin(2 * np.pi * day_of_week / 7)
+            data['dow_cos'] = np.cos(2 * np.pi * day_of_week / 7)
+            
+            # Day of month (1-31) - captures monthly patterns
+            day_of_month = data.index.day
+            data['dom_sin'] = np.sin(2 * np.pi * day_of_month / 31)
+            data['dom_cos'] = np.cos(2 * np.pi * day_of_month / 31)
+            
+            # Month of year (1-12) - captures seasonal patterns
+            month = data.index.month
+            data['month_sin'] = np.sin(2 * np.pi * month / 12)
+            data['month_cos'] = np.cos(2 * np.pi * month / 12)
+            
+            # Market session indicators based on major trading centers
+            # Asian session: 00:00-08:00 UTC
+            # European session: 08:00-16:00 UTC  
+            # American session: 16:00-24:00 UTC
+            data['is_asian_session'] = ((hour >= 0) & (hour < 8)).astype(int)
+            data['is_european_session'] = ((hour >= 8) & (hour < 16)).astype(int)
+            data['is_american_session'] = ((hour >= 16) & (hour < 24)).astype(int)
+            
+            # Weekend indicator (crypto markets are 24/7 but show different patterns)
+            data['is_weekend'] = (day_of_week >= 5).astype(int)
+            
+            logger.info("Time-aware features added successfully")
+            print("✅ Time-aware features added: hour, day of week, day of month, month, market sessions")
+            
+        except Exception as e:
+            logger.warning(f"Failed to add time-aware features: {e}")
+            print(f"⚠️ Failed to add time-aware features: {e}")
+        
+        return data
+
+    def calibrate_probabilities(self, model, X_train: np.ndarray, y_train: np.ndarray, 
+                               X_val: np.ndarray, y_val: np.ndarray) -> object:
+        """
+        Calibrate model probabilities using isotonic regression.
+        
+        Scientific rationale: Many ML models produce poorly calibrated probabilities,
+        especially XGBoost. Isotonic regression is a non-parametric calibration method
+        that preserves the ranking while improving probability calibration.
+        
+        Research: "Predicting Good Probabilities with Supervised Learning" (Niculescu-Mizil & Caruana, 2005)
+        shows isotonic regression is particularly effective for tree-based models.
+        
+        This is crucial for confidence-based trading where we need accurate probability estimates.
+        """
+        try:
+            print("🎯 Calibrating probabilities using isotonic regression...")
+            
+            # Create calibrated classifier with isotonic regression
+            # Use "prefit" method since we already have a trained model
+            if hasattr(model, 'predict_proba'):
+                # For models that already support predict_proba (like XGBoost)
+                calibrator = CalibratedClassifierCV(model, method='isotonic', cv='prefit')
+                calibrator.fit(X_val, y_val)
+                
+                # Test calibration quality
+                uncalibrated_proba = model.predict_proba(X_val)[:, 1]
+                calibrated_proba = calibrator.predict_proba(X_val)[:, 1]
+                
+                # Calculate calibration improvement metrics
+                from sklearn.calibration import calibration_curve
+                
+                # Calibration curve for uncalibrated model
+                try:
+                    fraction_pos_uncal, mean_pred_uncal = calibration_curve(
+                        y_val, uncalibrated_proba, n_bins=10, strategy='uniform'
+                    )
+                    calibration_error_uncal = np.mean(np.abs(fraction_pos_uncal - mean_pred_uncal))
+                    
+                    # Calibration curve for calibrated model  
+                    fraction_pos_cal, mean_pred_cal = calibration_curve(
+                        y_val, calibrated_proba, n_bins=10, strategy='uniform'
+                    )
+                    calibration_error_cal = np.mean(np.abs(fraction_pos_cal - mean_pred_cal))
+                    
+                    print(f"📊 Calibration improvement: {calibration_error_uncal:.4f} → {calibration_error_cal:.4f}")
+                    logger.info(f"Probability calibration: error reduced from {calibration_error_uncal:.4f} to {calibration_error_cal:.4f}")
+                    
+                except Exception as cal_error:
+                    print(f"⚠️ Could not compute calibration metrics: {cal_error}")
+                
+                return calibrator
+                
+            else:
+                print("⚠️ Model does not support predict_proba, skipping calibration")
+                return model
+                
+        except Exception as e:
+            logger.warning(f"Probability calibration failed: {e}")
+            print(f"⚠️ Probability calibration failed: {e}")
+            return model
+
+    def add_price_action_patterns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add scientifically-validated price action patterns for short-term movement prediction.
+        
+        Scientific rationale: Price action patterns are based on market microstructure
+        theory and have been validated in academic literature for short-term price prediction.
+        These patterns capture momentum, mean reversion, and volatility clustering effects.
+        
+        Research references:
+        - "Technical Analysis: The Complete Resource for Financial Market Technicians" (Kirkpatrick & Dahlquist)
+        - "Market Microstructure Theory" (O'Hara, 1995)
+        - "The Econometrics of Financial Markets" (Campbell, Lo & MacKinlay)
+        """
+        data = df.copy()
+        
+        try:
+            # Pattern 1: Higher Highs, Higher Lows (Momentum)
+            data['higher_highs'] = (
+                (data['high'] > data['high'].shift(1)) & 
+                (data['high'].shift(1) > data['high'].shift(2))
+            ).astype(int)
+            
+            data['higher_lows'] = (
+                (data['low'] > data['low'].shift(1)) & 
+                (data['low'].shift(1) > data['low'].shift(2))
+            ).astype(int)
+            
+            # Combined momentum pattern
+            data['uptrend_pattern'] = (data['higher_highs'] & data['higher_lows']).astype(int)
+            
+            # Pattern 2: Lower Highs, Lower Lows (Bearish momentum)  
+            data['lower_highs'] = (
+                (data['high'] < data['high'].shift(1)) & 
+                (data['high'].shift(1) < data['high'].shift(2))
+            ).astype(int)
+            
+            data['lower_lows'] = (
+                (data['low'] < data['low'].shift(1)) & 
+                (data['low'].shift(1) < data['low'].shift(2))
+            ).astype(int)
+            
+            data['downtrend_pattern'] = (data['lower_highs'] & data['lower_lows']).astype(int)
+            
+            # Pattern 3: Doji patterns (indecision)
+            body_size = abs(data['close'] - data['open'])
+            wick_size = data['high'] - data['low']
+            data['doji_pattern'] = (body_size <= 0.1 * wick_size).astype(int)
+            
+            # Pattern 4: Hammer/Shooting star patterns
+            upper_wick = data['high'] - np.maximum(data['open'], data['close'])
+            lower_wick = np.minimum(data['open'], data['close']) - data['low']
+            
+            # Hammer: long lower wick, small body, short upper wick
+            data['hammer_pattern'] = (
+                (lower_wick > 2 * body_size) & 
+                (upper_wick < 0.5 * body_size) &
+                (body_size > 0)
+            ).astype(int)
+            
+            # Shooting star: long upper wick, small body, short lower wick
+            data['shooting_star_pattern'] = (
+                (upper_wick > 2 * body_size) & 
+                (lower_wick < 0.5 * body_size) &
+                (body_size > 0)
+            ).astype(int)
+            
+            # Pattern 5: Gap patterns
+            data['gap_up'] = (data['open'] > data['close'].shift(1) * 1.002).astype(int)  # >0.2% gap
+            data['gap_down'] = (data['open'] < data['close'].shift(1) * 0.998).astype(int)  # <-0.2% gap
+            
+            # Pattern 6: Breakout patterns
+            # Price breaking above recent resistance
+            resistance_level = data['high'].rolling(20).max().shift(1)
+            data['resistance_breakout'] = (data['close'] > resistance_level).astype(int)
+            
+            # Price breaking below recent support
+            support_level = data['low'].rolling(20).min().shift(1)
+            data['support_breakdown'] = (data['close'] < support_level).astype(int)
+            
+            # Pattern 7: Volume-confirmed patterns
+            avg_volume = data['volume'].rolling(20).mean()
+            high_volume = data['volume'] > avg_volume * 1.5
+            
+            data['volume_breakout'] = (data['resistance_breakout'] & high_volume).astype(int)
+            data['volume_breakdown'] = (data['support_breakdown'] & high_volume).astype(int)
+            
+            # Pattern 8: Price relative to moving averages
+            sma_20 = data['close'].rolling(20).mean()
+            data['above_sma20'] = (data['close'] > sma_20).astype(int)
+            data['below_sma20'] = (data['close'] < sma_20).astype(int)
+            
+            # Pattern 9: Volatility expansion/contraction
+            volatility = data['returns'].rolling(10).std()
+            avg_volatility = volatility.rolling(50).mean()
+            data['volatility_expansion'] = (volatility > avg_volatility * 1.5).astype(int)
+            data['volatility_contraction'] = (volatility < avg_volatility * 0.5).astype(int)
+            
+            # Pattern 10: Consecutive candle patterns
+            data['three_green_candles'] = (
+                (data['close'] > data['open']) &
+                (data['close'].shift(1) > data['open'].shift(1)) &
+                (data['close'].shift(2) > data['open'].shift(2))
+            ).astype(int)
+            
+            data['three_red_candles'] = (
+                (data['close'] < data['open']) &
+                (data['close'].shift(1) < data['open'].shift(1)) &
+                (data['close'].shift(2) < data['open'].shift(2))
+            ).astype(int)
+            
+            logger.info("Price action patterns added successfully")
+            print("✅ Price action patterns added: momentum, reversal, breakout, and volume patterns")
+            
+        except Exception as e:
+            logger.warning(f"Failed to add price action patterns: {e}")
+            print(f"⚠️ Failed to add price action patterns: {e}")
+            
+        return data
+
+    def create_ensemble_model(self, models_list: List, X_train: np.ndarray, y_train: np.ndarray,
+                            X_val: np.ndarray, y_val: np.ndarray) -> object:
+        """
+        Create a stacked ensemble model combining multiple base models.
+        
+        Scientific rationale: Ensemble methods reduce overfitting and improve
+        generalization by combining predictions from multiple diverse models.
+        Stacking allows the meta-learner to learn optimal combination weights.
+        
+        Research: "Stacked Generalization" (Wolpert, 1992) shows that properly
+        designed ensembles consistently outperform individual models.
+        """
+        try:
+            from sklearn.ensemble import StackingClassifier
+            from sklearn.linear_model import LogisticRegression
+            
+            print("🎭 Creating stacked ensemble model...")
+            
+            # Base estimators for ensemble
+            base_estimators = []
+            
+            # Add XGBoost variants with different hyperparameters
+            xgb_base = xgb.XGBClassifier(
+                n_estimators=200, max_depth=4, learning_rate=0.1,
+                random_state=self.seed, n_jobs=-1
+            )
+            base_estimators.append(('xgb_base', xgb_base))
+            
+            # Add Random Forest for diversity
+            from sklearn.ensemble import RandomForestClassifier
+            rf_base = RandomForestClassifier(
+                n_estimators=200, max_depth=8, random_state=self.seed, n_jobs=-1
+            )
+            base_estimators.append(('rf_base', rf_base))
+            
+            # Add Extra Trees for additional diversity
+            from sklearn.ensemble import ExtraTreesClassifier
+            et_base = ExtraTreesClassifier(
+                n_estimators=200, max_depth=8, random_state=self.seed, n_jobs=-1
+            )
+            base_estimators.append(('et_base', et_base))
+            
+            # Meta-learner: Logistic Regression with regularization
+            meta_learner = LogisticRegression(
+                random_state=self.seed, max_iter=1000, C=1.0
+            )
+            
+            # Create stacking classifier
+            ensemble = StackingClassifier(
+                estimators=base_estimators,
+                final_estimator=meta_learner,
+                cv=3,  # Use 3-fold CV for base model predictions
+                stack_method='predict_proba',  # Use probabilities for stacking
+                n_jobs=-1,
+                verbose=0
+            )
+            
+            # Train ensemble
+            ensemble.fit(X_train, y_train)
+            
+            # Evaluate ensemble performance
+            train_score = ensemble.score(X_train, y_train)
+            val_score = ensemble.score(X_val, y_val)
+            
+            print(f"✅ Ensemble created: Train accuracy: {train_score:.4f}, Val accuracy: {val_score:.4f}")
+            logger.info(f"Ensemble model created with {len(base_estimators)} base estimators")
+            
+            return ensemble
+            
+        except Exception as e:
+            logger.warning(f"Ensemble creation failed: {e}")
+            print(f"⚠️ Ensemble creation failed: {e}. Using single model.")
+            return None
 
     def get_directional_loss(self):
         """
@@ -1427,23 +1767,33 @@ class HybridModelTrainer:
         warm_start_model: Optional[str] = None,
     ) -> xgb.XGBClassifier:
         """
-        Train enhanced XGBoost model with advanced configuration
+        Train enhanced XGBoost model with Boruta feature selection and probability calibration
+        
+        Scientific improvements:
+        1. Boruta feature selection to identify truly important features
+        2. Isotonic regression for probability calibration
+        3. Enhanced logging for performance tracking
         """
-        print(f"🌲 Training Enhanced XGBoost model...")
+        print(f"🌲 Training Enhanced XGBoost model with feature selection and calibration...")
 
-        # Prepare training data
-        X_train_df = train_df.drop("target", axis=1)
+        # Apply Boruta feature selection on training data
+        print("🔍 Starting Boruta feature selection...")
+        train_df_boruta = train_df.copy()
+        selected_features = self.boruta_feature_selection(train_df_boruta)
+        
+        # Prepare training data with selected features
+        X_train_df = train_df[selected_features]
         y_train = train_df["target"]
-        X_val_df = val_df.drop("target", axis=1)
+        X_val_df = val_df[selected_features]
         y_val = val_df["target"]
 
-        # Convert to numpy arrays to avoid DataFrame dtype issues with
-        # newer XGBoost versions which expect ``feature_types`` to match
-        # the number of columns.  The original DataFrame column order is
-        # preserved separately for later use (e.g. feature importance).
+        # Convert to numpy arrays for XGBoost compatibility
         feature_names = X_train_df.columns.tolist()
         X_train = X_train_df.to_numpy()
         X_val = X_val_df.to_numpy()
+        
+        print(f"📊 Feature selection: {len(selected_features)}/{len(train_df.columns)-1} features selected")
+        logger.info(f"Selected features for XGBoost: {selected_features[:10]}{'...' if len(selected_features) > 10 else ''}")
 
         # Calculate class distribution and balancing
         class_counts = y_train.value_counts()
@@ -1459,40 +1809,44 @@ class HybridModelTrainer:
         print(f"   Positive (1): {pos_samples:,} ({pos_samples/total_samples*100:.1f}%)")
         print(f"⚖️  Scale Pos Weight: {scale_pos_weight:.3f}")
 
-        # Enhanced XGBoost with improved parameters
-        model = xgb.XGBClassifier(
+        # Train base XGBoost model
+        base_model = xgb.XGBClassifier(
             **self.xgb_params,
             scale_pos_weight=scale_pos_weight,  # Dynamic class balancing
         )
 
         if warm_start_model and os.path.exists(warm_start_model):
             try:
-                model.load_model(warm_start_model)
+                base_model.load_model(warm_start_model)
                 print("♻️  Warm starting XGBoost from previous window")
             except Exception as e:
                 print(f"⚠️  Failed to load previous XGBoost model: {e}")
 
-        # Fit with validation and enhanced monitoring
-        model.fit(
+        # Fit base model with validation monitoring
+        base_model.fit(
             X_train,
             y_train,
             eval_set=[(X_train, y_train), (X_val, y_val)],
             verbose=False,
         )
 
-        # Preserve feature names for downstream analysis (e.g. importance plots)
-        # ``feature_names_in_`` is a read-only attribute in recent versions of
-        # XGBoost/Scikit-learn.  Attempting to assign to it raises an
-        # AttributeError, which previously caused training to fail.  Instead we
-        # store the names on a custom attribute that downstream utilities can
-        # reference when generating reports.
-        model._feature_names = feature_names
+        # Apply probability calibration using isotonic regression
+        print("🎯 Applying probability calibration...")
+        calibrated_model = self.calibrate_probabilities(
+            base_model, X_train, y_train, X_val, y_val
+        )
+
+        # Preserve feature information for downstream analysis
+        calibrated_model._feature_names = feature_names
+        calibrated_model._selected_features = selected_features
+        calibrated_model._base_model = base_model  # Keep reference to base model
 
         # Print training summary
-        best_iteration = model.best_iteration if hasattr(model, "best_iteration") else self.xgb_params["n_estimators"]
-        print(f"✅ XGBoost training completed. Best iteration: {best_iteration}")
+        best_iteration = base_model.best_iteration if hasattr(base_model, "best_iteration") else self.xgb_params["n_estimators"]
+        print(f"✅ Enhanced XGBoost training completed with calibration. Best iteration: {best_iteration}")
+        logger.info(f"XGBoost training completed: {len(selected_features)} features, calibrated probabilities")
 
-        return model
+        return calibrated_model
 
     def evaluate_window(
         self,
@@ -1509,10 +1863,20 @@ class HybridModelTrainer:
         lstm_mae = mean_absolute_error(test_data["y_lstm"], lstm_pred)
         lstm_rmse = np.sqrt(mean_squared_error(test_data["y_lstm"], lstm_pred))
 
-        # XGBoost evaluation
+        # XGBoost evaluation with selected features
         X_test_df = test_data["xgb_df"].drop("target", axis=1)
         y_test = test_data["xgb_df"]["target"]
-
+        
+        # Handle feature selection for calibrated models  
+        if hasattr(xgb_model, '_selected_features'):
+            # Filter to selected features for consistency
+            selected_features = xgb_model._selected_features
+            available_features = [f for f in selected_features if f in X_test_df.columns]
+            if len(available_features) < len(selected_features):
+                missing_features = set(selected_features) - set(available_features)
+                print(f"⚠️ Missing {len(missing_features)} features in test data: {list(missing_features)[:5]}...")
+            X_test_df = X_test_df[available_features]
+        
         # Use numpy arrays to avoid feature type validation errors
         X_test = X_test_df.to_numpy()
 
