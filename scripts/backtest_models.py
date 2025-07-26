@@ -18,6 +18,72 @@ from collections import defaultdict
 
 warnings.filterwarnings('ignore')
 
+# Import helper functions for safe model operations
+def load_model_safe(filepath: str, logger=None):
+    """
+    Safely load a model with appropriate method based on file extension.
+    (Copy of the function from train_hybrid_models.py for backtest compatibility)
+    """
+    try:
+        if not os.path.exists(filepath):
+            error_msg = f"Model file not found: {filepath}"
+            if logger:
+                logger.error(error_msg)
+            else:
+                print(f"❌ {error_msg}")
+            return None
+        
+        # Try to load based on file extension
+        if filepath.endswith('.json'):
+            # XGBoost model
+            model = xgb.XGBClassifier()
+            model.load_model(filepath)
+            if logger:
+                logger.info(f"XGBoost model loaded from {filepath}")
+            else:
+                print(f"✅ XGBoost model loaded from {filepath}")
+            return model
+            
+        elif filepath.endswith('.pkl'):
+            # Joblib model (calibrated/sklearn)
+            model = joblib.load(filepath)
+            if logger:
+                logger.info(f"Calibrated/sklearn model loaded using joblib from {filepath}")
+            else:
+                print(f"✅ Calibrated/sklearn model loaded using joblib from {filepath}")
+            return model
+        else:
+            # Try to auto-detect by attempting both methods
+            if logger:
+                logger.warning(f"Unknown file extension for {filepath}, attempting auto-detection")
+            else:
+                print(f"⚠️ Unknown file extension for {filepath}, attempting auto-detection")
+            
+            # Try XGBoost first
+            try:
+                model = xgb.XGBClassifier()
+                model.load_model(filepath)
+                return model
+            except:
+                pass
+            
+            # Try joblib
+            try:
+                model = joblib.load(filepath)
+                return model
+            except:
+                pass
+            
+            raise Exception("Could not load model with either XGBoost or joblib methods")
+        
+    except Exception as e:
+        error_msg = f"Failed to load model from {filepath}: {e}"
+        if logger:
+            logger.error(error_msg)
+        else:
+            print(f"❌ {error_msg}")
+        return None
+
 @dataclass
 class Trade:
     """Represents a single trade"""
@@ -221,36 +287,48 @@ class ModelBacktester:
                             print(f"    ❌ Fallback LSTM model loading failed: {e}")
                         lstm_model = None
 
-            # Load XGBoost model
-            xgb_path = f'models/xgboost/{symbol.lower()}_window_{window_num}.json'
+            # Load XGBoost model with safe loading (supports both .json and .pkl formats)
+            xgb_paths = [
+                f'models/xgboost/{symbol.lower()}_window_{window_num}.json',  # Original format
+                f'models/xgboost/{symbol.lower()}_window_{window_num}.pkl',   # New format for calibrated models
+                f'models/xgboost/{symbol.lower()}_window_{window_num}'        # Auto-detect format
+            ]
+            
             xgb_model = None
-            if os.path.exists(xgb_path):
-                try:
-                    xgb_model = xgb.XGBClassifier()
-                    xgb_model.load_model(xgb_path)
-                    if self.config.verbose:
-                        print(f"    XGBoost model loaded successfully for window {window_num}")
-                except Exception as e:
-                    if self.config.verbose:
-                        print(f"    XGBoost model loading failed for window {window_num}: {e}")
-                    xgb_model = None
-            else:
+            for xgb_path in xgb_paths:
+                if os.path.exists(xgb_path):
+                    try:
+                        xgb_model = load_model_safe(xgb_path)
+                        if xgb_model is not None:
+                            if self.config.verbose:
+                                print(f"    XGBoost model loaded successfully from {xgb_path}")
+                            break
+                    except Exception as e:
+                        if self.config.verbose:
+                            print(f"    XGBoost model loading failed from {xgb_path}: {e}")
+                        continue
+            
+            if xgb_model is None:
                 if self.config.verbose:
-                    print(f"    XGBoost model file not found: {xgb_path}")
-                # Try to find any available XGBoost model for this symbol
-                xgb_fallback_path = self._find_fallback_model(symbol, 'xgboost', '.json')
-                if xgb_fallback_path:
+                    print(f"    XGBoost model files not found for window {window_num}")
+                # Try to find any available XGBoost model for this symbol (both formats)
+                fallback_paths = []
+                fallback_paths.extend(self._find_fallback_models(symbol, 'xgboost', '.json'))
+                fallback_paths.extend(self._find_fallback_models(symbol, 'xgboost', '.pkl'))
+                
+                for xgb_fallback_path in fallback_paths:
                     try:
                         if self.config.verbose:
                             print(f"    Trying fallback XGBoost model: {xgb_fallback_path}")
-                        xgb_model = xgb.XGBClassifier()
-                        xgb_model.load_model(xgb_fallback_path)
-                        if self.config.verbose:
-                            print(f"    ✅ Fallback XGBoost model loaded successfully")
+                        xgb_model = load_model_safe(xgb_fallback_path)
+                        if xgb_model is not None:
+                            if self.config.verbose:
+                                print(f"    ✅ Fallback XGBoost model loaded successfully")
+                            break
                     except Exception as e:
                         if self.config.verbose:
                             print(f"    ❌ Fallback XGBoost model loading failed: {e}")
-                        xgb_model = None
+                        continue
 
             # Load or create fitted scaler - THIS IS THE KEY FIX
             scaler = self._load_or_create_scaler(symbol, window_num)
@@ -1322,6 +1400,13 @@ class ModelBacktester:
         if model_files:
             return model_files[0]  # Return the first available model
         return None
+    
+    def _find_fallback_models(self, symbol: str, model_type: str, extension: str) -> List[str]:
+        """Find all available model files for the given symbol and model type"""
+        import glob
+        pattern = f'models/{model_type}/{symbol.lower()}_window_*{extension}'
+        model_files = glob.glob(pattern)
+        return model_files
     
     def _find_fallback_feature_columns(self, symbol: str) -> Optional[str]:
         """Find any available feature columns file for the given symbol"""

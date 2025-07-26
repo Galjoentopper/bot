@@ -56,6 +56,7 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.isotonic import IsotonicRegression
 from boruta import BorutaPy
 import xgboost as xgb
+import joblib
 
 # Deep Learning
 import tensorflow as tf
@@ -75,6 +76,270 @@ import traceback
 
 # Set up module-level logger
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# ENHANCED MODEL SAVE/LOAD COMPATIBILITY LAYER
+# ============================================================================
+"""
+Model Compatibility Enhancement Summary:
+=======================================
+
+This module has been enhanced to support both XGBoost and calibrated models
+(CalibratedClassifierCV) seamlessly. The key improvements are:
+
+1. PROBLEM SOLVED:
+   - Original code used model.save_model() for all models
+   - CalibratedClassifierCV models are sklearn objects that need joblib
+   - This caused compatibility issues when using calibration
+
+2. SOLUTION IMPLEMENTED:
+   - Added safe helper functions that detect model type automatically
+   - XGBoost models: use .save_model()/.load_model() with .json extension
+   - Calibrated models: use joblib.dump()/joblib.load() with .pkl extension
+   - Feature importance extraction works with both model types
+
+3. RATIONALE:
+   - Calibrated models provide better probability estimates for trading
+   - Essential for confidence-based decision making
+   - Maintains backward compatibility with existing XGBoost workflows
+   - Enables advanced model techniques like stacking and calibration
+
+4. IMPLEMENTATION DETAILS:
+   - save_model_safe(): Auto-detects model type and saves appropriately
+   - load_model_safe(): Loads based on file extension with auto-detection
+   - get_feature_importance_safe(): Extracts importance from various model types
+   - Full error handling and logging throughout
+
+5. FILE ORGANIZATION:
+   - models/xgboost/*.json : Pure XGBoost models
+   - models/xgboost/*.pkl  : Calibrated XGBoost models
+   - Automatic extension management in save operations
+   - Backward compatibility with existing .json files
+"""
+
+
+def save_model_safe(model, filepath: str, logger=None) -> bool:
+    """
+    Safely save a model with appropriate method based on model type.
+    
+    This function automatically detects the model type and uses the correct
+    save method:
+    - XGBoost models: use .save_model() with .json extension
+    - Calibrated/sklearn models: use joblib.dump() with .pkl extension
+    - Other models: attempt joblib.dump() as fallback
+    
+    Args:
+        model: The model to save
+        filepath: Base filepath (extension will be adjusted automatically)
+        logger: Logger instance for error reporting
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Remove any existing extension to normalize filepath
+        base_filepath = filepath.rsplit('.', 1)[0] if '.' in filepath else filepath
+        
+        # Detect model type and save appropriately
+        if hasattr(model, 'save_model') and hasattr(model, 'load_model') and 'xgboost' in str(type(model)).lower():
+            # Pure XGBoost model
+            final_filepath = f"{base_filepath}.json"
+            model.save_model(final_filepath)
+            if logger:
+                logger.info(f"XGBoost model saved to {final_filepath}")
+            else:
+                print(f"✅ XGBoost model saved to {final_filepath}")
+        else:
+            # Calibrated or sklearn model - use joblib
+            final_filepath = f"{base_filepath}.pkl"
+            joblib.dump(model, final_filepath)
+            if logger:
+                logger.info(f"Calibrated/sklearn model saved using joblib to {final_filepath}")
+            else:
+                print(f"✅ Calibrated/sklearn model saved using joblib to {final_filepath}")
+        
+        return True
+        
+    except Exception as e:
+        error_msg = f"Failed to save model to {filepath}: {e}"
+        if logger:
+            logger.error(error_msg)
+        else:
+            print(f"❌ {error_msg}")
+        return False
+
+
+def load_model_safe(filepath: str, logger=None):
+    """
+    Safely load a model with appropriate method based on file extension.
+    
+    This function automatically detects the file type and uses the correct
+    load method:
+    - .json files: use XGBoost.load_model()
+    - .pkl files: use joblib.load()
+    - Auto-detection: try both methods if extension is ambiguous
+    
+    Args:
+        filepath: Path to the model file
+        logger: Logger instance for error reporting
+    
+    Returns:
+        Loaded model or None if failed
+    """
+    try:
+        if not os.path.exists(filepath):
+            error_msg = f"Model file not found: {filepath}"
+            if logger:
+                logger.error(error_msg)
+            else:
+                print(f"❌ {error_msg}")
+            return None
+        
+        # Try to load based on file extension
+        if filepath.endswith('.json'):
+            # XGBoost model
+            model = xgb.XGBClassifier()
+            model.load_model(filepath)
+            if logger:
+                logger.info(f"XGBoost model loaded from {filepath}")
+            else:
+                print(f"✅ XGBoost model loaded from {filepath}")
+            return model
+            
+        elif filepath.endswith('.pkl'):
+            # Joblib model (calibrated/sklearn)
+            model = joblib.load(filepath)
+            if logger:
+                logger.info(f"Calibrated/sklearn model loaded using joblib from {filepath}")
+            else:
+                print(f"✅ Calibrated/sklearn model loaded using joblib from {filepath}")
+            return model
+        else:
+            # Try to auto-detect by attempting both methods
+            if logger:
+                logger.warning(f"Unknown file extension for {filepath}, attempting auto-detection")
+            else:
+                print(f"⚠️ Unknown file extension for {filepath}, attempting auto-detection")
+            
+            # Try XGBoost first
+            try:
+                model = xgb.XGBClassifier()
+                model.load_model(filepath)
+                if logger:
+                    logger.info(f"XGBoost model auto-detected and loaded from {filepath}")
+                else:
+                    print(f"✅ XGBoost model auto-detected and loaded from {filepath}")
+                return model
+            except:
+                pass
+            
+            # Try joblib
+            try:
+                model = joblib.load(filepath)
+                if logger:
+                    logger.info(f"Joblib model auto-detected and loaded from {filepath}")
+                else:
+                    print(f"✅ Joblib model auto-detected and loaded from {filepath}")
+                return model
+            except:
+                pass
+            
+            raise Exception("Could not load model with either XGBoost or joblib methods")
+        
+    except Exception as e:
+        error_msg = f"Failed to load model from {filepath}: {e}"
+        if logger:
+            logger.error(error_msg)
+        else:
+            print(f"❌ {error_msg}")
+        return None
+
+
+def get_feature_importance_safe(model, feature_names=None, logger=None):
+    """
+    Safely extract feature importance from different model types.
+    
+    This function handles feature importance extraction for:
+    - XGBoost models: use .feature_importances_
+    - Calibrated models: extract from base estimator or first calibrated classifier
+    - Other sklearn models: use .feature_importances_ if available
+    
+    Args:
+        model: The model to extract importance from
+        feature_names: Optional list of feature names
+        logger: Logger instance for error reporting
+    
+    Returns:
+        tuple: (feature_names_list, importance_values_list) or (None, None) if failed
+    """
+    try:
+        importance_values = None
+        
+        # Handle different model types
+        if hasattr(model, 'feature_importances_'):
+            # Direct feature importance (XGBoost, RandomForest, etc.)
+            importance_values = model.feature_importances_
+            
+        elif hasattr(model, 'base_estimator') and hasattr(model.base_estimator, 'feature_importances_'):
+            # Calibrated model with base estimator
+            importance_values = model.base_estimator.feature_importances_
+            if logger:
+                logger.info("Extracted feature importance from calibrated model's base estimator")
+            else:
+                print("✅ Extracted feature importance from calibrated model's base estimator")
+        
+        elif hasattr(model, 'calibrated_classifiers_') and len(model.calibrated_classifiers_) > 0:
+            # CalibratedClassifierCV - try to get from first calibrated classifier's base estimator
+            first_clf = model.calibrated_classifiers_[0]
+            if hasattr(first_clf, 'base_estimator') and hasattr(first_clf.base_estimator, 'feature_importances_'):
+                importance_values = first_clf.base_estimator.feature_importances_
+                if logger:
+                    logger.info("Extracted feature importance from calibrated classifier's base estimator")
+                else:
+                    print("✅ Extracted feature importance from calibrated classifier's base estimator")
+                
+        elif hasattr(model, 'estimators_') and len(model.estimators_) > 0:
+            # Ensemble model - try to get from first estimator
+            if hasattr(model.estimators_[0], 'feature_importances_'):
+                importance_values = model.estimators_[0].feature_importances_
+                if logger:
+                    logger.info("Extracted feature importance from ensemble model's first estimator")
+                else:
+                    print("✅ Extracted feature importance from ensemble model's first estimator")
+        
+        if importance_values is None:
+            raise Exception("Model does not have accessible feature importance")
+        
+        # Handle feature names
+        if feature_names is None:
+            # Try to get feature names from model
+            if hasattr(model, '_feature_names'):
+                feature_names = model._feature_names
+            elif hasattr(model, 'feature_names_in_'):
+                feature_names = model.feature_names_in_.tolist()
+            else:
+                # Generate generic feature names
+                feature_names = [f"feature_{i}" for i in range(len(importance_values))]
+        
+        # Ensure lengths match
+        if len(feature_names) != len(importance_values):
+            if logger:
+                logger.warning(f"Feature names length ({len(feature_names)}) != importance values length ({len(importance_values)})")
+            # Truncate or pad as needed
+            min_len = min(len(feature_names), len(importance_values))
+            feature_names = feature_names[:min_len]
+            importance_values = importance_values[:min_len]
+        
+        return feature_names, importance_values.tolist()
+        
+    except Exception as e:
+        error_msg = f"Failed to extract feature importance: {e}"
+        if logger:
+            logger.error(error_msg)
+        else:
+            print(f"❌ {error_msg}")
+        return None, None
 
 
 def configure_gpu() -> None:
@@ -301,6 +566,39 @@ class DirectionalLoss(tf.keras.losses.Loss):
 class HybridModelTrainer:
     """
     Hybrid LSTM + XGBoost Model Trainer for Cryptocurrency Trading
+    
+    Enhanced Model Save/Load Logic:
+    ==============================
+    This trainer now supports both pure XGBoost models and calibrated models
+    (CalibratedClassifierCV) through intelligent save/load helpers:
+    
+    1. Model Type Detection:
+       - Pure XGBoost models: saved as .json, loaded with .load_model()
+       - Calibrated/sklearn models: saved as .pkl, loaded with joblib.load()
+       - Auto-detection based on model attributes and file extensions
+    
+    2. Safe Helper Functions:
+       - save_model_safe(): Automatically detects model type and uses appropriate method
+       - load_model_safe(): Loads based on file extension with fallback auto-detection  
+       - get_feature_importance_safe(): Extracts feature importance from various model types
+    
+    3. Error Handling:
+       - Comprehensive error handling with logging
+       - Graceful fallbacks when operations fail
+       - Clear error messages for debugging
+    
+    4. File Extension Management:
+       - .json for XGBoost models (native format)
+       - .pkl for calibrated/sklearn models (joblib format)
+       - Automatic extension adjustment in save operations
+    
+    Scientific Rationale:
+    ====================
+    Calibrated models (CalibratedClassifierCV) provide better probability estimates
+    than raw XGBoost models, which is crucial for confidence-based trading strategies.
+    However, they are sklearn objects that require different serialization methods
+    than XGBoost's native format. This implementation provides seamless compatibility
+    with both model types while maintaining the existing training pipeline.
     """
 
     def __init__(
@@ -1817,8 +2115,12 @@ class HybridModelTrainer:
 
         if warm_start_model and os.path.exists(warm_start_model):
             try:
-                base_model.load_model(warm_start_model)
-                print("♻️  Warm starting XGBoost from previous window")
+                loaded_model = load_model_safe(warm_start_model, logger)
+                if loaded_model is not None:
+                    base_model = loaded_model
+                    print("♻️  Warm starting XGBoost from previous window")
+                else:
+                    print(f"⚠️  Failed to load previous XGBoost model from {warm_start_model}")
             except Exception as e:
                 print(f"⚠️  Failed to load previous XGBoost model: {e}")
 
@@ -2013,21 +2315,20 @@ class HybridModelTrainer:
 
     def plot_feature_importance(self, model: xgb.XGBClassifier, symbol: str, window_idx: int):
         """
-        Generate and save feature importance plot
+        Generate and save feature importance plot using safe extraction method
         """
-        feature_names = getattr(model, "_feature_names", None)
-        if feature_names is None:
-            # Fall back to feature_names_in_ if available (e.g. when fitting with
-            # DataFrames) otherwise create generic indices
-            feature_names = getattr(model, "feature_names_in_", None)
-            if feature_names is None:
-                feature_names = [f"f{i}" for i in range(len(model.feature_importances_))]
-
+        # Use safe feature importance extraction
+        feature_names, importance_values = get_feature_importance_safe(model, logger=logger)
+        
+        if feature_names is None or importance_values is None:
+            print(f"⚠️ Could not extract feature importance for {symbol} window {window_idx}")
+            return
+        
         importance_df = (
             pd.DataFrame(
                 {
                     "feature": feature_names,
-                    "importance": model.feature_importances_,
+                    "importance": importance_values,
                 }
             )
             .sort_values("importance", ascending=False)
@@ -2307,7 +2608,7 @@ class HybridModelTrainer:
 
             # Save models per window
             lstm_model.save(f"{self.models_dir}/lstm/{symbol.lower()}_window_{i+1}.keras")
-            xgb_model.save_model(f"{self.models_dir}/xgboost/{symbol.lower()}_window_{i+1}.json")
+            save_model_safe(xgb_model, f"{self.models_dir}/xgboost/{symbol.lower()}_window_{i+1}", logger)
             with open(
                 f"{self.models_dir}/scalers/{symbol.lower()}_window_{i+1}_scaler.pkl",
                 "wb",
@@ -2318,22 +2619,25 @@ class HybridModelTrainer:
             if i == len(windows) - 1:  # Last window
                 # Save final models
                 lstm_model.save(f"{self.models_dir}/lstm/{symbol.lower()}_lstm.h5")
-                xgb_model.save_model(f"{self.models_dir}/xgboost/{symbol.lower()}_xgboost.json")
+                save_model_safe(xgb_model, f"{self.models_dir}/xgboost/{symbol.lower()}_xgboost", logger)
                 with open(f"{self.models_dir}/scalers/{symbol.lower()}_scaler.pkl", "wb") as f:
                     pickle.dump(scaler, f)
 
-                # Save feature importance
-                X_features = train_df_xgb.drop("target", axis=1)
-                importance_df = pd.DataFrame(
-                    {
-                        "feature": X_features.columns,
-                        "importance": xgb_model.feature_importances_,
-                    }
-                ).sort_values("importance", ascending=False)
-                importance_df.to_csv(f"results/{symbol.lower()}_feature_importance.csv", index=False)
+                # Save feature importance using safe extraction
+                feature_names, importance_values = get_feature_importance_safe(xgb_model, logger=logger)
+                if feature_names is not None and importance_values is not None:
+                    importance_df = pd.DataFrame(
+                        {
+                            "feature": feature_names,
+                            "importance": importance_values,
+                        }
+                    ).sort_values("importance", ascending=False)
+                    importance_df.to_csv(f"results/{symbol.lower()}_feature_importance.csv", index=False)
+                    print(f"🔍 Top 5 features: {importance_df.head()['feature'].tolist()}")
+                else:
+                    print(f"⚠️ Could not extract feature importance for final model of {symbol}")
 
                 print(f"✅ Final models saved for {symbol}")
-                print(f"🔍 Top 5 features: {importance_df.head()['feature'].tolist()}")
 
             # Clear GPU memory between windows to prevent accumulation and CUDA graph errors
             tf.keras.backend.clear_session()
