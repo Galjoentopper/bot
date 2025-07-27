@@ -40,6 +40,7 @@ isort
 mypy
 pre-commit
 boruta
+pandas_ta
 
 # Async dependencies for improved data collector
 aiohttp>=3.8.0

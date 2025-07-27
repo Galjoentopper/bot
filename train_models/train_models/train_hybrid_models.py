@@ -1008,6 +1008,17 @@ class HybridModelTrainer:
         data["bb_rsi_signal"] = data["bb_position"] * data["rsi"]
         data["trend_strength"] = data["price_vs_ema9"] * data["price_vs_ema21"]
         data["volatility_breakout"] = data["atr"] * data["bb_width"]
+        
+        # Missing LSTM features
+        data["volume_surge_5"] = data["volume"] / data["volume"].rolling(5).mean()
+        data["momentum_acceleration"] = data["momentum_10"].diff(5)
+        data["market_momentum_alignment"] = (
+            (data["momentum_30min"] > 0) & 
+            (data["momentum_1h"] > 0) & 
+            (data["momentum_2h"] > 0) & 
+            (data["momentum_4h"] > 0) &
+            (data["ma_alignment"] == 1)
+        ).astype(int)
 
         # Advanced interaction features
         data["momentum_vol_signal"] = data["momentum_10"] * data["volume_ratio"] * data["volatility_ratio"]
