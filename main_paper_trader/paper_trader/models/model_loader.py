@@ -298,13 +298,13 @@ def create_lstm_model_architecture(num_features=37, sequence_length=120):
 
     x = tf.keras.layers.Dropout(rate=0.3, name="dropout")(x)
 
-    x = tf.keras.layers.BatchNormalization(axis=[2], momentum=0.99, epsilon=0.001, name="batch_normalization_4")(x)
+    x = tf.keras.layers.BatchNormalization(axis=2, momentum=0.99, epsilon=0.001, name="batch_normalization_4")(x)
 
     x = tf.keras.layers.Dense(units=32, activation="relu", name="dense_3")(x)
 
     x = tf.keras.layers.Dropout(rate=0.3, name="dropout_1")(x)
 
-    x = tf.keras.layers.BatchNormalization(axis=[2], momentum=0.99, epsilon=0.001, name="batch_normalization_5")(x)
+    x = tf.keras.layers.BatchNormalization(axis=2, momentum=0.99, epsilon=0.001, name="batch_normalization_5")(x)
 
     # Output layer
     outputs = tf.keras.layers.Dense(units=1, activation="linear", name="dense_4")(x)
