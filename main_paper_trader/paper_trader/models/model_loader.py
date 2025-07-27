@@ -219,13 +219,17 @@ def create_comprehensive_custom_objects():
     return custom_objects
 
 
-def create_lstm_model_architecture():
+def create_lstm_model_architecture(num_features=17, sequence_length=96):
     """
     Recreate the LSTM model architecture for weight loading.
     This creates a model compatible with the saved weights from training.
+    
+    Args:
+        num_features: Number of input features (17 for modern models, 36 for legacy)
+        sequence_length: Length of input sequences (default 96)
     """
     # Input layer - matches the saved model
-    inputs = tf.keras.layers.Input(shape=(96, 17), name="input_1")
+    inputs = tf.keras.layers.Input(shape=(sequence_length, num_features), name="input_1")
 
     # Conv1D layer
     x = tf.keras.layers.Conv1D(
@@ -294,10 +298,14 @@ def create_lstm_model_architecture():
     return model
 
 
-def load_model_weights_only(model_path: str) -> Optional[tf.keras.Model]:
+def load_model_weights_only(model_path: str, num_features: int = 17) -> Optional[tf.keras.Model]:
     """
     Load model by recreating architecture and loading weights separately.
     This is the most robust approach for TensorFlow version compatibility issues.
+    
+    Args:
+        model_path: Path to the model file
+        num_features: Number of input features expected by the model
     """
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -312,7 +320,7 @@ def load_model_weights_only(model_path: str) -> Optional[tf.keras.Model]:
                 return None
 
             # Create a new model with the same architecture as the saved one
-            model = create_lstm_model_architecture()
+            model = create_lstm_model_architecture(num_features=num_features)
 
             # Load weights
             model.load_weights(str(weights_path))
@@ -324,9 +332,14 @@ def load_model_weights_only(model_path: str) -> Optional[tf.keras.Model]:
         return None
 
 
-def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = None) -> Optional[tf.keras.Model]:
+def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = None, num_features: int = 17) -> Optional[tf.keras.Model]:
     """
     Robust model loading with multiple fallback strategies for TensorFlow compatibility.
+    
+    Args:
+        model_path: Path to the model file
+        custom_objects: Custom objects for model loading
+        num_features: Number of input features expected by the model
     """
     model_path = Path(model_path)
 
@@ -340,7 +353,7 @@ def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = No
 
     # Strategy 1: Load weights into new architecture (most robust for version conflicts)
     # Move this first since it's most likely to work for cross-version models
-    model = load_model_weights_only(str(model_path))
+    model = load_model_weights_only(str(model_path), num_features=num_features)
     if model:
         return model
 
@@ -434,8 +447,11 @@ class WindowBasedModelLoader:
                         if custom_objects is None:
                             custom_objects = create_comprehensive_custom_objects()
                         try:
+                            # Determine the correct number of features for this model
+                            expected_features = self.compatibility_handler.get_lstm_feature_count(symbol_lower, window_num)
+                            
                             # Use robust loading function that handles TensorFlow version compatibility
-                            model = load_keras_model_robust(str(lstm_file), custom_objects)
+                            model = load_keras_model_robust(str(lstm_file), custom_objects, num_features=expected_features)
                             if model is not None:
                                 # Extract loss function metadata if available
                                 loss_function_name = getattr(model, "_loss_function", None)

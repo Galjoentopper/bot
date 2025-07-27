@@ -106,46 +106,29 @@ class ModelCompatibilityHandler:
                 except Exception as e:
                     self.logger.warning(f"Failed to load scaler for {symbol} window {window}: {e}")
             
-            # Determine LSTM features based on actual model requirements
+            # Determine LSTM features based on scaler requirements (most reliable)
             # Different models may expect different numbers of features (17 vs 36)
             try:
                 from paper_trader.models.feature_engineer import LSTM_FEATURES, LSTM_FEATURES_LEGACY
                 
-                # Check if we have a model file to inspect its input requirements
-                lstm_model_file = self.models_dir / "lstm" / f"{symbol_lower}_window_{window}.keras"
-                model_expected_features = None
-                
-                if lstm_model_file.exists():
-                    try:
-                        # Try to load the model and inspect its input shape
-                        import tensorflow as tf
-                        from paper_trader.models.model_loader import load_keras_model_robust
-                        
-                        model = load_keras_model_robust(str(lstm_model_file))
-                        if model and hasattr(model, 'input_shape'):
-                            input_shape = model.input_shape
-                            if len(input_shape) >= 3:  # (batch, sequence, features)
-                                model_expected_features = input_shape[-1]  # Last dimension is features
-                                self.logger.debug(f"Detected LSTM model input shape for {symbol} window {window}: {input_shape}")
-                    except Exception as e:
-                        self.logger.debug(f"Could not inspect model input shape for {symbol} window {window}: {e}")
-                
-                # Choose features based on model requirements
-                if model_expected_features == 17:
+                # Use scaler as primary source of truth for feature count
+                if metadata.get('scaler_features') == 17:
                     metadata['lstm_features'] = LSTM_FEATURES.copy()
-                    self.logger.debug(f"Using LSTM_FEATURES (17 features) for {symbol} window {window} based on model input shape")
-                elif model_expected_features == 36:
+                    self.logger.debug(f"Using LSTM_FEATURES (17 features) for {symbol} window {window} based on scaler")
+                elif metadata.get('scaler_features') == 36:
                     metadata['lstm_features'] = LSTM_FEATURES_LEGACY.copy()
-                    self.logger.debug(f"Using LSTM_FEATURES_LEGACY (36 features) for {symbol} window {window} based on model input shape")
+                    self.logger.debug(f"Using LSTM_FEATURES_LEGACY (36 features) for {symbol} window {window} based on scaler")
                 else:
-                    # Fallback: try to determine from scaler if available
-                    if metadata.get('scaler_features') == 17:
+                    # Fallback: check if model file exists and try to infer from filename or default to 17
+                    lstm_model_file = self.models_dir / "lstm" / f"{symbol_lower}_window_{window}.keras"
+                    if lstm_model_file.exists():
+                        # Default to modern 17-feature models for newer training
                         metadata['lstm_features'] = LSTM_FEATURES.copy()
-                        self.logger.debug(f"Using LSTM_FEATURES (17 features) for {symbol} window {window} based on scaler")
+                        self.logger.debug(f"Using LSTM_FEATURES (17 features) as default for {symbol} window {window}")
                     else:
-                        # Default to legacy features (most common)
+                        # No model file, use legacy as fallback
                         metadata['lstm_features'] = LSTM_FEATURES_LEGACY.copy()
-                        self.logger.debug(f"Using LSTM_FEATURES_LEGACY (36 features) as default for {symbol} window {window}")
+                        self.logger.debug(f"Using LSTM_FEATURES_LEGACY (36 features) as fallback for {symbol} window {window}")
                     
                 metadata['feature_columns_loaded'] = True
                     
@@ -227,6 +210,40 @@ class ModelCompatibilityHandler:
                 'sequence_length': 96,
                 'error': str(e)
             }
+    
+    def get_lstm_feature_count(self, symbol: str, window: int) -> int:
+        """
+        Get the expected number of LSTM features for a specific model.
+        
+        Args:
+            symbol: Trading symbol (e.g., 'btceur')
+            window: Training window number
+            
+        Returns:
+            Number of features expected by the LSTM model
+        """
+        try:
+            metadata = self.load_training_metadata(symbol, window)
+            lstm_features = metadata.get('lstm_features', [])
+            
+            if lstm_features:
+                feature_count = len(lstm_features)
+                self.logger.debug(f"LSTM feature count for {symbol} window {window}: {feature_count}")
+                return feature_count
+            
+            # Fallback: try to determine from scaler
+            scaler_features = metadata.get('scaler_features')
+            if scaler_features:
+                self.logger.debug(f"Using scaler feature count for {symbol} window {window}: {scaler_features}")
+                return scaler_features
+            
+            # Final fallback: default to 17 (modern models)
+            self.logger.warning(f"Could not determine feature count for {symbol} window {window}, defaulting to 17")
+            return 17
+            
+        except Exception as e:
+            self.logger.error(f"Error getting LSTM feature count for {symbol} window {window}: {e}")
+            return 17  # Safe default
     
     def align_lstm_features(
         self,
