@@ -136,6 +136,23 @@ class QuantileLoss(tf.keras.losses.Loss):
         return config
 
 
+class CompatibleBatchNormalization(tf.keras.layers.BatchNormalization):
+    """BatchNormalization layer that handles axis=[2] configuration from saved models."""
+    
+    def __init__(self, axis=-1, **kwargs):
+        # Convert axis list to integer if needed
+        if isinstance(axis, list) and len(axis) == 1:
+            axis = axis[0]
+        super().__init__(axis=axis, **kwargs)
+    
+    @classmethod
+    def from_config(cls, config):
+        # Handle axis=[2] configuration from saved models
+        if 'axis' in config and isinstance(config['axis'], list) and len(config['axis']) == 1:
+            config['axis'] = config['axis'][0]
+        return super().from_config(config)
+
+
 def create_comprehensive_custom_objects():
     """Create a comprehensive custom object scope for loading legacy Keras models."""
 
@@ -165,8 +182,8 @@ def create_comprehensive_custom_objects():
         "LSTM": tf.keras.layers.LSTM,
         "GRU": tf.keras.layers.GRU,
         "SimpleRNN": tf.keras.layers.SimpleRNN,
-        # Normalization
-        "BatchNormalization": tf.keras.layers.BatchNormalization,
+        # Normalization - use compatible version
+        "BatchNormalization": CompatibleBatchNormalization,
         "LayerNormalization": tf.keras.layers.LayerNormalization,
         # Merge layers
         "Dot": tf.keras.layers.Dot,
@@ -219,14 +236,14 @@ def create_comprehensive_custom_objects():
     return custom_objects
 
 
-def create_lstm_model_architecture(num_features=17, sequence_length=96):
+def create_lstm_model_architecture(num_features=37, sequence_length=120):
     """
     Recreate the LSTM model architecture for weight loading.
     This creates a model compatible with the saved weights from training.
     
     Args:
-        num_features: Number of input features (17 for modern models, 36 for legacy)
-        sequence_length: Length of input sequences (default 96)
+        num_features: Number of input features (37 for current models, 17 for legacy)
+        sequence_length: Length of input sequences (120 for current models, 96 for legacy)
     """
     # Input layer - matches the saved model
     inputs = tf.keras.layers.Input(shape=(sequence_length, num_features), name="input_1")
@@ -281,13 +298,13 @@ def create_lstm_model_architecture(num_features=17, sequence_length=96):
 
     x = tf.keras.layers.Dropout(rate=0.3, name="dropout")(x)
 
-    x = tf.keras.layers.BatchNormalization(axis=2, momentum=0.99, epsilon=0.001, name="batch_normalization_4")(x)
+    x = tf.keras.layers.BatchNormalization(axis=[2], momentum=0.99, epsilon=0.001, name="batch_normalization_4")(x)
 
     x = tf.keras.layers.Dense(units=32, activation="relu", name="dense_3")(x)
 
     x = tf.keras.layers.Dropout(rate=0.3, name="dropout_1")(x)
 
-    x = tf.keras.layers.BatchNormalization(axis=2, momentum=0.99, epsilon=0.001, name="batch_normalization_5")(x)
+    x = tf.keras.layers.BatchNormalization(axis=[2], momentum=0.99, epsilon=0.001, name="batch_normalization_5")(x)
 
     # Output layer
     outputs = tf.keras.layers.Dense(units=1, activation="linear", name="dense_4")(x)
