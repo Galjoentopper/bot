@@ -332,7 +332,7 @@ def load_model_weights_only(model_path: str, num_features: int = 17) -> Optional
         return None
 
 
-def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = None, num_features: int = 17) -> Optional[tf.keras.Model]:
+def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = None, num_features: int = 17) -> tuple[Optional[tf.keras.Model], Optional[str]]:
     """
     Robust model loading with multiple fallback strategies for TensorFlow compatibility.
     
@@ -340,11 +340,16 @@ def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = No
         model_path: Path to the model file
         custom_objects: Custom objects for model loading
         num_features: Number of input features expected by the model
+        
+    Returns:
+        Tuple of (model, error_message). If successful, returns (model, None).
+        If failed, returns (None, error_message).
     """
     model_path = Path(model_path)
+    errors = []
 
     if not model_path.exists():
-        raise FileNotFoundError(f"Model file not found: {model_path}")
+        return None, f"Model file not found: {model_path}"
 
     # Merge custom objects
     default_custom_objects = create_comprehensive_custom_objects()
@@ -353,24 +358,27 @@ def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = No
 
     # Strategy 1: Load weights into new architecture (most robust for version conflicts)
     # Move this first since it's most likely to work for cross-version models
-    model = load_model_weights_only(str(model_path), num_features=num_features)
-    if model:
-        return model
+    try:
+        model = load_model_weights_only(str(model_path), num_features=num_features)
+        if model:
+            return model, None
+    except Exception as e:
+        errors.append(f"Strategy 1 (weights-only): {str(e)}")
 
     # Strategy 2: Direct loading with comprehensive custom objects
     try:
         model = tf.keras.models.load_model(str(model_path), compile=False, custom_objects=default_custom_objects)
-        return model
+        return model, None
     except Exception as e:
-        pass  # Silently continue to next strategy
+        errors.append(f"Strategy 2 (direct): {str(e)}")
 
     # Strategy 3: Try loading with custom object scope
     try:
         with tf.keras.utils.custom_object_scope(default_custom_objects):
             model = tf.keras.models.load_model(str(model_path), compile=False)
-        return model
+        return model, None
     except Exception as e:
-        pass
+        errors.append(f"Strategy 3 (custom scope): {str(e)}")
 
     # Strategy 4: Handle keras.src.engine.functional module issue specifically
     try:
@@ -392,12 +400,12 @@ def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = No
 
         # Now try loading again
         model = tf.keras.models.load_model(str(model_path), compile=False, custom_objects=default_custom_objects)
-        return model
+        return model, None
     except Exception as e:
-        pass
+        errors.append(f"Strategy 4 (module patch): {str(e)}")
 
     # All strategies failed
-    return None
+    return None, "; ".join(errors)
 
 
 class WindowBasedModelLoader:
@@ -451,7 +459,7 @@ class WindowBasedModelLoader:
                             expected_features = self.compatibility_handler.get_lstm_feature_count(symbol_lower, window_num)
                             
                             # Use robust loading function that handles TensorFlow version compatibility
-                            model = load_keras_model_robust(str(lstm_file), custom_objects, num_features=expected_features)
+                            model, load_error = load_keras_model_robust(str(lstm_file), custom_objects, num_features=expected_features)
                             if model is not None:
                                 # Extract loss function metadata if available
                                 loss_function_name = getattr(model, "_loss_function", None)
@@ -469,7 +477,7 @@ class WindowBasedModelLoader:
                                 self.lstm_models[symbol][window_num] = model
                                 self.logger.info(f"Successfully loaded LSTM model {lstm_file}")
                             else:
-                                self.logger.warning(f"Failed to load LSTM model {lstm_file} with all strategies")
+                                self.logger.warning(f"Failed to load LSTM model {lstm_file} with all strategies. Error: {load_error}")
                         except Exception as e:
                             self.logger.warning(f"Failed to load LSTM model {lstm_file}. Error: {e}")
                             # Try loading from separate files as final fallback
