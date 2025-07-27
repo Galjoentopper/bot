@@ -544,7 +544,8 @@ class FeatureEngineer:
             trend_momentum_5 = df['close'].pct_change(5)
             trend_momentum_15 = df['close'].pct_change(15)
             trend_momentum_30 = df['close'].pct_change(30)
-            complex_features['trend_acceleration'] = (trend_momentum_5 - trend_momentum_15) / (trend_momentum_15 - trend_momentum_30 + 1e-8)
+            denominator = np.maximum(trend_momentum_15 - trend_momentum_30, 1e-4)
+            complex_features['trend_acceleration'] = (trend_momentum_5 - trend_momentum_15) / denominator
             
             # Market regime strength indicators
             complex_features['bull_strength'] = features['bull_market'] * (df['close'] / features['sma_200'] - 1)
