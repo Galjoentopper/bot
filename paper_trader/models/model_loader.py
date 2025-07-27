@@ -689,7 +689,16 @@ class WindowBasedModelLoader:
                     features_df, symbol, window
                 )
                 if lstm_input is None:
-                    self.logger.warning(f"Failed to prepare LSTM input for {symbol} window {window}")
+                    self.logger.warning(f"Failed to prepare LSTM input for {symbol} window {window} - checking feature compatibility...")
+                    # Try to get more specific error information
+                    validation = self.compatibility_handler.validate_feature_compatibility(
+                        features_df, symbol, window, "lstm"
+                    )
+                    missing_count = len(validation.get('lstm_diagnosis', {}).get('missing_features', []))
+                    if missing_count > 0:
+                        self.logger.info(f"LSTM input preparation failed due to {missing_count} missing features")
+                    else:
+                        self.logger.info(f"LSTM input preparation failed due to data length or other issue")
             
             # Prepare XGBoost features
             if window in self.xgb_models.get(symbol, {}):
@@ -697,7 +706,16 @@ class WindowBasedModelLoader:
                     features_df, symbol, window, lstm_prediction, current_price
                 )
                 if xgb_features is None or xgb_features.empty:
-                    self.logger.warning(f"Failed to prepare XGBoost features for {symbol} window {window}")
+                    self.logger.warning(f"Failed to prepare XGBoost features for {symbol} window {window} - checking feature compatibility...")
+                    # Try to get more specific error information
+                    validation = self.compatibility_handler.validate_feature_compatibility(
+                        features_df, symbol, window, "xgboost"
+                    )
+                    missing_count = len(validation.get('xgboost_diagnosis', {}).get('missing_features', []))
+                    if missing_count > 0:
+                        self.logger.info(f"XGBoost preparation failed due to {missing_count} missing features")
+                    else:
+                        self.logger.info(f"XGBoost preparation failed due to data format or other issue")
             
             return lstm_input, xgb_features
             
@@ -904,7 +922,7 @@ class WindowBasedEnsemblePredictor:
             )
             
             if lstm_input is None:
-                self.logger.warning(f"Failed to prepare LSTM input for {symbol} window {window}")
+                self.logger.warning(f"Failed to prepare LSTM input for {symbol} window {window} - likely due to insufficient features or data length")
                 return None, 0.0
             
             # Make prediction (percentage change from current price)
@@ -950,7 +968,7 @@ class WindowBasedEnsemblePredictor:
             )
             
             if aligned_features is None or aligned_features.empty:
-                self.logger.warning(f"Failed to align XGBoost features for {symbol} window {window}")
+                self.logger.warning(f"Failed to align XGBoost features for {symbol} window {window} - check feature engineering pipeline")
                 return None, 0.0
             
             if not expected_features:
@@ -1237,7 +1255,7 @@ class WindowBasedEnsemblePredictor:
             System compatibility diagnosis
         """
         try:
-            return self.compatibility_handler.diagnose_system_compatibility(symbols)
+            return self.model_loader.compatibility_handler.diagnose_system_compatibility(symbols)
         except Exception as e:
             self.logger.error(f"Error running system compatibility diagnosis: {e}")
             return {'error': str(e)}
@@ -1254,9 +1272,7 @@ class WindowBasedEnsemblePredictor:
             Requirements dictionary
         """
         try:
-            return self.compatibility_handler.get_model_requirements(symbol, window)
+            return self.model_loader.compatibility_handler.get_model_requirements(symbol, window)
         except Exception as e:
             self.logger.error(f"Error getting compatibility requirements for {symbol} window {window}: {e}")
             return {'error': str(e)}
-
-        return meets_basic

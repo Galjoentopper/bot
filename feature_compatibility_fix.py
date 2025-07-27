@@ -40,7 +40,17 @@ def align_features_with_training(
         missing_features = [f for f in expected_features if f not in aligned_df.columns]
         
         if missing_features:
+            # Assess the potential impact of missing features
+            critical_features = [f for f in missing_features if any(keyword in f.lower() for keyword in ['close', 'volume', 'returns', 'price'])]
+            technical_features = [f for f in missing_features if any(keyword in f.lower() for keyword in ['rsi', 'macd', 'bb', 'sma', 'ema'])]
+            
             logger.warning(f"Missing {len(missing_features)} features in {feature_source}: {missing_features[:5]}...")
+            
+            if critical_features:
+                logger.warning(f"Critical features missing in {feature_source}: {critical_features[:3]}... (may impact prediction quality)")
+            
+            if len(technical_features) > 5:
+                logger.info(f"Many technical indicators missing in {feature_source} ({len(technical_features)} features) - using neutral defaults")
             
             # Fill missing features with appropriate defaults
             for feature in missing_features:
@@ -60,8 +70,11 @@ def align_features_with_training(
                     # Volatility features default to median market volatility
                     default_value = 0.02
                 elif 'volume' in feature.lower():
-                    # Volume features default to 1.0 (normal volume)
-                    default_value = 1.0
+                    # Volume features get special handling - use median if available
+                    if 'volume' in aligned_df.columns:
+                        default_value = aligned_df['volume'].median()
+                    else:
+                        default_value = 1.0  # Normalized volume
                 elif any(indicator in feature.lower() for indicator in ['rsi', 'macd', 'bb', 'stoch']):
                     # Technical indicators get neutral defaults
                     if 'rsi' in feature.lower():
