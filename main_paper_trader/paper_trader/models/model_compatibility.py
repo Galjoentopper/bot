@@ -20,9 +20,8 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 
-# Add parent directory to path for imports
-sys.path.append(str(Path(__file__).parent.parent.parent))
-from feature_compatibility_fix import (
+# Import from local module
+from .feature_compatibility_fix import (
     align_features_with_training,
     validate_scaler_compatibility,
     prepare_lstm_sequence_safe,
