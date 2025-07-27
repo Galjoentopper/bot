@@ -257,7 +257,8 @@ class ModelCompatibilityHandler:
             aligned_df = align_features_with_training(
                 features_df, 
                 expected_features,
-                f"LSTM-{symbol}-W{window}"
+                f"LSTM-{symbol}-W{window}",
+                feature_type="lstm"
             )
             
             self.logger.debug(f"Aligned LSTM features for {symbol} window {window}: {len(expected_features)} features")
@@ -309,7 +310,8 @@ class ModelCompatibilityHandler:
             aligned_df = align_features_with_training(
                 features_with_delta,
                 expected_features,
-                f"XGBoost-{symbol}-W{window}"
+                f"XGBoost-{symbol}-W{window}",
+                feature_type="xgboost"
             )
             
             self.logger.debug(f"Aligned XGBoost features for {symbol} window {window}: {len(expected_features)} features")

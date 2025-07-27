@@ -19,7 +19,8 @@ def align_features_with_training(
     features_df: pd.DataFrame,
     training_features: List[str],
     fill_missing: bool = True,
-    fill_value: float = 0.0
+    fill_value: float = 0.0,
+    feature_type: str = "lstm"
 ) -> pd.DataFrame:
     """
     Align inference features with training features.
@@ -29,12 +30,43 @@ def align_features_with_training(
         training_features: List of features expected by the model
         fill_missing: Whether to fill missing features with default values
         fill_value: Value to use for missing features
+        feature_type: Type of features ("lstm" or "xgboost")
         
     Returns:
         DataFrame with aligned features
     """
     try:
         aligned_df = features_df.copy()
+        
+        # For LSTM models, ensure we use the correct feature set based on expected count
+        if feature_type == "lstm":
+            # Define feature sets
+            LSTM_FEATURES = [
+                'price_vs_ema_30min', 'price_vs_ema_1h', 'price_vs_ema_2h', 'price_vs_ema_4h',
+                'rsi_14', 'rsi_7', 'macd', 'macd_signal', 'macd_hist',
+                'bb_upper', 'bb_middle', 'bb_lower', 'volume_change_24h',
+                'atr_14', 'adx_14', 'momentum_30min', 'volume_ema_ratio'
+            ]
+            LSTM_FEATURES_LEGACY = [
+                'close', 'volume', 'returns', 'log_returns',
+                'volatility_20', 'atr_ratio', 'rsi', 'macd', 'bb_position',
+                'volume_ratio', 'price_vs_ema9', 'price_vs_ema21',
+                'buying_pressure', 'selling_pressure', 'spread_ratio',
+                'momentum_10', 'price_zscore_20'
+            ]
+            
+            # Determine which feature set to use based on expected count
+            expected_count = len(training_features)
+            if expected_count == 17:
+                # Use modern LSTM features
+                training_features = LSTM_FEATURES
+                logger.info(f"Using modern LSTM features (17 features) for model expecting {expected_count}")
+            elif expected_count == 36:
+                # Use legacy LSTM features
+                training_features = LSTM_FEATURES_LEGACY
+                logger.info(f"Using legacy LSTM features (36 features) for model expecting {expected_count}")
+            else:
+                logger.warning(f"Unexpected feature count {expected_count}, using provided training_features")
         
         # Add missing features
         missing_features = [f for f in training_features if f not in aligned_df.columns]

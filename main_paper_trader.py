@@ -318,20 +318,24 @@ class PaperTrader:
         debug_log_file = log_dir / 'debug.log'
         trading_decisions_log_file = log_dir / 'trading_decisions.log'
 
-        # Configure logging
+        # Configure logging with UTF-8 encoding
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(debug_log_file, mode='w'),  # Overwrite log file each run
+                logging.FileHandler(debug_log_file, mode='w', encoding='utf-8'),  # UTF-8 encoding
                 logging.StreamHandler(sys.stdout)
             ]
         )
         
+        # Set stdout encoding to UTF-8 for emoji support
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8')
+        
         # Create a separate logger for trading decisions
         self.trading_logger = logging.getLogger('trading_decisions')
         self.trading_logger.setLevel(logging.INFO)
-        trading_handler = logging.FileHandler(trading_decisions_log_file, mode='a')  # Append mode
+        trading_handler = logging.FileHandler(trading_decisions_log_file, mode='a', encoding='utf-8')  # UTF-8 encoding
         trading_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         self.trading_logger.addHandler(trading_handler)
         
