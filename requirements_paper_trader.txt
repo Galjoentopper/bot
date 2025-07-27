@@ -5,6 +5,7 @@ pandas>=1.5.0
 numpy>=1.21.0
 scipy>=1.9.0
 scikit-learn>=1.1.0
+catboost
 
 # Machine Learning (Python 3.12 compatible)
 tensorflow>=2.16.1
