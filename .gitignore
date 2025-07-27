@@ -86,7 +86,6 @@ celerybeat-schedule
 
 
 # databases
-*.db
 *.sqlite3
 
 # Spyder project settings
