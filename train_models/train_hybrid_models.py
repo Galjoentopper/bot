@@ -528,7 +528,10 @@ class FocalLoss(tf.keras.losses.Loss):
 
         Args:
             alpha: Weighting factor for rare class (default: 0.25)
-            gamma: Focusing parameter to down-weight easy examples (default: 2.0)
+            gamma: Focusing parameter to down-weight easy examples (default: 2.0). 
+                   Typical values are non-negative, with 0 meaning no focusing, 
+                   and higher values (e.g., 2.0) increasing the focus on hard examples. 
+                   Larger `gamma` values make the model more sensitive to misclassified examples.
             name: Name of the loss function
         """
         super().__init__(name=name, **kwargs)
