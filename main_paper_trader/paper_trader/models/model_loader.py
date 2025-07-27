@@ -339,7 +339,9 @@ def load_model_weights_only(model_path: str, num_features: int = 17) -> Optional
                 return None
 
             # Create a new model with the same architecture as the saved one
-            model = create_lstm_model_architecture(num_features=num_features)
+            # Use sequence_length=96 for models expecting 17 features (legacy models)
+            sequence_length = 96 if num_features == 17 else 120
+            model = create_lstm_model_architecture(num_features=num_features, sequence_length=sequence_length)
 
             # Load weights
             model.load_weights(str(weights_path))
@@ -386,9 +388,45 @@ def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = No
             config['axis'] = config['axis'][0]
         return original_bn_from_config(config)
     
+    # Monkey-patch LSTM to handle time_major parameter
+    original_lstm_init = tf.keras.layers.LSTM.__init__
+    original_lstm_from_config = tf.keras.layers.LSTM.from_config
+    
+    def patched_lstm_init(self, units, **kwargs):
+        # Remove time_major parameter if present (not supported in current TensorFlow)
+        kwargs.pop('time_major', None)
+        return original_lstm_init(self, units, **kwargs)
+    
+    @classmethod
+    def patched_lstm_from_config(cls, config):
+        if 'time_major' in config:
+            config = config.copy()
+            config.pop('time_major', None)
+        return original_lstm_from_config(config)
+    
+    # Monkey-patch LSTMCell to handle time_major parameter
+    original_lstmcell_init = tf.keras.layers.LSTMCell.__init__
+    original_lstmcell_from_config = tf.keras.layers.LSTMCell.from_config
+    
+    def patched_lstmcell_init(self, units, **kwargs):
+        # Remove time_major parameter if present (not supported in current TensorFlow)
+        kwargs.pop('time_major', None)
+        return original_lstmcell_init(self, units, **kwargs)
+    
+    @classmethod
+    def patched_lstmcell_from_config(cls, config):
+        if 'time_major' in config:
+            config = config.copy()
+            config.pop('time_major', None)
+        return original_lstmcell_from_config(config)
+    
     # Apply patches
     tf.keras.layers.BatchNormalization.__init__ = patched_bn_init
     tf.keras.layers.BatchNormalization.from_config = patched_bn_from_config
+    tf.keras.layers.LSTM.__init__ = patched_lstm_init
+    tf.keras.layers.LSTM.from_config = patched_lstm_from_config
+    tf.keras.layers.LSTMCell.__init__ = patched_lstmcell_init
+    tf.keras.layers.LSTMCell.from_config = patched_lstmcell_from_config
     
     try:
         # Merge custom objects
@@ -448,9 +486,13 @@ def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = No
         return None, "; ".join(errors)
     
     finally:
-        # Restore original BatchNormalization methods
+        # Restore original methods
         tf.keras.layers.BatchNormalization.__init__ = original_bn_init
         tf.keras.layers.BatchNormalization.from_config = original_bn_from_config
+        tf.keras.layers.LSTM.__init__ = original_lstm_init
+        tf.keras.layers.LSTM.from_config = original_lstm_from_config
+        tf.keras.layers.LSTMCell.__init__ = original_lstmcell_init
+        tf.keras.layers.LSTMCell.from_config = original_lstmcell_from_config
 
 
 class WindowBasedModelLoader:
