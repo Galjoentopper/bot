@@ -749,7 +749,7 @@ class HybridModelTrainer:
             "verbosity": 0,  # Reduce output
             "enable_categorical": False,  # Optimize for numerical features
             "predictor": "cpu_predictor",  # Optimized CPU prediction
-            "scale_pos_weight": "auto",  # Dynamic class balancing (will be set per window)
+            "scale_pos_weight": 1.0,  # Default value; dynamic class balancing will override this
         }
 
         print("🚀 Hybrid LSTM + XGBoost Model Trainer with Walk-Forward Analysis Initialized")
