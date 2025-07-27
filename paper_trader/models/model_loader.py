@@ -437,13 +437,19 @@ class WindowBasedModelLoader:
                             # Use robust loading function that handles TensorFlow version compatibility
                             model = load_keras_model_robust(str(lstm_file), custom_objects)
                             if model is not None:
-                                # Compile the model with enhanced loss for improved models
-                                # Use FocalLoss for enhanced models or DirectionalLoss as fallback
-                                try:
-                                    model.compile(optimizer="adam", loss=FocalLoss(), metrics=["mae"])
-                                except:
-                                    # Fallback to DirectionalLoss if FocalLoss fails
-                                    model.compile(optimizer="adam", loss=DirectionalLoss(), metrics=["mae"])
+                                # Extract loss function metadata if available
+                                loss_function_name = getattr(model, "_loss_function", None)
+                                if loss_function_name == "FocalLoss":
+                                    loss_function = FocalLoss()
+                                elif loss_function_name == "DirectionalLoss":
+                                    loss_function = DirectionalLoss()
+                                else:
+                                    # Default to DirectionalLoss if metadata is missing or unrecognized
+                                    self.logger.warning(f"Unknown or missing loss function metadata for {lstm_file}. Defaulting to DirectionalLoss.")
+                                    loss_function = DirectionalLoss()
+
+                                # Compile the model with the determined loss function
+                                model.compile(optimizer="adam", loss=loss_function, metrics=["mae"])
                                 self.lstm_models[symbol][window_num] = model
                                 self.logger.info(f"Successfully loaded LSTM model {lstm_file}")
                             else:
