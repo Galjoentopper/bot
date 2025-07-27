@@ -515,7 +515,77 @@ class FeatureEngineer:
             complex_features['volatility_regime_signal'] = features['vol_regime'] * features['rsi']
             complex_features['multi_timeframe_signal'] = features['price_change_1h'] * features['price_change_4h'] * features['price_change_24h']
             complex_features['oscillator_consensus'] = (features['rsi_oversold'] + features['stoch_oversold']) - (features['rsi_overbought'] + features['stoch_overbought'])
+            
+            # Advanced feature interactions and polynomial terms for enhanced prediction
+            complex_features['price_volume_interaction'] = df['close'] * features['volume_ratio']
+            complex_features['volatility_momentum_cross'] = features['volatility_20'] * features['momentum_10']
+            complex_features['rsi_bb_cross'] = features['rsi'] * features['bb_position']
+            complex_features['macd_volume_signal'] = features['macd_histogram'] * features['volume_ratio']
+            
+            # Polynomial features for non-linear relationships
+            complex_features['rsi_squared'] = features['rsi'] ** 2
+            complex_features['volatility_squared'] = features['volatility_20'] ** 2
+            complex_features['momentum_squared'] = features['momentum_10'] ** 2
+            
+            # Cross-timeframe feature interactions  
+            complex_features['short_long_momentum_ratio'] = features['price_change_1h'] / (features['price_change_24h'] + 1e-8)
+            complex_features['volatility_momentum_regime'] = features['vol_regime'] * features['momentum_10']
+            
+            # Calculate trend_regime first before using it
             complex_features['trend_regime'] = ((features['ma_alignment'] == 1) & (features['price_vs_sma200'] > 0)).astype(int)
+            complex_features['trend_volatility_signal'] = complex_features['trend_regime'] * features['volatility_breakout']
+            
+            # Market microstructure advanced features
+            complex_features['order_flow_strength'] = features['buying_pressure'] - features['selling_pressure']
+            complex_features['volume_weighted_momentum'] = features['momentum_10'] * features['volume_weighted_price']
+            complex_features['pressure_asymmetry'] = abs(features['buying_pressure'] - features['selling_pressure'])
+            
+            # Advanced trend detection
+            trend_momentum_5 = df['close'].pct_change(5)
+            trend_momentum_15 = df['close'].pct_change(15)
+            trend_momentum_30 = df['close'].pct_change(30)
+            denominator = np.maximum(trend_momentum_15 - trend_momentum_30, 1e-4)
+            complex_features['trend_acceleration'] = (trend_momentum_5 - trend_momentum_15) / denominator
+            
+            # Market regime strength indicators
+            complex_features['bull_strength'] = features['bull_market'] * (df['close'] / features['sma_200'] - 1)
+            complex_features['bear_strength'] = features['bear_market'] * (1 - df['close'] / features['sma_200'])
+            
+            # Volume profile features
+            volume_profile_20 = df['volume'].rolling(20)
+            complex_features['volume_percentile_20'] = volume_profile_20.rank(pct=True)
+            complex_features['volume_zscore_20'] = (df['volume'] - volume_profile_20.mean()) / volume_profile_20.std()
+            
+            # Price action patterns
+            complex_features['higher_highs'] = (df['high'] > df['high'].shift(1)).rolling(5).sum() / 5
+            complex_features['lower_lows'] = (df['low'] < df['low'].shift(1)).rolling(5).sum() / 5
+            complex_features['price_pattern_strength'] = complex_features['higher_highs'] - complex_features['lower_lows']
+            
+            # Enhanced oscillator combinations
+            complex_features['stoch_rsi_divergence'] = (features['stoch_k'].diff() * features['rsi'].diff())
+            complex_features['williams_rsi_combo'] = features['williams_r'] * features['rsi'] / 100
+            complex_features['oscillator_momentum'] = (features['rsi'] + features['stoch_k'] + abs(features['williams_r'])) / 3
+            
+            # Market timing features
+            if isinstance(df.index, pd.DatetimeIndex):
+                # Trading session strength (based on typical crypto trading patterns)
+                asian_hours = ((df.index.hour >= 0) & (df.index.hour < 8)).astype(int)
+                european_hours = ((df.index.hour >= 8) & (df.index.hour < 16)).astype(int)  
+                american_hours = ((df.index.hour >= 16) & (df.index.hour < 24)).astype(int)
+                
+                complex_features['session_volume_strength'] = (
+                    asian_hours * 0.7 + european_hours * 1.0 + american_hours * 1.2
+                ) * features['volume_ratio']
+                
+                # Day of week patterns
+                weekday_strength = pd.Series(0.0, index=df.index)
+                weekday_strength[df.index.dayofweek <= 4] = 1.0  # Weekdays
+                weekday_strength[df.index.dayofweek >= 5] = 0.8  # Weekends (lower activity)
+                complex_features['weekday_volume_pattern'] = weekday_strength * features['volume_ratio']
+            else:
+                # Default values when no datetime index available
+                complex_features['session_volume_strength'] = features['volume_ratio']
+                complex_features['weekday_volume_pattern'] = features['volume_ratio']
             
             # BB width rolling calculation
             bb_width_rolling = features['bb_width'].rolling(50)

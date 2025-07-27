@@ -23,6 +23,47 @@ sys.path.append(str(Path(__file__).parent.parent))
 from config.settings import TradingSettings
 
 
+# Focal loss implementation as a proper Keras loss class for better serialization
+@tf.keras.utils.register_keras_serializable(package="Custom", name="FocalLoss")
+class FocalLoss(tf.keras.losses.Loss):
+    """
+    Focal loss for handling class imbalance in binary classification.
+    
+    This loss focuses learning on hard negatives by down-weighting easy examples.
+    It's particularly effective for imbalanced datasets like price jump detection.
+    """
+
+    def __init__(self, alpha=0.25, gamma=2.0, name="focal_loss", **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def call(self, y_true, y_pred):
+        # Clip predictions to prevent log(0)
+        epsilon = tf.keras.backend.epsilon()
+        y_pred = tf.clip_by_value(y_pred, epsilon, 1.0 - epsilon)
+        
+        # Calculate cross entropy
+        ce = -y_true * tf.math.log(y_pred) - (1 - y_true) * tf.math.log(1 - y_pred)
+        
+        # Calculate focal weight
+        p_t = y_true * y_pred + (1 - y_true) * (1 - y_pred)
+        focal_weight = tf.pow(1 - p_t, self.gamma)
+        
+        # Calculate alpha weight
+        alpha_t = y_true * self.alpha + (1 - y_true) * (1 - self.alpha)
+        
+        # Combine all components
+        focal_loss = alpha_t * focal_weight * ce
+        
+        return tf.reduce_mean(focal_loss)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"alpha": self.alpha, "gamma": self.gamma})
+        return config
+
+
 # Directional loss implementation as a proper Keras loss class for better serialization
 @tf.keras.utils.register_keras_serializable(package="Custom", name="DirectionalLoss")
 class DirectionalLoss(tf.keras.losses.Loss):
@@ -169,6 +210,7 @@ def create_comprehensive_custom_objects():
         {
             "DirectionalLoss": DirectionalLoss,
             "QuantileLoss": QuantileLoss,
+            "FocalLoss": FocalLoss,  # Add FocalLoss for enhanced models
             "function": lambda x: x,  # Generic function placeholder
             "builtins": lambda x: x,  # For builtin function references
         }
@@ -395,8 +437,19 @@ class WindowBasedModelLoader:
                             # Use robust loading function that handles TensorFlow version compatibility
                             model = load_keras_model_robust(str(lstm_file), custom_objects)
                             if model is not None:
-                                # Compile the model with the custom loss class instance
-                                model.compile(optimizer="adam", loss=DirectionalLoss(), metrics=["mae"])
+                                # Extract loss function metadata if available
+                                loss_function_name = getattr(model, "_loss_function", None)
+                                if loss_function_name == "FocalLoss":
+                                    loss_function = FocalLoss()
+                                elif loss_function_name == "DirectionalLoss":
+                                    loss_function = DirectionalLoss()
+                                else:
+                                    # Default to DirectionalLoss if metadata is missing or unrecognized
+                                    self.logger.warning(f"Unknown or missing loss function metadata for {lstm_file}. Defaulting to DirectionalLoss.")
+                                    loss_function = DirectionalLoss()
+
+                                # Compile the model with the determined loss function
+                                model.compile(optimizer="adam", loss=loss_function, metrics=["mae"])
                                 self.lstm_models[symbol][window_num] = model
                                 self.logger.info(f"Successfully loaded LSTM model {lstm_file}")
                             else:
