@@ -567,7 +567,7 @@ class FeatureEngineer:
             complex_features['oscillator_momentum'] = (features['rsi'] + features['stoch_k'] + abs(features['williams_r'])) / 3
             
             # Market timing features
-            if hasattr(df.index, 'hour'):
+            if isinstance(df.index, pd.DatetimeIndex):
                 # Trading session strength (based on typical crypto trading patterns)
                 asian_hours = ((df.index.hour >= 0) & (df.index.hour < 8)).astype(int)
                 european_hours = ((df.index.hour >= 8) & (df.index.hour < 16)).astype(int)  
