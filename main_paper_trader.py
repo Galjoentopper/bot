@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 import contextlib
 
 # Add paper_trader to path
-sys.path.append(str(Path(__file__).parent / 'main_paper_trader_deps'))
+sys.path.append(str(Path(__file__).parent / 'main_paper_trader'))
 
 from paper_trader.config.settings import TradingSettings
 from paper_trader.data.bitvavo_collector import BitvavoDataCollector

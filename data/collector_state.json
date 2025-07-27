@@ -1,47 +1,32 @@
 {
   "ETHEUR_15m": {
-    "last_bulk_month": "2025-06",
-    "last_api_timestamp": 1753647300000,
-    "completed_phases": [
-      "bulk_complete",
-      "api_complete"
-    ],
-    "total_records": 288
+    "last_bulk_month": "2022-05",
+    "last_api_timestamp": null,
+    "completed_phases": [],
+    "total_records": 0
   },
   "BTCEUR_15m": {
-    "last_bulk_month": "2025-06",
-    "last_api_timestamp": 1753647300000,
-    "completed_phases": [
-      "bulk_complete",
-      "api_complete"
-    ],
-    "total_records": 288
+    "last_bulk_month": "2022-01",
+    "last_api_timestamp": null,
+    "completed_phases": [],
+    "total_records": 0
   },
   "XRPEUR_15m": {
-    "last_bulk_month": "2025-06",
-    "last_api_timestamp": 1753647300000,
-    "completed_phases": [
-      "bulk_complete",
-      "api_complete"
-    ],
-    "total_records": 288
+    "last_bulk_month": "2022-02",
+    "last_api_timestamp": null,
+    "completed_phases": [],
+    "total_records": 0
   },
   "ADAEUR_15m": {
-    "last_bulk_month": "2025-06",
-    "last_api_timestamp": 1753647300000,
-    "completed_phases": [
-      "bulk_complete",
-      "api_complete"
-    ],
-    "total_records": 288
+    "last_bulk_month": "2021-12",
+    "last_api_timestamp": null,
+    "completed_phases": [],
+    "total_records": 0
   },
   "SOLEUR_15m": {
-    "last_bulk_month": "2025-06",
-    "last_api_timestamp": 1753647300000,
-    "completed_phases": [
-      "bulk_complete",
-      "api_complete"
-    ],
-    "total_records": 288
+    "last_bulk_month": "2021-11",
+    "last_api_timestamp": null,
+    "completed_phases": [],
+    "total_records": 0
   }
 }
