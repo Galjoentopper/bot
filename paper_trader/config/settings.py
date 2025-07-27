@@ -1,8 +1,8 @@
 """Trading settings and configuration management."""
 
 import os
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field
+from typing import List, Dict
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -22,9 +22,25 @@ class ModelSettings:
     max_window: int = int(os.getenv('MAX_WINDOW', '41'))
     default_window: int = int(os.getenv('DEFAULT_WINDOW', '15'))
     
-    # Prediction Confidence Thresholds
-    min_confidence_threshold: float = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.7'))
-    min_signal_strength: str = os.getenv('MIN_SIGNAL_STRENGTH', 'MODERATE')
+    # Prediction Confidence Thresholds - Enhanced for improved profitability
+    min_confidence_threshold: float = float(os.getenv('MIN_CONFIDENCE_THRESHOLD', '0.6'))  # Reduced from 0.7 to 0.6
+    min_signal_strength: str = os.getenv('MIN_SIGNAL_STRENGTH', 'MODERATE')  # Keep MODERATE but lower threshold
+    
+    # Symbol-specific confidence thresholds for dynamic adjustment
+    symbol_confidence_multipliers: Dict[str, float] = field(default_factory=lambda: {
+        'BTC-EUR': 0.9,  # Lower threshold for BTC due to historical poor precision
+        'ETH-EUR': 1.0,  # Standard threshold  
+        'SOL-EUR': 1.1,  # Higher threshold due to better performance
+        'ADA-EUR': 1.0,  # Standard threshold
+        'XRP-EUR': 1.0,  # Standard threshold
+    })
+    
+    # Multi-tier confidence system for position sizing
+    confidence_tiers: Dict[str, float] = field(default_factory=lambda: {
+        'high_confidence': 0.8,      # 80%+ confidence - larger position size
+        'medium_confidence': 0.65,   # 65-79% confidence - standard position size  
+        'low_confidence': 0.6,       # 60-64% confidence - smaller position size
+    })
     
     # Ensemble Model Weights
     lstm_weight: float = float(os.getenv('LSTM_WEIGHT', '0.6'))

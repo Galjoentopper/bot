@@ -510,6 +510,68 @@ class QuantileLoss(tf.keras.losses.Loss):
         return config
 
 
+# Focal loss implementation as a proper Keras loss class for better serialization
+@tf.keras.utils.register_keras_serializable(package="Custom", name="FocalLoss")
+class FocalLoss(tf.keras.losses.Loss):
+    """
+    Focal loss for handling class imbalance in binary classification.
+    
+    This loss focuses learning on hard negatives by down-weighting easy examples.
+    It's particularly effective for imbalanced datasets like price jump detection.
+    
+    Research: Lin et al. "Focal Loss for Dense Object Detection" (2017)
+    """
+
+    def __init__(self, alpha=0.25, gamma=2.0, name="focal_loss", **kwargs):
+        """
+        Initialize FocalLoss.
+
+        Args:
+            alpha: Weighting factor for rare class (default: 0.25)
+            gamma: Focusing parameter to down-weight easy examples (default: 2.0)
+            name: Name of the loss function
+        """
+        super().__init__(name=name, **kwargs)
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def call(self, y_true, y_pred):
+        """
+        Calculate the focal loss.
+
+        Args:
+            y_true: True labels (0 or 1)
+            y_pred: Predicted probabilities (0 to 1)
+
+        Returns:
+            Focal loss value
+        """
+        # Clip predictions to prevent log(0)
+        epsilon = tf.keras.backend.epsilon()
+        y_pred = tf.clip_by_value(y_pred, epsilon, 1.0 - epsilon)
+        
+        # Calculate cross entropy
+        ce = -y_true * tf.math.log(y_pred) - (1 - y_true) * tf.math.log(1 - y_pred)
+        
+        # Calculate focal weight
+        p_t = y_true * y_pred + (1 - y_true) * (1 - y_pred)
+        focal_weight = tf.pow(1 - p_t, self.gamma)
+        
+        # Calculate alpha weight
+        alpha_t = y_true * self.alpha + (1 - y_true) * (1 - self.alpha)
+        
+        # Combine all components
+        focal_loss = alpha_t * focal_weight * ce
+        
+        return tf.reduce_mean(focal_loss)
+
+    def get_config(self):
+        """Return the configuration of the loss function."""
+        config = super().get_config()
+        config.update({"alpha": self.alpha, "gamma": self.gamma})
+        return config
+
+
 # Directional loss implementation as a proper Keras loss class for better serialization
 @tf.keras.utils.register_keras_serializable(package="Custom", name="DirectionalLoss")
 class DirectionalLoss(tf.keras.losses.Loss):
@@ -605,9 +667,9 @@ class HybridModelTrainer:
         self,
         data_dir: str = None,
         models_dir: str = None,
-        train_months: int = 6,  # Increased from 12 to 6 months for better balance
+        train_months: int = 4,  # Reduced from 6 to 4 months for better adaptability
         test_months: int = 1,
-        step_months: int = 3,  # Increased from 1 to 3 months to reduce total windows
+        step_months: int = 2,  # Reduced from 3 to 2 months to increase windows for better testing
         symbols: List[str] | None = None,
         seed: int = 42,
         warm_start: bool = True,
@@ -625,7 +687,7 @@ class HybridModelTrainer:
         np.random.seed(seed)
         tf.random.set_seed(seed)
 
-        # Walk-forward parameters
+        # Walk-forward parameters - Enhanced for better adaptability
         self.train_months = train_months
         self.test_months = test_months
         self.step_months = step_months
@@ -648,32 +710,34 @@ class HybridModelTrainer:
         os.makedirs("logs", exist_ok=True)
         os.makedirs("logs/feature_importance", exist_ok=True)
 
-        # Enhanced Model parameters
-        self.lstm_sequence_length = 96  # 24 hours of 15-min candles (increased from 60)
+        # Enhanced Model parameters for improved profitability
+        self.lstm_sequence_length = 120  # Extended from 96 to 120 timesteps (30 hours)
         self.prediction_horizon = 4  # Next 4 candles (1 hour) for 0.5%+ price increase detection
         # Binary classification target: predict if price will rise at least 0.5%
         # within the next hour (4 periods of 15 minutes). This focuses on identifying
         # profitable trading opportunities with sufficient time horizon.
         self.price_change_threshold = 0.005
 
-        # Advanced LSTM parameters (optimized for better GPU utilization)
-        self.lstm_units = [256, 128, 64]  # Increased units for better GPU utilization
-        self.dropout_rate = 0.3  # Increased dropout for better regularization
-        self.attention_units = 128  # Increased attention units for more computation
+        # Enhanced LSTM Architecture - 3-layer with reduced units for better precision
+        self.lstm_units = [128, 64, 32]  # Reduced units for better regularization and precision
+        self.dropout_rate = 0.3  # Enhanced dropout for regularization
+        self.attention_units = 128  # Attention mechanism for better sequence modeling
         self.use_attention = True  # Enable attention mechanism
+        self.use_residual_connections = True  # Enable residual connections for better gradient flow
+        self.use_batch_normalization = True  # Improved training stability
 
-        # Optimized XGBoost parameters for speed and performance balance
+        # Enhanced XGBoost parameters for improved performance
         self.xgb_params = {
-            "n_estimators": 300,  # Reduced for faster training
-            "max_depth": 6,  # Reduced depth for faster training
-            "learning_rate": 0.1,  # Increased learning rate for faster convergence
+            "n_estimators": 500,  # Increased from 300 to 500
+            "max_depth": 8,  # Increased from 6 to 8
+            "learning_rate": 0.05,  # Reduced from 0.1 to 0.05 for better convergence
             "subsample": 0.8,  # Standard subsampling
             "colsample_bytree": 0.8,  # Standard feature sampling
-            "reg_alpha": 0.1,  # Standard L1 regularization
-            "reg_lambda": 1.0,  # Standard L2 regularization
+            "reg_alpha": 0.1,  # L1 regularization
+            "reg_lambda": 1.0,  # L2 regularization
             "min_child_weight": 1,  # Standard setting
-            "gamma": 0,  # No minimum split loss for speed
-            "early_stopping_rounds": 30,  # Reduced patience for speed
+            "gamma": 0,  # No minimum split loss
+            "early_stopping_rounds": 50,  # Enhanced early stopping patience
             "eval_metric": "logloss",
             "objective": "binary:logistic",
             "random_state": 42,
@@ -681,10 +745,11 @@ class HybridModelTrainer:
             "nthread": -1,  # Explicitly use all threads
             "tree_method": "hist",  # Fastest training method
             "grow_policy": "depthwise",  # Optimized growth policy
-            "max_leaves": 256,  # Reduced for faster training
+            "max_leaves": 256,  # Optimal leaf count
             "verbosity": 0,  # Reduce output
             "enable_categorical": False,  # Optimize for numerical features
             "predictor": "cpu_predictor",  # Optimized CPU prediction
+            "scale_pos_weight": "auto",  # Dynamic class balancing (will be set per window)
         }
 
         print("🚀 Hybrid LSTM + XGBoost Model Trainer with Walk-Forward Analysis Initialized")
@@ -1039,25 +1104,65 @@ class HybridModelTrainer:
         """
         Prepare enhanced sequences for LSTM training with multiple features
         """
-        # Enhanced feature set for LSTM (normalized and scaled)
+        # Enhanced feature set for LSTM with comprehensive technical indicators
+        # Expanded from 17 to include multi-timeframe analysis and market regime features
         lstm_features = [
+            # Core price and volume features
             "close",
             "volume",
             "returns",
             "log_returns",
-            "volatility_20",
-            "atr_ratio",
-            "rsi",
-            "macd",
-            "bb_position",
             "volume_ratio",
+            
+            # Multi-timeframe price changes
+            "price_change_1h",
+            "price_change_4h",
+            "price_change_24h",
+            
+            # Volatility features with different timeframes
+            "volatility_20",
+            "volatility_1h",
+            "volatility_4h",
+            "atr_ratio",
+            
+            # Technical oscillators
+            "rsi",
+            "rsi_9",
+            "stoch_k",
+            "williams_r",
+            
+            # Trend and momentum indicators
+            "macd",
+            "macd_histogram",
+            "momentum_10",
             "price_vs_ema9",
             "price_vs_ema21",
+            "price_vs_ema50",
+            
+            # Bollinger Bands
+            "bb_position",
+            "bb_width",
+            
+            # Market microstructure
             "buying_pressure",
             "selling_pressure",
             "spread_ratio",
-            "momentum_10",
+            "volume_price_trend",
+            
+            # Market regime indicators
+            "vol_regime",
+            "trend_regime",
+            "ma_alignment",
+            
+            # Price normalization
             "price_zscore_20",
+            "price_zscore_50",
+            
+            # Jump-specific features for enhanced detection
+            "volume_surge_5",
+            "volatility_breakout",
+            "momentum_acceleration",
+            "market_momentum_alignment",
         ]
 
         # Ensure all features exist
@@ -1634,13 +1739,13 @@ class HybridModelTrainer:
                 beta_2=0.999,
             )
 
-        # Compile with weighted binary crossentropy for class imbalance handling
+        # Compile with focal loss for better imbalanced data handling
         # Use metric class instances instead of strings to avoid compatibility issues
         from tensorflow.keras.metrics import Accuracy, Precision, Recall
 
         model.compile(
             optimizer=optimizer,
-            loss="binary_crossentropy",
+            loss=FocalLoss(alpha=0.25, gamma=2.0),  # Use focal loss for imbalanced data
             metrics=[Accuracy(name="accuracy"), Precision(name="precision"), Recall(name="recall")],
         )
 
@@ -2093,25 +2198,25 @@ class HybridModelTrainer:
         print(f"📊 Feature selection: {len(selected_features)}/{len(train_df.columns)-1} features selected")
         logger.info(f"Selected features for XGBoost: {selected_features[:10]}{'...' if len(selected_features) > 10 else ''}")
 
-        # Calculate class distribution and balancing
+        # Calculate enhanced class distribution and dynamic balancing
         class_counts = y_train.value_counts()
         total_samples = len(y_train)
 
-        # Calculate scale_pos_weight for class balancing
+        # Calculate scale_pos_weight for dynamic class balancing
         neg_samples = class_counts[0] if 0 in class_counts else 0
         pos_samples = class_counts[1] if 1 in class_counts else 1
         scale_pos_weight = neg_samples / pos_samples if pos_samples > 0 else 1.0
 
-        print(f"📊 Class Distribution:")
+        print(f"📊 Enhanced Class Distribution:")
         print(f"   Negative (0): {neg_samples:,} ({neg_samples/total_samples*100:.1f}%)")
         print(f"   Positive (1): {pos_samples:,} ({pos_samples/total_samples*100:.1f}%)")
-        print(f"⚖️  Scale Pos Weight: {scale_pos_weight:.3f}")
+        print(f"⚖️  Dynamic Scale Pos Weight: {scale_pos_weight:.3f}")
 
-        # Train base XGBoost model
-        base_model = xgb.XGBClassifier(
-            **self.xgb_params,
-            scale_pos_weight=scale_pos_weight,  # Dynamic class balancing
-        )
+        # Create enhanced XGBoost model with dynamic parameters
+        enhanced_xgb_params = self.xgb_params.copy()
+        enhanced_xgb_params["scale_pos_weight"] = scale_pos_weight  # Dynamic class balancing
+        
+        base_model = xgb.XGBClassifier(**enhanced_xgb_params)
 
         if warm_start_model and os.path.exists(warm_start_model):
             try:
@@ -2831,8 +2936,8 @@ Examples:
     parser.add_argument(
         "--train-months",
         type=int,
-        default=6,  # Increased from 3 to 6 months for more stable training
-        help="Training window size in months (default: 6)",
+        default=4,  # Reduced from 6 to 4 months for better adaptability
+        help="Training window size in months (default: 4)",
     )
 
     parser.add_argument(
@@ -2845,8 +2950,8 @@ Examples:
     parser.add_argument(
         "--step-months",
         type=int,
-        default=3,  # Increased from 1 to 3 months to reduce total windows
-        help="Step size in months between windows (default: 3)",
+        default=2,  # Reduced from 3 to 2 months for more windows
+        help="Step size in months between windows (default: 2)",
     )
 
     parser.add_argument(
