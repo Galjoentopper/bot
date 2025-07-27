@@ -65,7 +65,7 @@ class TradingSettings:
     
     # Telegram Configuration
     telegram_bot_token: str = os.getenv('TELEGRAM_BOT_TOKEN', '')
-    telegram_chat_id: str = os.getenv('TELEGRAM_chat_ID', '')
+    telegram_chat_id: str = os.getenv('TELEGRAM_CHAT_ID', '')
     
     # Symbols
     symbols: List[str] = None
