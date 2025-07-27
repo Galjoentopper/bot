@@ -182,8 +182,10 @@ def create_comprehensive_custom_objects():
         "LSTM": tf.keras.layers.LSTM,
         "GRU": tf.keras.layers.GRU,
         "SimpleRNN": tf.keras.layers.SimpleRNN,
-        # Normalization - use compatible version
+        # Normalization - use compatible version for all module paths
         "BatchNormalization": CompatibleBatchNormalization,
+        "keras.layers.BatchNormalization": CompatibleBatchNormalization,
+        "keras.src.layers.normalization.batch_normalization.BatchNormalization": CompatibleBatchNormalization,
         "LayerNormalization": tf.keras.layers.LayerNormalization,
         # Merge layers
         "Dot": tf.keras.layers.Dot,
@@ -368,61 +370,87 @@ def load_keras_model_robust(model_path: str, custom_objects: Optional[Dict] = No
     if not model_path.exists():
         return None, f"Model file not found: {model_path}"
 
-    # Merge custom objects
-    default_custom_objects = create_comprehensive_custom_objects()
-    if custom_objects:
-        default_custom_objects.update(custom_objects)
-
-    # Strategy 1: Load weights into new architecture (most robust for version conflicts)
-    # Move this first since it's most likely to work for cross-version models
+    # Monkey-patch BatchNormalization to handle axis=[2] configuration
+    original_bn_init = tf.keras.layers.BatchNormalization.__init__
+    original_bn_from_config = tf.keras.layers.BatchNormalization.from_config
+    
+    def patched_bn_init(self, axis=-1, **kwargs):
+        if isinstance(axis, list) and len(axis) == 1:
+            axis = axis[0]
+        return original_bn_init(self, axis=axis, **kwargs)
+    
+    @classmethod
+    def patched_bn_from_config(cls, config):
+        if 'axis' in config and isinstance(config['axis'], list) and len(config['axis']) == 1:
+            config = config.copy()
+            config['axis'] = config['axis'][0]
+        return original_bn_from_config(config)
+    
+    # Apply patches
+    tf.keras.layers.BatchNormalization.__init__ = patched_bn_init
+    tf.keras.layers.BatchNormalization.from_config = patched_bn_from_config
+    
     try:
-        model = load_model_weights_only(str(model_path), num_features=num_features)
-        if model:
+        # Merge custom objects
+        default_custom_objects = create_comprehensive_custom_objects()
+        if custom_objects:
+            default_custom_objects.update(custom_objects)
+
+        # Strategy 1: Load weights into new architecture (most robust for version conflicts)
+        # Move this first since it's most likely to work for cross-version models
+        try:
+            model = load_model_weights_only(str(model_path), num_features=num_features)
+            if model:
+                return model, None
+        except Exception as e:
+            errors.append(f"Strategy 1 (weights-only): {str(e)}")
+
+        # Strategy 2: Direct loading with comprehensive custom objects
+        try:
+            model = tf.keras.models.load_model(str(model_path), compile=False, custom_objects=default_custom_objects)
             return model, None
-    except Exception as e:
-        errors.append(f"Strategy 1 (weights-only): {str(e)}")
+        except Exception as e:
+            errors.append(f"Strategy 2 (direct): {str(e)}")
 
-    # Strategy 2: Direct loading with comprehensive custom objects
-    try:
-        model = tf.keras.models.load_model(str(model_path), compile=False, custom_objects=default_custom_objects)
-        return model, None
-    except Exception as e:
-        errors.append(f"Strategy 2 (direct): {str(e)}")
+        # Strategy 3: Try loading with custom object scope
+        try:
+            with tf.keras.utils.custom_object_scope(default_custom_objects):
+                model = tf.keras.models.load_model(str(model_path), compile=False)
+            return model, None
+        except Exception as e:
+            errors.append(f"Strategy 3 (custom scope): {str(e)}")
 
-    # Strategy 3: Try loading with custom object scope
-    try:
-        with tf.keras.utils.custom_object_scope(default_custom_objects):
-            model = tf.keras.models.load_model(str(model_path), compile=False)
-        return model, None
-    except Exception as e:
-        errors.append(f"Strategy 3 (custom scope): {str(e)}")
+        # Strategy 4: Handle keras.src.engine.functional module issue specifically
+        try:
+            # Temporarily monkey-patch the missing module
+            import sys
+            import types
 
-    # Strategy 4: Handle keras.src.engine.functional module issue specifically
-    try:
-        # Temporarily monkey-patch the missing module
-        import sys
-        import types
+            # Create fake modules to handle the missing keras.src.engine.functional
+            if "keras" not in sys.modules:
+                sys.modules["keras"] = types.ModuleType("keras")
+            if "keras.src" not in sys.modules:
+                sys.modules["keras.src"] = types.ModuleType("keras.src")
+            if "keras.src.engine" not in sys.modules:
+                sys.modules["keras.src.engine"] = types.ModuleType("keras.src.engine")
+            if "keras.src.engine.functional" not in sys.modules:
+                functional_module = types.ModuleType("keras.src.engine.functional")
+                functional_module.Functional = tf.keras.Model
+                sys.modules["keras.src.engine.functional"] = functional_module
 
-        # Create fake modules to handle the missing keras.src.engine.functional
-        if "keras" not in sys.modules:
-            sys.modules["keras"] = types.ModuleType("keras")
-        if "keras.src" not in sys.modules:
-            sys.modules["keras.src"] = types.ModuleType("keras.src")
-        if "keras.src.engine" not in sys.modules:
-            sys.modules["keras.src.engine"] = types.ModuleType("keras.src.engine")
-        if "keras.src.engine.functional" not in sys.modules:
-            functional_module = types.ModuleType("keras.src.engine.functional")
-            functional_module.Functional = tf.keras.Model
-            sys.modules["keras.src.engine.functional"] = functional_module
+            # Now try loading again
+            model = tf.keras.models.load_model(str(model_path), compile=False, custom_objects=default_custom_objects)
+            return model, None
+        except Exception as e:
+            errors.append(f"Strategy 4 (module patch): {str(e)}")
 
-        # Now try loading again
-        model = tf.keras.models.load_model(str(model_path), compile=False, custom_objects=default_custom_objects)
-        return model, None
-    except Exception as e:
-        errors.append(f"Strategy 4 (module patch): {str(e)}")
-
-    # All strategies failed
-    return None, "; ".join(errors)
+        # All strategies failed
+        return None, "; ".join(errors)
+    
+    finally:
+        # Restore original BatchNormalization methods
+        tf.keras.layers.BatchNormalization.__init__ = original_bn_init
+        tf.keras.layers.BatchNormalization.from_config = original_bn_from_config
 
 
 class WindowBasedModelLoader:
