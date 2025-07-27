@@ -24,7 +24,7 @@ def main():
     print()
     
     # Path to the actual training script
-    training_script = os.path.join(os.path.dirname(__file__), 'train_models', 'train_hybrid_models.py')
+    training_script = os.path.join(os.path.dirname(__file__), 'train_models_deps', 'train_models', 'train_hybrid_models.py')
     
     if os.path.exists(training_script):
         print(f"🚀 Running: {training_script}")

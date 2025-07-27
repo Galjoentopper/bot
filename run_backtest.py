@@ -30,7 +30,7 @@ def main():
     print()
     
     # Check if scripts directory exists
-    scripts_dir = os.path.join(os.path.dirname(__file__), 'scripts')
+    scripts_dir = os.path.join(os.path.dirname(__file__), 'scripts_deps', 'scripts')
     if not os.path.exists(scripts_dir):
         print("❌ Error: scripts/ directory not found")
         return 1
