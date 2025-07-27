@@ -31,10 +31,11 @@ def main():
         print("=" * 50)
         print()
         
-        # Execute the training script
+        # Execute the training script with all command line arguments
         import subprocess
-        result = subprocess.run([sys.executable, training_script], 
-                              cwd=os.path.dirname(__file__))
+        # Pass all command line arguments (except the script name) to the actual training script
+        args = [sys.executable, training_script] + sys.argv[1:]
+        result = subprocess.run(args, cwd=os.path.dirname(__file__))
         return result.returncode
     else:
         print(f"❌ Error: {training_script} not found")

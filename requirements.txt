@@ -9,6 +9,7 @@ matplotlib
 seaborn
 yfinance
 ta
+pandas_ta
 statsmodels
 sqlalchemy
 psycopg2-binary
