@@ -678,7 +678,21 @@ class HybridModelTrainer:
         warm_start: bool = True,
     ):
         # Set default paths to repository root directories
-        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # Find the repository root by looking for the directory containing both 'data' and 'models' folders
+        current_file = os.path.abspath(__file__)
+        current_dir = os.path.dirname(current_file)
+        
+        # Go up directories until we find the repository root
+        repo_root = current_dir
+        while repo_root != os.path.dirname(repo_root):  # Stop at filesystem root
+            parent_dir = os.path.dirname(repo_root)
+            # Check if this looks like the repository root (contains expected structure)
+            if (os.path.exists(os.path.join(parent_dir, "data")) or 
+                os.path.exists(os.path.join(parent_dir, "main_paper_trader.py"))):
+                repo_root = parent_dir
+                break
+            repo_root = parent_dir
+        
         self.data_dir = data_dir if data_dir is not None else os.path.join(repo_root, "data")
         self.models_dir = models_dir if models_dir is not None else os.path.join(repo_root, "models")
         self.symbols = symbols or ["BTCEUR", "ETHEUR", "ADAEUR", "SOLEUR", "XRPEUR"]

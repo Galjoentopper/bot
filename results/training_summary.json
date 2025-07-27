@@ -1,0 +1,52 @@
+{
+  "20250727_222821": {
+    "timestamp": "20250727_222821",
+    "training_type": "walk_forward",
+    "config": {
+      "train_months": 4,
+      "test_months": 1,
+      "step_months": 2,
+      "min_training_samples": 5000
+    },
+    "total_time_minutes": 0.0027918577194213866,
+    "symbols_trained": 0,
+    "symbols_failed": 5,
+    "total_windows": 0,
+    "results_by_symbol": {
+      "BTCEUR": {
+        "error": "Database not found: C:\\Users\\best test\\Documents\\GitHub\\bot\\train_models\\data/btceur_15m.db"
+      },
+      "ETHEUR": {
+        "error": "Database not found: C:\\Users\\best test\\Documents\\GitHub\\bot\\train_models\\data/etheur_15m.db"
+      },
+      "ADAEUR": {
+        "error": "Database not found: C:\\Users\\best test\\Documents\\GitHub\\bot\\train_models\\data/adaeur_15m.db"
+      },
+      "SOLEUR": {
+        "error": "Database not found: C:\\Users\\best test\\Documents\\GitHub\\bot\\train_models\\data/soleur_15m.db"
+      },
+      "XRPEUR": {
+        "error": "Database not found: C:\\Users\\best test\\Documents\\GitHub\\bot\\train_models\\data/xrpeur_15m.db"
+      }
+    }
+  },
+  "20250727_224112": {
+    "timestamp": "20250727_224112",
+    "training_type": "walk_forward",
+    "config": {
+      "train_months": 1,
+      "test_months": 1,
+      "step_months": 1,
+      "min_training_samples": 5000
+    },
+    "total_time_minutes": 0.0001159826914469401,
+    "symbols_trained": 0,
+    "symbols_failed": 1,
+    "total_windows": 0,
+    "results_by_symbol": {
+      "BTCEUR": {
+        "error": "Database not found: C:\\Users\\best test\\Documents\\GitHub\\bot\\data/btceur_15m.db"
+      }
+    }
+  }
+}
