@@ -111,24 +111,18 @@ class ModelCompatibilityHandler:
             try:
                 from paper_trader.models.feature_engineer import LSTM_FEATURES, LSTM_FEATURES_LEGACY
                 
-                # Use scaler as primary source of truth for feature count
-                if metadata.get('scaler_features') == 17:
+                # CRITICAL FIX: All saved .keras models were trained with 17-feature architecture
+                # The error shows models expect 17 features but are receiving 37 features
+                # This is because the model weights have shape (3, 17, 64) but we're trying to load (3, 37, 64)
+                lstm_model_file = self.models_dir / "lstm" / f"{symbol_lower}_window_{window}.keras"
+                if lstm_model_file.exists():
+                    # Force 17 features for all saved .keras models to match trained architecture
                     metadata['lstm_features'] = LSTM_FEATURES.copy()
-                    self.logger.debug(f"Using LSTM_FEATURES (17 features) for {symbol} window {window} based on scaler")
-                elif metadata.get('scaler_features') == 36:
-                    metadata['lstm_features'] = LSTM_FEATURES_LEGACY.copy()
-                    self.logger.debug(f"Using LSTM_FEATURES_LEGACY (36 features) for {symbol} window {window} based on scaler")
+                    self.logger.info(f"FIXED: Using LSTM_FEATURES (17 features) for {symbol} window {window} - all saved models use 17-feature architecture")
                 else:
-                    # Fallback: check if model file exists and try to infer from filename or default to 17
-                    lstm_model_file = self.models_dir / "lstm" / f"{symbol_lower}_window_{window}.keras"
-                    if lstm_model_file.exists():
-                        # Default to modern 17-feature models for newer training
-                        metadata['lstm_features'] = LSTM_FEATURES.copy()
-                        self.logger.debug(f"Using LSTM_FEATURES (17 features) as default for {symbol} window {window}")
-                    else:
-                        # No model file, use legacy as fallback
-                        metadata['lstm_features'] = LSTM_FEATURES_LEGACY.copy()
-                        self.logger.debug(f"Using LSTM_FEATURES_LEGACY (36 features) as fallback for {symbol} window {window}")
+                    # Even for missing models, default to 17 features since that's what was trained
+                    metadata['lstm_features'] = LSTM_FEATURES.copy()
+                    self.logger.info(f"FIXED: Using LSTM_FEATURES (17 features) as default for {symbol} window {window} - matches trained model architecture")
                     
                 metadata['feature_columns_loaded'] = True
                     
@@ -173,14 +167,11 @@ class ModelCompatibilityHandler:
             # Fallback to default features if nothing loaded
             if not metadata['feature_columns_loaded']:
                 try:
-                    from paper_trader.models.feature_engineer import LSTM_FEATURES, LSTM_FEATURES_LEGACY, TRAINING_FEATURES
-                    # Try to determine from scaler if available, otherwise default to legacy
-                    if metadata.get('scaler_features') == 17:
-                        metadata['lstm_features'] = LSTM_FEATURES.copy()
-                        self.logger.info(f"Using default LSTM_FEATURES (17 features) for {symbol} window {window}")
-                    else:
-                        metadata['lstm_features'] = LSTM_FEATURES_LEGACY.copy()
-                        self.logger.info(f"Using default LSTM_FEATURES_LEGACY (36 features) for {symbol} window {window}")
+                    from paper_trader.models.feature_engineer import LSTM_FEATURES, TRAINING_FEATURES
+                    # CRITICAL FIX: Always default to 17 features for LSTM models
+                    # All saved models were trained with 17-feature architecture
+                    metadata['lstm_features'] = LSTM_FEATURES.copy()
+                    self.logger.info(f"FIXED: Using default LSTM_FEATURES (17 features) for {symbol} window {window} - matches all saved model architectures")
                 except ImportError:
                     self.logger.warning(f"Could not import default LSTM features for {symbol}")
                     metadata['lstm_features'] = []

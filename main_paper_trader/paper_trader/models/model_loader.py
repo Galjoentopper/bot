@@ -65,56 +65,18 @@ class FocalLoss(tf.keras.losses.Loss):
 
 
 # Directional loss implementation as a proper Keras loss class for better serialization
-@tf.keras.utils.register_keras_serializable(package="Custom", name="DirectionalLoss")
+@tf.keras.utils.register_keras_serializable()
 class DirectionalLoss(tf.keras.losses.Loss):
-    """
-    Custom loss function that penalizes wrong directional predictions more.
-
-    This loss combines MSE with a directional penalty to encourage
-    the model to predict the correct direction of price movements.
-    """
-
-    def __init__(self, penalty_weight=2.0, name="directional_loss", **kwargs):
-        """
-        Initialize DirectionalLoss.
-
-        Args:
-            penalty_weight: Weight for directional penalty (default: 2.0)
-            name: Name of the loss function
-        """
+    def __init__(self, name='directional_loss', **kwargs):
         super().__init__(name=name, **kwargs)
-        self.penalty_weight = penalty_weight
-
+    
     def call(self, y_true, y_pred):
-        """
-        Calculate the directional loss.
-
-        Args:
-            y_true: True values
-            y_pred: Predicted values
-
-        Returns:
-            Combined MSE and directional penalty loss
-        """
-        # Standard MSE component
-        mse = tf.keras.losses.MeanSquaredError()(y_true, y_pred)
-
-        # Directional penalty component
+        # Your DirectionalLoss implementation
         direction_true = tf.sign(y_true)
         direction_pred = tf.sign(y_pred)
-        direction_penalty = tf.where(
-            tf.equal(direction_true, direction_pred),
-            0.0,
-            tf.abs(y_true - y_pred) * self.penalty_weight,
-        )
-
-        return mse + tf.reduce_mean(direction_penalty)
-
-    def get_config(self):
-        """Return the configuration of the loss function."""
-        config = super().get_config()
-        config.update({"penalty_weight": self.penalty_weight})
-        return config
+        direction_accuracy = tf.cast(tf.equal(direction_true, direction_pred), tf.float32)
+        mse = tf.keras.losses.mean_squared_error(y_true, y_pred)
+        return mse * (2.0 - direction_accuracy)
 
 
 # Quantile loss implementation as a proper Keras loss class for better serialization
@@ -522,13 +484,14 @@ class WindowBasedModelLoader:
             # Convert Bitvavo format (BTC-EUR) to model file format (btceur)
             symbol_lower = symbol.lower().replace("-", "")
 
-            # Initialize storage for this symbol
-            self.lstm_models[symbol] = {}
-            self.xgb_models[symbol] = {}
-            self.caboose_models[symbol] = {}
-            self.scalers[symbol] = {}
-            self.feature_columns[symbol] = {"lstm": {}, "xgb": {}, "caboose": {}}
-            self.available_windows[symbol] = []
+            # Initialize storage for this symbol using the normalized symbol format
+            # This ensures consistency between model loading and prediction access
+            self.lstm_models[symbol_lower] = {}
+            self.xgb_models[symbol_lower] = {}
+            self.caboose_models[symbol_lower] = {}
+            self.scalers[symbol_lower] = {}
+            self.feature_columns[symbol_lower] = {"lstm": {}, "xgb": {}, "caboose": {}}
+            self.available_windows[symbol_lower] = []
 
             # Discover available windows by scanning directories
             windows_found = set()
@@ -561,7 +524,7 @@ class WindowBasedModelLoader:
 
                                 # Compile the model with the determined loss function
                                 model.compile(optimizer="adam", loss=loss_function, metrics=["mae"])
-                                self.lstm_models[symbol][window_num] = model
+                                self.lstm_models[symbol_lower][window_num] = model
                                 self.logger.info(f"Successfully loaded LSTM model {lstm_file}")
                             else:
                                 self.logger.warning(f"Failed to load LSTM model {lstm_file} with all strategies. Error: {load_error}")
@@ -578,7 +541,7 @@ class WindowBasedModelLoader:
                                     model = tf.keras.models.model_from_json(model_json, custom_objects=custom_objects)
                                     model.load_weights(weights_path)
                                     model.compile(optimizer="adam", loss=DirectionalLoss(), metrics=["mae"])
-                                    self.lstm_models[symbol][window_num] = model
+                                    self.lstm_models[symbol_lower][window_num] = model
                                     self.logger.info(
                                         f"Loaded model from separate architecture and weights for {symbol} window {window_num}"
                                     )
@@ -602,7 +565,7 @@ class WindowBasedModelLoader:
                         # Try loading as classifier first (since your models are classifiers)
                         model = xgb.XGBClassifier()
                         model.load_model(xgb_file)
-                        self.xgb_models[symbol][window_num] = model
+                        self.xgb_models[symbol_lower][window_num] = model
                         self.logger.debug(f"Loaded XGBoost classifier for {symbol} window {window_num}")
 
                     except Exception as e:
@@ -618,7 +581,7 @@ class WindowBasedModelLoader:
 
                         model = cb.CatBoostRegressor()
                         model.load_model(cb_file)
-                        self.caboose_models[symbol][window_num] = model
+                        self.caboose_models[symbol_lower][window_num] = model
                         self.logger.debug(f"Loaded Caboose model for {symbol} window {window_num}")
                     except Exception as e:
                         self.logger.warning(f"Failed to load Caboose model {cb_file}: {e}")
@@ -631,7 +594,7 @@ class WindowBasedModelLoader:
                         window_num = int(scaler_file.stem.split("_window_")[1].split("_scaler")[0])
                         with open(scaler_file, "rb") as f:
                             scaler = pickle.load(f)
-                        self.scalers[symbol][window_num] = scaler
+                        self.scalers[symbol_lower][window_num] = scaler
                         self.logger.debug(f"Loaded scaler for {symbol} window {window_num}")
                     except (ValueError, Exception) as e:
                         self.logger.warning(f"Failed to load scaler {scaler_file}: {e}")
@@ -647,7 +610,7 @@ class WindowBasedModelLoader:
                             selected_cols = pickle.load(f)
 
                         # Store XGBoost features separately
-                        self.feature_columns[symbol]["xgb"][window_num] = selected_cols
+                        self.feature_columns[symbol_lower]["xgb"][window_num] = selected_cols
                         windows_found.add(window_num)
                         self.logger.debug(
                             f"Loaded {len(selected_cols)} XGBoost feature columns for {symbol} window {window_num}"
@@ -665,30 +628,20 @@ class WindowBasedModelLoader:
                         window_num = int(fc_file.stem.split("_window_")[1])
 
                         # Load for LSTM models if we have an LSTM model for this window
-                        if window_num in self.lstm_models.get(symbol, {}):
+                        if window_num in self.lstm_models.get(symbol_lower, {}):
 
                             with open(fc_file, "rb") as f:
                                 full_cols = pickle.load(f)
 
-                            # For LSTM models, use features based on scaler expectations
-                            scaler_file = self.model_path / "scalers" / f"{symbol_lower}_window_{window_num}_scaler.pkl"
-                            expected_count = 17  # Default
-
-                            if scaler_file.exists():
-                                try:
-                                    with open(scaler_file, "rb") as sf:
-                                        scaler = pickle.load(sf)
-                                    if hasattr(scaler, "n_features_in_"):
-                                        expected_count = scaler.n_features_in_
-                                except Exception:
-                                    pass
-
+                            # For LSTM models, use compatibility handler to determine correct features
+                            expected_count = self.compatibility_handler.get_lstm_feature_count(symbol_lower, window_num)
+                            
                             # Use the first N features from the full set, excluding dynamic features
                             filtered_cols = [col for col in full_cols if col != "lstm_delta"]
                             lstm_features = filtered_cols[:expected_count]
 
                             # Store LSTM features separately
-                            self.feature_columns[symbol]["lstm"][window_num] = lstm_features
+                            self.feature_columns[symbol_lower]["lstm"][window_num] = lstm_features
                             windows_found.add(window_num)
                             self.logger.debug(
                                 f"Loaded {len(lstm_features)} LSTM feature columns for {symbol} window {window_num}"
@@ -698,49 +651,39 @@ class WindowBasedModelLoader:
                         self.logger.warning(f"Failed to load full feature columns {fc_file}: {e}")
 
             # Ensure we have feature columns for all loaded models
-            for window in list(self.lstm_models[symbol].keys()):
-                if window not in self.feature_columns[symbol]["lstm"]:
-                    # For LSTM models, we need to determine the correct features based on scaler or architecture
-                    scaler_file = self.model_path / "scalers" / f"{symbol_lower}_window_{window}_scaler.pkl"
-                    expected_count = 17  # Default expectation based on common LSTM model architecture
-
-                    if scaler_file.exists():
-                        try:
-                            with open(scaler_file, "rb") as sf:
-                                scaler = pickle.load(sf)
-                            if hasattr(scaler, "n_features_in_"):
-                                expected_count = scaler.n_features_in_
-                        except Exception:
-                            pass
+            for window in list(self.lstm_models[symbol_lower].keys()):
+                if window not in self.feature_columns[symbol_lower]["lstm"]:
+                    # For LSTM models, use compatibility handler to determine correct features
+                    expected_count = self.compatibility_handler.get_lstm_feature_count(symbol_lower, window)
 
                     # Use a compatible subset of LSTM_FEATURES that matches expected count
                     feature_candidates = [f for f in LSTM_FEATURES if f not in ["close", "open", "high", "low"]]
                     fallback_features = feature_candidates[:expected_count]
-                    self.feature_columns[symbol]["lstm"][window] = fallback_features
+                    self.feature_columns[symbol_lower]["lstm"][window] = fallback_features
                     self.logger.info(
                         f"Using fallback LSTM features for {symbol} window {window}: {len(fallback_features)} features"
                     )
                     windows_found.add(window)
 
-            for window in list(self.xgb_models[symbol].keys()):
-                if window not in self.feature_columns[symbol]["xgb"]:
+            for window in list(self.xgb_models[symbol_lower].keys()):
+                if window not in self.feature_columns[symbol_lower]["xgb"]:
                     # For XGBoost models, use TRAINING_FEATURES as fallback
                     from .feature_engineer import TRAINING_FEATURES
 
-                    self.feature_columns[symbol]["xgb"][window] = TRAINING_FEATURES
+                    self.feature_columns[symbol_lower]["xgb"][window] = TRAINING_FEATURES
                     self.logger.info(
                         f"Using fallback training features for {symbol} window {window}: {len(TRAINING_FEATURES)} features"
                     )
                     windows_found.add(window)
 
             # Update available windows
-            self.available_windows[symbol] = sorted(list(windows_found))
+            self.available_windows[symbol_lower] = sorted(list(windows_found))
 
             # Check if we have at least one model
             has_models = (
-                len(self.lstm_models[symbol]) > 0
-                or len(self.xgb_models[symbol]) > 0
-                or len(self.caboose_models[symbol]) > 0
+                len(self.lstm_models[symbol_lower]) > 0
+                or len(self.xgb_models[symbol_lower]) > 0
+                or len(self.caboose_models[symbol_lower]) > 0
             )
 
             if has_models:
@@ -931,6 +874,9 @@ class WindowBasedEnsemblePredictor:
                 value from ``features`` is used.
         """
         try:
+            # Convert symbol to normalized format for model access
+            symbol_lower = symbol.lower().replace('-', '')
+            
             if len(features) < 10:  # Minimum features needed
                 self.logger.warning(f"Insufficient features for prediction: {len(features)}")
                 return None
@@ -943,20 +889,20 @@ class WindowBasedEnsemblePredictor:
                 trend_strength = 0.0
 
             # Select optimal window based on market conditions
-            optimal_window = self.model_loader.get_optimal_window(symbol, market_volatility, trend_strength)
+            optimal_window = self.model_loader.get_optimal_window(symbol_lower, market_volatility, trend_strength)
             if optimal_window is None:
                 self.logger.warning(f"No models available for {symbol}")
                 return None
 
             # Validate feature compatibility before proceeding
-            compatibility_validation = self.model_loader.validate_model_compatibility(symbol, optimal_window, features)
+            compatibility_validation = self.model_loader.validate_model_compatibility(symbol_lower, optimal_window, features)
             if not compatibility_validation.get('overall_compatible', False):
                 self.logger.warning(f"Feature compatibility issues for {symbol} window {optimal_window}")
                 # Continue anyway but log the issues
                 self.logger.debug(f"Compatibility details: {compatibility_validation}")
 
             # Get available models for the selected window
-            available_models = self.model_loader.get_available_models(symbol, optimal_window)
+            available_models = self.model_loader.get_available_models(symbol_lower, optimal_window)
 
             predictions = {}
             confidence_scores = {}
@@ -969,7 +915,7 @@ class WindowBasedEnsemblePredictor:
             if available_models["lstm"]:
                 try:
                     lstm_pred, lstm_conf = await self._predict_lstm_window(
-                        symbol, features, optimal_window, current_price
+                        symbol_lower, features, optimal_window, current_price
                     )
                     if lstm_pred is not None:
                         predictions["lstm"] = lstm_pred
@@ -988,7 +934,7 @@ class WindowBasedEnsemblePredictor:
                     features_for_xgb['lstm_delta'] = lstm_delta
                 
                 xgb_pred, xgb_conf = await self._predict_xgboost_window(
-                    symbol, features_for_xgb, optimal_window, current_price
+                    symbol_lower, features_for_xgb, optimal_window, current_price
                 )
                 if xgb_pred is not None:
                     predictions["xgb"] = xgb_pred
@@ -998,7 +944,7 @@ class WindowBasedEnsemblePredictor:
             # Caboose (CatBoost) Prediction with selected window
             if available_models.get("caboose"):
                 caboose_pred, caboose_conf = await self._predict_caboose_window(
-                    symbol, features, optimal_window, current_price
+                    symbol_lower, features, optimal_window, current_price
                 )
                 if caboose_pred is not None:
                     predictions["caboose"] = caboose_pred

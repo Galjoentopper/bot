@@ -342,15 +342,49 @@ class BitvavoDataCollector:
             return pd.DataFrame()
         return self.data_buffers[symbol].tail(min_length).copy()
 
+    def _validate_symbol_format(self, symbol: str) -> str:
+        """Validate and convert symbol format for Bitvavo API.
+        
+        Bitvavo uses format like 'BTC-EUR', but some configurations might use different formats.
+        This method ensures the symbol is in the correct format.
+        """
+        # Remove any whitespace
+        symbol = symbol.strip().upper()
+        
+        # Check if symbol is already in correct format (XXX-YYY)
+        if '-' in symbol and len(symbol.split('-')) == 2:
+            base, quote = symbol.split('-')
+            if len(base) >= 2 and len(quote) >= 3:  # Basic validation
+                return symbol
+        
+        # Handle common alternative formats
+        if symbol.endswith('EUR') and len(symbol) > 3:
+            base = symbol[:-3]
+            return f"{base}-EUR"
+        elif symbol.endswith('USD') and len(symbol) > 3:
+            base = symbol[:-3]
+            return f"{base}-USD"
+        elif symbol.endswith('BTC') and len(symbol) > 3:
+            base = symbol[:-3]
+            return f"{base}-BTC"
+        
+        # If no conversion possible, return as-is and let API handle the error
+        return symbol
+
     async def get_historical_data(self, symbol: str, interval: str | None = None, limit: int = 100) -> Optional[pd.DataFrame]:
         """Fetch historical candle data for a symbol."""
         interval = interval or self.interval
-        endpoint = f"{self.base_url}/{symbol}/candles"
+        endpoint = f"{self.base_url}/candles"
+        
+        # CRITICAL FIX: Validate and convert symbol format
+        validated_symbol = self._validate_symbol_format(symbol)
+        if validated_symbol != symbol:
+            self.logger.info(f"FIXED: Converted symbol format from '{symbol}' to '{validated_symbol}' for Bitvavo API")
         
         try:
             await asyncio.sleep(random.uniform(self.settings.api_retry_delay_min, self.settings.api_retry_delay_max))  # Random delay
-            params = {'interval': interval, 'limit': limit}
-            self.logger.debug(f"Fetching data from {endpoint} for symbol: {symbol}")
+            params = {'market': validated_symbol, 'interval': interval, 'limit': limit}
+            self.logger.debug(f"Fetching data from {endpoint} for symbol: {validated_symbol}")
             
             response = await self.session.get(endpoint, params=params, timeout=self.settings.api_timeout_seconds)
             
@@ -367,25 +401,30 @@ class BitvavoDataCollector:
                     
                     df = df.dropna()
                     if not df.empty:
-                        self.logger.info(f"Successfully fetched {len(df)} candles for {symbol}")
+                        self.logger.info(f"Successfully fetched {len(df)} candles for {validated_symbol}")
                         return df
                     else:
-                        self.logger.warning(f"No valid data after processing for {symbol}")
+                        self.logger.warning(f"No valid data after processing for {validated_symbol}")
                 else:
-                    self.logger.warning(f"Empty or invalid data from API for {symbol}")
+                    self.logger.warning(f"Empty or invalid data from API for {validated_symbol}")
             elif response.status_code == 404:
-                self.logger.error(f"Market {symbol} not found on Bitvavo API")
+                self.logger.error(f"FIXED: Market {validated_symbol} not found on Bitvavo API - check if this trading pair exists")
+                # Try to suggest alternative formats
+                if '-' in validated_symbol:
+                    base, quote = validated_symbol.split('-')
+                    alternatives = [f"{base}-USD", f"{base}-BTC", f"{base}-ETH"]
+                    self.logger.info(f"Suggested alternatives for {validated_symbol}: {alternatives}")
             else:
-                self.logger.error(f"HTTP {response.status_code} from Bitvavo API for {symbol}: {response.text[:150]}")
+                self.logger.error(f"HTTP {response.status_code} from Bitvavo API for {validated_symbol}: {response.text[:150]}")
 
         except httpx.RequestError as e:
-            self.logger.error(f"Request failed for {symbol}: {e}")
+            self.logger.error(f"Request failed for {validated_symbol}: {e}")
         except (ValueError, KeyError) as e:
-            self.logger.error(f"Error parsing JSON for {symbol}: {e}")
+            self.logger.error(f"Error parsing JSON for {validated_symbol}: {e}")
         except Exception as e:
-            self.logger.error(f"An unexpected error occurred for {symbol}: {e}")
+            self.logger.error(f"An unexpected error occurred for {validated_symbol}: {e}")
 
-        self.logger.error(f"Failed to fetch historical data for {symbol}")
+        self.logger.error(f"Failed to fetch historical data for {validated_symbol}")
         return None
 
 
@@ -412,6 +451,9 @@ class BitvavoDataCollector:
     async def get_current_price(self, symbol: str) -> Optional[float]:
         """Get current price for a symbol."""
         try:
+            # CRITICAL FIX: Validate symbol format
+            validated_symbol = self._validate_symbol_format(symbol)
+            
             # Prefer price from buffer if it was updated recently (within 15 minutes for 15-min candles)
             if (
                 symbol in self.data_buffers
@@ -422,7 +464,7 @@ class BitvavoDataCollector:
                     return float(self.data_buffers[symbol]['close'].iloc[-1])
 
             url = f"{self.base_url}/ticker/price"
-            params = {'market': symbol}
+            params = {'market': validated_symbol}
 
             response = requests.get(url, params=params, timeout=self.settings.price_api_timeout_seconds)
             response.raise_for_status()
@@ -431,14 +473,17 @@ class BitvavoDataCollector:
             return float(data['price'])
 
         except Exception as e:
-            self.logger.error(f"Error fetching current price for {symbol}: {e}")
+            self.logger.error(f"Error fetching current price for {validated_symbol}: {e}")
             return None
 
     async def get_current_price_for_trading(self, symbol: str) -> Optional[float]:
         """Get the most current price for trading decisions, always using live API."""
         try:
+            # CRITICAL FIX: Validate symbol format
+            validated_symbol = self._validate_symbol_format(symbol)
+            
             url = f"{self.base_url}/ticker/price"
-            params = {'market': symbol}
+            params = {'market': validated_symbol}
 
             response = requests.get(url, params=params, timeout=self.settings.price_api_timeout_seconds)
             response.raise_for_status()
