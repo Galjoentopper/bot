@@ -263,7 +263,8 @@ class EnhancedPaperTrader:
             data["volatility_4h"] = data["returns"].rolling(64).std()
             data["volatility_20"] = data["returns"].rolling(20).std()
             data["volatility_50"] = data["returns"].rolling(50).std()
-            data["volatility_ratio"] = np.where(data["volatility_50"] == 0, np.nan, 
+            EPSILON = 1e-10  # Small threshold to avoid division by zero
+            data["volatility_ratio"] = np.where(data["volatility_50"] < EPSILON, np.nan, 
                                               data["volatility_20"] / data["volatility_50"])
             
             # Volume features
