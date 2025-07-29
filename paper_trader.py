@@ -81,27 +81,11 @@ class PaperTrader:
     
     def convert_symbol_to_bitvavo_format(self, symbol):
         """Convert symbol from BTCEUR format to BTC-EUR format for Bitvavo API"""
-        # Common cryptocurrency symbols that need conversion
-        conversions = {
-            'BTCEUR': 'BTC-EUR',
-            'ETHEUR': 'ETH-EUR', 
-            'SOLEUR': 'SOL-EUR',
-            'XRPEUR': 'XRP-EUR',
-            'ADAEUR': 'ADA-EUR'
-        }
-        return conversions.get(symbol, symbol)
+        return self.conversions.get(symbol, symbol)
     
     def convert_symbol_from_bitvavo_format(self, api_symbol):
         """Convert symbol from BTC-EUR format back to BTCEUR format for internal use"""
-        # Reverse mapping from API format to internal format
-        conversions = {
-            'BTC-EUR': 'BTCEUR',
-            'ETH-EUR': 'ETHEUR',
-            'SOL-EUR': 'SOLEUR',
-            'XRP-EUR': 'XRPEUR',
-            'ADA-EUR': 'ADAEUR'
-        }
-        return conversions.get(api_symbol, api_symbol)
+        return self.reverse_conversions.get(api_symbol, api_symbol)
         
     def load_models(self):
         """Load trained models from the models directory"""
