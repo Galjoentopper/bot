@@ -355,16 +355,7 @@ class PaperTrader:
         """Create a consistent 37-feature set for LSTM models to match scaler expectations"""
         # Define the core 37 features that should be used for LSTM models
         # This is based on the most commonly used features from the training pipeline
-        lstm_features = [
-            'returns', 'log_returns', 'price_change_1h', 'price_change_4h', 'price_change_24h',
-            'volatility_20', 'volatility_50', 'atr_ratio', 'volume_ratio', 'volume_change',
-            'spread', 'buying_pressure', 'selling_pressure', 'ema9_vs_ema21', 'ema21_vs_ema50',
-            'price_vs_ema9', 'price_vs_ema21', 'price_vs_sma200', 'rsi', 'stoch_k',
-            'macd', 'macd_signal', 'macd_histogram', 'bb_width', 'bb_position', 'lstm_delta',
-            'returns_lag_1', 'returns_lag_2', 'log_returns_lag_1', 'returns_mean_10', 'returns_std_10',
-            'realized_vol_5', 'vol_ratio_15min_30min', 'price_vs_ema50', 'volatility_breakout',
-            'vol_regime', 'trend_regime'
-        ]
+        lstm_features = LSTM_FEATURES
         
         # Store LSTM feature set for each symbol with a special key
         lstm_key = f"{symbol}_lstm"
