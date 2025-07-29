@@ -161,8 +161,7 @@ class EnhancedPaperTrader:
                         self.xgb_models[symbol] = joblib.load(xgb_path)
                     else:
                         # For .json files, would need XGBoost to load
-                        # For now, simulate
-                        self.xgb_models[symbol] = f"XGB_MODEL_{symbol}"
+                        raise ValueError(f"Failed to load XGBoost model for {symbol}. Ensure the model file exists and is properly formatted.")
                     logger.info(f"✅ Loaded XGBoost model for {symbol}")
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to load XGBoost model for {symbol}: {e}")
