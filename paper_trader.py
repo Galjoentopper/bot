@@ -183,19 +183,49 @@ class ModelLoader:
             if f"{symbol}_lstm" not in self.models:  # If no LSTM, scaler is critical
                 return False
         
-        # Load feature columns (try to find the most recent window)
+        # Load feature columns (try to find the correct one for the main model)
         feature_dir = os.path.join(self.models_dir, "feature_columns")
         if os.path.exists(feature_dir):
+            # For main models (not window-specific), try to find the matching feature file
+            # First, try to find a feature file that matches the expected number of features
             feature_files = [f for f in os.listdir(feature_dir) if f.startswith(f"{symbol_lower}_window") and f.endswith("_selected.pkl")]
             
             if feature_files:
-                # Use the most recent window
+                # Sort files and try to find the right one
                 feature_files.sort()
+                
+                # If we have the XGBoost model loaded, try to match the feature count
+                xgb_model = self.models.get(f"{symbol}_xgb")
+                if xgb_model is not None:
+                    expected_features = None
+                    if hasattr(xgb_model, 'n_features_in_'):
+                        expected_features = xgb_model.n_features_in_
+                    elif hasattr(xgb_model, 'base_estimator') and hasattr(xgb_model.base_estimator, 'n_features_in_'):
+                        expected_features = xgb_model.base_estimator.n_features_in_
+                    
+                    if expected_features:
+                        logger.info(f"🔍 Looking for feature file with {expected_features} features for {symbol}")
+                        
+                        # Find feature file with matching count
+                        for feature_file in feature_files:
+                            try:
+                                feature_path = os.path.join(feature_dir, feature_file)
+                                with open(feature_path, 'rb') as f:
+                                    features = pickle.load(f)
+                                if len(features) == expected_features:
+                                    self.feature_columns[symbol] = features
+                                    logger.info(f"✅ Loaded feature columns for {symbol} from {feature_file} ({len(features)} features)")
+                                    return True
+                            except Exception as e:
+                                logger.debug(f"Could not load {feature_file}: {e}")
+                                continue
+                
+                # If no exact match found, use the most recent window
                 feature_path = os.path.join(feature_dir, feature_files[-1])
                 try:
                     with open(feature_path, 'rb') as f:
                         self.feature_columns[symbol] = pickle.load(f)
-                    logger.info(f"✅ Loaded feature columns for {symbol} from {feature_files[-1]}")
+                    logger.info(f"✅ Loaded feature columns for {symbol} from {feature_files[-1]} (fallback)")
                 except Exception as e:
                     logger.error(f"❌ Failed to load feature columns for {symbol}: {e}")
                     return False
