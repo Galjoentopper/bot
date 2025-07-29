@@ -634,8 +634,8 @@ class PaperTrader:
                 asyncio.set_event_loop(loop)
             
             if loop.is_running():
-                # If we're already in an event loop, schedule the coroutine
-                asyncio.create_task(send_async())
+                # If we're already in an event loop, run the coroutine thread-safely
+                asyncio.run_coroutine_threadsafe(send_async(), loop)
             else:
                 loop.run_until_complete(send_async())
                 
