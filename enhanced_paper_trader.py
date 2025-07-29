@@ -412,8 +412,8 @@ class EnhancedPaperTrader:
             if pd.isna(volatility):
                 volatility = 0.01
             
-            # Simulate LSTM prediction based on recent market conditions
-            lstm_delta = recent_returns * np.random.uniform(0.8, 1.2) + np.random.normal(0, volatility * 0.1)
+            # Deterministic fallback for LSTM prediction based on recent market conditions
+            lstm_delta = recent_returns * 1.0 + volatility * 0.05
             
             # Clip to reasonable range
             lstm_delta = np.clip(lstm_delta, -0.1, 0.1)
