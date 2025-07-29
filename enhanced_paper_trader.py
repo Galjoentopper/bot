@@ -471,7 +471,7 @@ class EnhancedPaperTrader:
             feature_vector = np.nan_to_num(feature_vector, nan=0.0)
             
             # Make prediction using XGBoost model (simulated)
-            if symbol in self.xgb_models:
+            if symbol in self.xgb_models and self.xgb_models[symbol] is not None:
                 # In production, you would use: prediction = self.xgb_models[symbol].predict([feature_vector])[0]
                 # For now, simulate based on technical conditions
                 
