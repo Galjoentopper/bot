@@ -67,7 +67,7 @@ class CollectorConfig:
             symbols=symbols,
             intervals=intervals,
             start_date=os.getenv('START_DATE', '2020-01-01'),
-            data_dir=os.getenv('DATA_DIR', 'data'),
+            data_dir=os.getenv('DATA_DIR', '.'),
             
             # Rate limiting settings
             max_requests_per_minute=int(os.getenv('MAX_REQUESTS_PER_MINUTE', '6')),
@@ -95,7 +95,7 @@ class CollectorConfig:
             batch_insert_size=int(os.getenv('BATCH_INSERT_SIZE', '1000')),
             
             # Resume settings
-            state_file=os.getenv('STATE_FILE', os.path.join(os.getenv('DATA_DIR', 'data'), 'collector_state.json')),
+            state_file=os.getenv('STATE_FILE', os.path.join(os.getenv('DATA_DIR', '.'), 'collector_state.json')),
             auto_resume=os.getenv('AUTO_RESUME', 'true').lower() == 'true'
         )
     
