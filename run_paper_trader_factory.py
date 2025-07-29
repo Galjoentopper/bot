@@ -396,7 +396,7 @@ def main():
     """Main function to run the paper trader with Feature Factory."""
     
     # Configuration
-    SYMBOL = "BTCUSDT"  # Change this to your preferred symbol
+    SYMBOL = "BTCEUR"  # Change this to your preferred symbol
     INITIAL_BALANCE = 10000.0
     WINDOW_SIZES = [30, 60, 90]  # Days
     MODEL_DIR = "./models"

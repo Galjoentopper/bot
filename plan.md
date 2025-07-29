@@ -34,8 +34,9 @@
    - Added missing FEATURES_TO_REMOVE_FOR_ALIGNMENT variable definition in paper_trader.py
    - Fixed logging configuration in run_paper_trader.py
    - Paper trader now runs successfully without feature alignment errors
-14. [ ] Optimize ensemble weighting based on model performance
-15. [ ] Add performance monitoring and logging for ensemble predictions
+14. [x] **FIXED: Currency Change**: Changed trading symbol from BTCUSDT to BTCEUR in run_paper_trader_factory.py
+15. [ ] Optimize ensemble weighting based on model performance
+16. [ ] Add performance monitoring and logging for ensemble predictions
 
 
 
