@@ -185,7 +185,7 @@ class PaperTrader:
             # Spread features
             df["spread"] = (df["high"] - df["low"]) / df["close"]
             df["spread_ma"] = df["spread"].rolling(20).mean()
-            df["spread_ratio"] = df["spread"] / df["spread_ma"]
+            df["spread_ratio"] = np.where(df["spread_ma"] == 0, np.nan, df["spread"] / df["spread_ma"])
             
             # Order flow approximation
             df["buying_pressure"] = (df["close"] - df["low"]) / (df["high"] - df["low"])
