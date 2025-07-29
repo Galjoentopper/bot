@@ -168,7 +168,6 @@ class PaperTrader:
             df["volatility_ratio"] = np.where(df["volatility_50"] == 0, np.nan, df["volatility_20"] / df["volatility_50"])
             
             # ATR
-            df["atr"] = ta.trend.ADXIndicator(df["high"], df["low"], df["close"]).adx()
             # Use a simple ATR calculation if ta doesn't have it directly
             df["true_range"] = np.maximum(df["high"] - df["low"], 
                                         np.maximum(abs(df["high"] - df["close"].shift(1)), 
