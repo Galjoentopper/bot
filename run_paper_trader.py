@@ -3,8 +3,8 @@ Launcher script for the paper trader
 """
 import sys
 import logging
-from paper_trader import PaperTrader
-from config import (
+from paper_trader.paper_trader import PaperTrader
+from paper_trader.config import (
     API_KEY, API_SECRET, SYMBOLS, INITIAL_BALANCE, 
     TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, LOG_LEVEL
 )
@@ -14,7 +14,7 @@ logging.basicConfig(
     level=getattr(logging, LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("paper_trader.log"),
+        logging.FileHandler("paper_trader/paper_trader.log"),
         logging.StreamHandler()
     ]
 )

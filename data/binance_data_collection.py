@@ -264,15 +264,18 @@ class AsyncBinanceDataCollector:
         if config_errors:
             raise ValueError(f"Configuration errors: {', '.join(config_errors)}")
         
-        # Create data directory
-        os.makedirs(self.config.data_dir, exist_ok=True)
+        # Use the script's directory for storing databases
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.data_dir = script_dir
         
         # Initialize components
         self.rate_limiter = RateLimitManager(
             self.config.max_requests_per_minute,
             self.config.burst_capacity
         )
-        self.state_manager = CollectorState(self.config.state_file)
+        # Use state file in the same directory as the script
+        state_file_path = os.path.join(self.data_dir, 'collector_state.json')
+        self.state_manager = CollectorState(state_file_path)
         self.validator = DataValidator()
         
         # Database pools for each symbol
@@ -305,7 +308,7 @@ class AsyncBinanceDataCollector:
     
     def _get_db_path(self, symbol: str, interval: str) -> str:
         """Get database path for symbol and interval"""
-        return os.path.join(self.config.data_dir, f"{symbol.lower()}_{interval}.db")
+        return os.path.join(self.data_dir, f"{symbol.lower()}_{interval}.db")
     
     async def _get_db_pool(self, symbol: str, interval: str) -> DatabasePool:
         """Get or create database pool for symbol"""
