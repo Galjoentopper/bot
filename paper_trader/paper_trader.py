@@ -24,6 +24,66 @@ from sklearn.preprocessing import StandardScaler
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# LSTM Features - 37 core features for LSTM models
+LSTM_FEATURES = [
+    # Core price and volume features
+    "close",
+    "volume",
+    "returns",
+    "log_returns",
+    "volume_ratio",
+    
+    # Multi-timeframe price changes
+    "price_change_1h",
+    "price_change_4h",
+    "price_change_24h",
+    
+    # Volatility features with different timeframes
+    "volatility_20",
+    "volatility_1h",
+    "volatility_4h",
+    "atr_ratio",
+    
+    # Technical oscillators
+    "rsi",
+    "rsi_9",
+    "stoch_k",
+    "williams_r",
+    
+    # Trend and momentum indicators
+    "macd",
+    "macd_histogram",
+    "momentum_10",
+    "price_vs_ema9",
+    "price_vs_ema21",
+    "price_vs_ema50",
+    
+    # Bollinger Bands
+    "bb_position",
+    "bb_width",
+    
+    # Market microstructure
+    "buying_pressure",
+    "selling_pressure",
+    "spread_ratio",
+    "volume_price_trend",
+    
+    # Market regime indicators
+    "vol_regime",
+    "trend_regime",
+    "ma_alignment",
+    
+    # Price normalization
+    "price_zscore_20",
+    "price_zscore_50",
+    
+    # Jump-specific features for enhanced detection
+    "volume_surge_5",
+    "volatility_breakout",
+    "momentum_acceleration",
+    "market_momentum_alignment",
+]
+
 # Focal loss implementation for LSTM model loading compatibility
 @tf.keras.utils.register_keras_serializable(package="Custom", name="FocalLoss")
 class FocalLoss(tf.keras.losses.Loss):
