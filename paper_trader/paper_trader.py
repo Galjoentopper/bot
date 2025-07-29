@@ -18,10 +18,63 @@ import telegram
 import asyncio
 import ta
 from tensorflow import keras
+import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Focal loss implementation for LSTM model loading compatibility
+@tf.keras.utils.register_keras_serializable(package="Custom", name="FocalLoss")
+class FocalLoss(tf.keras.losses.Loss):
+    """
+    Focal loss for handling class imbalance in binary classification.
+    
+    This loss focuses learning on hard negatives by down-weighting easy examples.
+    It's particularly effective for imbalanced datasets like price jump detection.
+    """
+
+    def __init__(self, alpha=0.25, gamma=2.0, name="focal_loss", **kwargs):
+        """
+        Initialize FocalLoss.
+
+        Args:
+            alpha: Weighting factor for rare class (default: 0.25)
+            gamma: Focusing parameter to down-weight easy examples (default: 2.0)
+            name: Name of the loss function
+        """
+        super().__init__(name=name, **kwargs)
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def call(self, y_true, y_pred):
+        """
+        Calculate the focal loss.
+
+        Args:
+            y_true: True labels (0 or 1)
+            y_pred: Predicted probabilities (0 to 1)
+        """
+        # Ensure y_pred is clipped to prevent log(0)
+        epsilon = tf.keras.backend.epsilon()
+        y_pred = tf.clip_by_value(y_pred, epsilon, 1.0 - epsilon)
+        
+        # Calculate focal loss
+        alpha_t = y_true * self.alpha + (1 - y_true) * (1 - self.alpha)
+        p_t = y_true * y_pred + (1 - y_true) * (1 - y_pred)
+        
+        focal_loss = -alpha_t * tf.pow(1 - p_t, self.gamma) * tf.math.log(p_t)
+        
+        return tf.reduce_mean(focal_loss)
+
+    def get_config(self):
+        """Get the config for serialization."""
+        config = super().get_config()
+        config.update({
+            "alpha": self.alpha,
+            "gamma": self.gamma,
+        })
+        return config
 
 class PaperTrader:
     def __init__(self, api_key, api_secret, telegram_token=None, telegram_chat_id=None, symbols=None, initial_balance=10000):
@@ -55,6 +108,7 @@ class PaperTrader:
         self.running = False
         self.last_prediction_time = {}
         self.historical_data = {}
+        self.feature_sequences = {}  # Store historical features for LSTM models
         self.connection_status = "disconnected"
         self.last_websocket_message_time = datetime.now()
         self.api_fallback_active = False
@@ -76,6 +130,7 @@ class PaperTrader:
             }
             self.last_prediction_time[symbol] = datetime.now() - timedelta(minutes=5)
             self.historical_data[symbol] = deque(maxlen=500)  # Store enough data for feature creation
+            self.feature_sequences[symbol] = deque(maxlen=120)  # Store last 120 feature vectors for LSTM
             
         # Load models and feature columns
         self.load_models()
@@ -290,6 +345,61 @@ class PaperTrader:
                         logger.info(f"Loaded selected feature columns for {symbol} window {window_num} ({len(features)} features)")
                     except Exception as e:
                         logger.error(f"Error loading selected feature columns {file}: {e}")
+            
+            # Create a consistent 37-feature set for LSTM models based on scaler expectations
+            # This addresses the feature count mismatch where scalers expect 37 features
+            # but selected features have different counts
+            self.create_lstm_feature_set(symbol)
+    
+    def create_lstm_feature_set(self, symbol):
+        """Create a consistent 37-feature set for LSTM models to match scaler expectations"""
+        # Define the core 37 features that should be used for LSTM models
+        # This is based on the most commonly used features from the training pipeline
+        lstm_features = LSTM_FEATURES
+        
+        # Store LSTM feature set for each symbol with a special key
+        lstm_key = f"{symbol}_lstm"
+        self.feature_columns[lstm_key] = lstm_features
+        logger.info(f"Created LSTM feature set for {symbol} ({len(lstm_features)} features)")
+    
+    def get_lstm_sequence(self, symbol):
+        """Get the LSTM sequence data for a symbol"""
+        if len(self.feature_sequences[symbol]) >= 120:
+            # We have enough historical data, use last 120 timesteps
+            sequence_data = list(self.feature_sequences[symbol])[-120:]
+            return np.array(sequence_data).reshape(1, 120, -1)
+        elif len(self.feature_sequences[symbol]) > 0:
+            # Not enough historical data, pad with the first available feature
+            available_data = list(self.feature_sequences[symbol])
+            sequence_length = len(available_data)
+            feature_length = len(available_data[0])
+            
+            # Pad with zeros
+            padding_needed = 120 - sequence_length
+            zero_padding = [[0.0] * feature_length] * padding_needed
+            padded_sequence = zero_padding + available_data
+            return np.array(padded_sequence).reshape(1, 120, feature_length)
+        else:
+            # No historical data available
+            return None
+    
+    def get_lstm_feature_array(self, symbol, features):
+        """Get properly filtered and ordered feature array for LSTM models"""
+        lstm_key = f"{symbol}_lstm"
+        if lstm_key in self.feature_columns:
+            model_features = self.feature_columns[lstm_key]
+            # Filter and order features according to LSTM expectations
+            filtered_features = {}
+            for feature in model_features:
+                filtered_features[feature] = features.get(feature, 0.0)
+            
+            # Convert to array in correct order
+            feature_array = np.array([filtered_features[f] for f in model_features]).reshape(1, -1)
+            return feature_array, model_features
+        else:
+            # Fallback to using all features (old behavior)
+            feature_array = np.array(list(features.values())).reshape(1, -1)
+            return feature_array, list(features.keys())
     
     def fetch_historical_data(self):
         """Fetch initial historical data for all symbols"""
@@ -806,6 +916,10 @@ class PaperTrader:
                 logger.warning(f"Could not create features for {symbol}")
                 return
             
+            # Store feature vector for LSTM sequence (using the 37-feature LSTM set)
+            lstm_feature_array, _ = self.get_lstm_feature_array(symbol, features)
+            self.feature_sequences[symbol].append(lstm_feature_array.flatten())  # Store as 1D array
+            
             # Get ensemble prediction
             ensemble_result = self.get_ensemble_prediction(symbol, features)
             if ensemble_result is None:
@@ -928,14 +1042,42 @@ class PaperTrader:
                         # Create DataFrame with exact features in correct order
                         X_filtered = pd.DataFrame([filtered_features])[model_features]
                         
+                        # Handle feature count mismatch by attempting to align features
+                        expected_feature_count = None
+                        try:
+                            # Try to get expected feature count from the model
+                            if hasattr(self.models[model_key], 'n_features_in_'):
+                                expected_feature_count = self.models[model_key].n_features_in_
+                        except:
+                            pass
+                        
+                        if expected_feature_count and X_filtered.shape[1] != expected_feature_count:
+                            logger.debug(f"Feature count mismatch for {model_key}: expected {expected_feature_count}, got {X_filtered.shape[1]}")
+                            
+                            # Try to fix by removing features that might cause issues
+                            if X_filtered.shape[1] > expected_feature_count:
+                                # Too many features - try removing some
+                                features_to_try_removing = FEATURES_TO_REMOVE_FOR_ALIGNMENT
+                                adjusted_features = [f for f in model_features if f not in features_to_try_removing[:X_filtered.shape[1] - expected_feature_count]]
+                                
+                                if len(adjusted_features) == expected_feature_count:
+                                    adjusted_filtered_features = {f: features.get(f, 0.0) for f in adjusted_features}
+                                    X_filtered = pd.DataFrame([adjusted_filtered_features])[adjusted_features]
+                                    logger.debug(f"Adjusted features for {model_key} to {X_filtered.shape[1]} features")
+                                else:
+                                    logger.warning(f"Could not adjust feature count for {model_key}")
+                                    continue
+                            else:
+                                # Too few features - skip this model
+                                logger.warning(f"Not enough features for {model_key}")
+                                continue
+                        
                         # Debug logging
-                        logger.debug(f"Model {model_key} expects {len(model_features)} features, got {X_filtered.shape[1]}")
-                        logger.debug(f"Expected features: {model_features[:5]}...")  # Show first 5 features
-                        logger.debug(f"Actual features: {list(X_filtered.columns)[:5]}...")  # Show first 5 features
+                        logger.debug(f"Model {model_key} expects {expected_feature_count or 'unknown'} features, got {X_filtered.shape[1]}")
                         
                         # Ensure we have the exact number of features expected
-                        if X_filtered.shape[1] != len(model_features):
-                            logger.error(f"Feature shape mismatch for {model_key}: expected {len(model_features)}, got {X_filtered.shape[1]}")
+                        if expected_feature_count and X_filtered.shape[1] != expected_feature_count:
+                            logger.error(f"Feature shape mismatch for {model_key}: expected {expected_feature_count}, got {X_filtered.shape[1]}")
                             continue
                         
                         pred = self.models[model_key].predict(X_filtered)[0]
@@ -977,46 +1119,30 @@ class PaperTrader:
         # Check main LSTM model
         if symbol in self.lstm_models:
             try:
-                # Use symbol-specific features if available
-                if symbol in self.feature_columns:
-                    model_features = self.feature_columns[symbol]
-                    missing_features = [f for f in model_features if f not in features]
-                    if missing_features:
-                        logger.warning(f"Missing features for main LSTM {symbol} model: {missing_features}")
-                        # Fill missing features with default values
-                        filtered_features = {}
-                        for feature in model_features:
-                            filtered_features[feature] = features.get(feature, 0.0)
-                    else:
-                        filtered_features = {f: features[f] for f in model_features}
-                    
-                    # Convert to array in correct order
-                    feature_array = np.array([filtered_features[f] for f in model_features]).reshape(1, -1)
+                # Get sequence data for LSTM
+                lstm_sequence = self.get_lstm_sequence(symbol)
+                if lstm_sequence is None:
+                    logger.warning(f"No sequence data available for LSTM {symbol} model")
                 else:
-                    # Fallback to all features
-                    feature_array = np.array(list(features.values())).reshape(1, -1)
-                
-                # Scale features if scaler is available
-                scaled_input = feature_array
-                if symbol in self.scalers:
-                    expected_features = self.scalers[symbol].n_features_in_
-                    if feature_array.shape[1] == expected_features:
-                        scaled_input = self.scalers[symbol].transform(feature_array)
-                    else:
-                        logger.warning(f"Feature count mismatch for {symbol} scaler: expected {expected_features}, got {feature_array.shape[1]}")
-                        # Skip this model if feature count doesn't match
-                        pass
-                
-                # Reshape for LSTM (samples, timesteps, features)
-                lstm_input = scaled_input.reshape(1, 1, -1)
-                
-                pred_proba = self.lstm_models[symbol].predict(lstm_input, verbose=0)[0]
-                pred = 1 if pred_proba[0] > 0.5 else 0
-                predictions.append(pred)
-                probabilities.append([1-pred_proba[0], pred_proba[0]])
-                count += 1
-                
-                logger.debug(f"LSTM main model prediction for {symbol}: {pred} (proba: {pred_proba[0]:.3f})")
+                    # Scale the sequence if scaler is available
+                    scaled_sequence = lstm_sequence
+                    if symbol in self.scalers:
+                        expected_features = self.scalers[symbol].n_features_in_
+                        if lstm_sequence.shape[2] == expected_features:
+                            # Scale each timestep
+                            sequence_2d = lstm_sequence.reshape(-1, lstm_sequence.shape[2])
+                            scaled_2d = self.scalers[symbol].transform(sequence_2d)
+                            scaled_sequence = scaled_2d.reshape(lstm_sequence.shape)
+                        else:
+                            logger.warning(f"Feature count mismatch for {symbol} scaler: expected {expected_features}, got {lstm_sequence.shape[2]}")
+                    
+                    pred_proba = self.lstm_models[symbol].predict(scaled_sequence, verbose=0)[0]
+                    pred = 1 if pred_proba[0] > 0.5 else 0
+                    predictions.append(pred)
+                    probabilities.append([1-pred_proba[0], pred_proba[0]])
+                    count += 1
+                    
+                    logger.debug(f"LSTM main model prediction for {symbol}: {pred} (proba: {pred_proba[0]:.3f})")
             except Exception as e:
                 logger.error(f"Error with main LSTM model for {symbol}: {e}")
         
@@ -1024,41 +1150,27 @@ class PaperTrader:
         for model_key in self.lstm_models.keys():
             if model_key.startswith(f"{symbol}_window_"):
                 try:
-                    # Get corresponding feature columns
-                    if model_key in self.feature_columns:
-                        model_features = self.feature_columns[model_key]
-                        
-                        # Filter features to match this model's requirements
-                        missing_features = [f for f in model_features if f not in features]
-                        if missing_features:
-                            logger.warning(f"Missing features for LSTM {model_key}: {missing_features}")
-                            # Fill missing features with default values
-                            filtered_features = {}
-                            for feature in model_features:
-                                filtered_features[feature] = features.get(feature, 0.0)
-                        else:
-                            filtered_features = {f: features[f] for f in model_features}
-                        
-                        # Convert to array in correct order
-                        feature_array = np.array([filtered_features[f] for f in model_features]).reshape(1, -1)
-                    else:
-                        # Fallback to all features
-                        feature_array = np.array(list(features.values())).reshape(1, -1)
+                    # Get sequence data for LSTM
+                    lstm_sequence = self.get_lstm_sequence(symbol)
+                    if lstm_sequence is None:
+                        logger.warning(f"No sequence data available for LSTM {model_key}")
+                        continue
                     
                     # Use corresponding scaler if available
                     scaler_key = model_key
-                    scaled_input = feature_array
+                    scaled_sequence = lstm_sequence
                     
                     if scaler_key in self.scalers:
                         expected_features = self.scalers[scaler_key].n_features_in_
-                        if feature_array.shape[1] == expected_features:
-                            scaled_input = self.scalers[scaler_key].transform(feature_array)
+                        if lstm_sequence.shape[2] == expected_features:
+                            # Scale each timestep
+                            sequence_2d = lstm_sequence.reshape(-1, lstm_sequence.shape[2])
+                            scaled_2d = self.scalers[scaler_key].transform(sequence_2d)
+                            scaled_sequence = scaled_2d.reshape(lstm_sequence.shape)
                         else:
-                            logger.warning(f"Feature count mismatch for {scaler_key}: expected {expected_features}, got {feature_array.shape[1]}")
-                            continue
+                            logger.warning(f"Feature count mismatch for {scaler_key}: expected {expected_features}, got {lstm_sequence.shape[2]}")
                     
-                    lstm_input_window = scaled_input.reshape(1, 1, -1)
-                    pred_proba = self.lstm_models[model_key].predict(lstm_input_window, verbose=0)[0]
+                    pred_proba = self.lstm_models[model_key].predict(scaled_sequence, verbose=0)[0]
                     pred = 1 if pred_proba[0] > 0.5 else 0
                     predictions.append(pred)
                     probabilities.append([1-pred_proba[0], pred_proba[0]])
