@@ -1278,10 +1278,14 @@ class HybridModelTrainer:
         Create attention mechanism for LSTM
         """
         from tensorflow.keras.layers import Dense, Activation, Dot, Concatenate, GlobalAveragePooling1D
+        from tensorflow.keras.activations import softmax
 
         # Attention mechanism
         attention = Dense(attention_units, activation="tanh")(lstm_output)
-        attention = Dense(1, activation="softmax")(attention)
+        attention = Dense(1)(attention)  # Remove activation here
+        
+        # Apply softmax over sequence dimension (axis=1) instead of feature dimension
+        attention = tf.keras.layers.Lambda(lambda x: softmax(x, axis=1))(attention)
 
         # Apply attention weights
         context = Dot(axes=1)([attention, lstm_output])

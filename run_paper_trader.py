@@ -14,7 +14,7 @@ logging.basicConfig(
     level=getattr(logging, LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("paper_trader/paper_trader.log"),
+        logging.FileHandler("paper_trader.log"),
         logging.StreamHandler()
     ]
 )

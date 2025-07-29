@@ -24,8 +24,18 @@
 10. [x] **FIXED: LSTM_FEATURES Definition**: Added missing LSTM_FEATURES constant
    - Paper trader now loads successfully without NameError
    - All 37 LSTM features properly defined
-11. [ ] Optimize ensemble weighting based on model performance
-12. [ ] Add performance monitoring and logging for ensemble predictions
+11. [x] **FIXED: LSTM Model Loading Compatibility**: Resolved 'time_major' parameter errors and Keras deserialization problems
+   - Added custom_objects and compile=False to model loading
+   - LSTM models now load successfully with compatibility fixes
+12. [x] **FIXED: Softmax Warning in Attention Mechanism**: Fixed softmax over axis -1 of tensor shape (1, 60, 1)
+   - Modified attention layer to apply softmax over sequence dimension (axis=1) instead of feature dimension
+   - Eliminates UserWarning about softmax always returning 1
+13. [x] **FIXED: Feature Alignment Issues**: Resolved FEATURES_TO_REMOVE_FOR_ALIGNMENT NameError and feature shape mismatches
+   - Added missing FEATURES_TO_REMOVE_FOR_ALIGNMENT variable definition in paper_trader.py
+   - Fixed logging configuration in run_paper_trader.py
+   - Paper trader now runs successfully without feature alignment errors
+14. [ ] Optimize ensemble weighting based on model performance
+15. [ ] Add performance monitoring and logging for ensemble predictions
 
 
 

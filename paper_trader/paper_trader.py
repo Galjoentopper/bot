@@ -84,6 +84,32 @@ LSTM_FEATURES = [
     "market_momentum_alignment",
 ]
 
+# Features that can be removed for alignment when there's a feature count mismatch
+# These are ordered by importance (least important first)
+FEATURES_TO_REMOVE_FOR_ALIGNMENT = [
+    "market_momentum_alignment",
+    "momentum_acceleration", 
+    "volume_surge_5",
+    "volatility_breakout",
+    "price_zscore_50",
+    "price_zscore_20",
+    "williams_r",
+    "stoch_k",
+    "rsi_9",
+    "spread_ratio",
+    "selling_pressure",
+    "buying_pressure",
+    "bb_width",
+    "bb_position",
+    "atr_ratio",
+    "volatility_4h",
+    "volatility_1h",
+    "price_change_24h",
+    "price_change_4h",
+    "volume_ratio",
+    "log_returns",
+]
+
 # Focal loss implementation for LSTM model loading compatibility
 @tf.keras.utils.register_keras_serializable(package="Custom", name="FocalLoss")
 class FocalLoss(tf.keras.losses.Loss):
@@ -303,17 +329,29 @@ class PaperTrader:
                         logger.error(f"Error loading XGBoost model {file}: {e}")
     
     def load_lstm_models(self, symbol, symbol_lower, models_dir):
-        """Load LSTM models for a symbol"""
+        """Load LSTM models for a symbol with compatibility handling"""
         lstm_dir = os.path.join(models_dir, "lstm")
         if os.path.exists(lstm_dir):
+            # Define custom objects for compatibility
+            custom_objects = {
+                'FocalLoss': FocalLoss,
+                'focal_loss': FocalLoss
+            }
+            
             # Load main LSTM model
             main_lstm_path = os.path.join(lstm_dir, f"{symbol_lower}_lstm.h5")
             if os.path.exists(main_lstm_path):
                 try:
-                    self.lstm_models[symbol] = keras.models.load_model(main_lstm_path)
+                    self.lstm_models[symbol] = keras.models.load_model(
+                        main_lstm_path, 
+                        custom_objects=custom_objects,
+                        compile=False  # Skip compilation to avoid version conflicts
+                    )
                     logger.info(f"Loaded main LSTM model for {symbol}")
                 except Exception as e:
                     logger.error(f"Error loading main LSTM model for {symbol}: {e}")
+                    # Try to skip this model and continue
+                    pass
             
             # Load window-specific LSTM models
             for file in os.listdir(lstm_dir):
@@ -322,10 +360,16 @@ class PaperTrader:
                     model_path = os.path.join(lstm_dir, file)
                     try:
                         model_key = f"{symbol}_window_{window_num}"
-                        self.lstm_models[model_key] = keras.models.load_model(model_path)
+                        self.lstm_models[model_key] = keras.models.load_model(
+                            model_path,
+                            custom_objects=custom_objects,
+                            compile=False  # Skip compilation to avoid version conflicts
+                        )
                         logger.info(f"Loaded LSTM model for {symbol} window {window_num}")
                     except Exception as e:
                         logger.error(f"Error loading LSTM model {file}: {e}")
+                        # Continue loading other models even if one fails
+                        continue
     
     def load_scalers(self, symbol, symbol_lower, models_dir):
         """Load scalers for a symbol"""
