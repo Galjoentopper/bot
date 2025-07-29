@@ -228,8 +228,8 @@ class PaperTrader:
             df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / df["bb_middle"]
             df["bb_position"] = (df["close"] - df["bb_lower"]) / (df["bb_upper"] - df["bb_lower"])
             
-            # Add dummy lstm_delta feature (since we don't have LSTM predictions)
-            df["lstm_delta"] = np.random.normal(0, 0.001, len(df))  # Small random values
+            # Add placeholder lstm_delta feature (constant value since we don't have LSTM predictions)
+            df["lstm_delta"] = 0  # Placeholder value
             
             # Lag features
             for lag in [1, 2, 3, 5, 10]:
