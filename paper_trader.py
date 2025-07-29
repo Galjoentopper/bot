@@ -78,6 +78,30 @@ class PaperTrader:
         
         # Setup API fallback monitor
         self.api_monitor_thread = None
+    
+    def convert_symbol_to_bitvavo_format(self, symbol):
+        """Convert symbol from BTCEUR format to BTC-EUR format for Bitvavo API"""
+        # Common cryptocurrency symbols that need conversion
+        conversions = {
+            'BTCEUR': 'BTC-EUR',
+            'ETHEUR': 'ETH-EUR', 
+            'SOLEUR': 'SOL-EUR',
+            'XRPEUR': 'XRP-EUR',
+            'ADAEUR': 'ADA-EUR'
+        }
+        return conversions.get(symbol, symbol)
+    
+    def convert_symbol_from_bitvavo_format(self, api_symbol):
+        """Convert symbol from BTC-EUR format back to BTCEUR format for internal use"""
+        # Reverse mapping from API format to internal format
+        conversions = {
+            'BTC-EUR': 'BTCEUR',
+            'ETH-EUR': 'ETHEUR',
+            'SOL-EUR': 'SOLEUR',
+            'XRP-EUR': 'XRPEUR',
+            'ADA-EUR': 'ADAEUR'
+        }
+        return conversions.get(api_symbol, api_symbol)
         
     def load_models(self):
         """Load trained models from the models directory"""
@@ -112,10 +136,23 @@ class PaperTrader:
         
         for symbol in self.symbols:
             try:
+                # Convert symbol to Bitvavo API format
+                api_symbol = self.convert_symbol_to_bitvavo_format(symbol)
+                
                 # Get 15-minute candles for the past 500 periods (enough for feature creation)
-                url = f"https://api.bitvavo.com/v2/candles?market={symbol}&interval=15m&limit=500"
+                url = f"https://api.bitvavo.com/v2/{api_symbol}/candles?interval=15m&limit=500"
                 response = requests.get(url)
-                data = response.json()
+                
+                # Handle API errors
+                if response.status_code != 200:
+                    logger.error(f"Error fetching historical data for {symbol}: HTTP {response.status_code} - {response.text}")
+                    continue
+                
+                try:
+                    data = response.json()
+                except json.JSONDecodeError:
+                    logger.error(f"Error fetching historical data for {symbol}: Invalid JSON response")
+                    continue
                 
                 # Convert to pandas DataFrame
                 df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
@@ -310,17 +347,19 @@ class PaperTrader:
             
             markets = []
             for symbol in self.symbols:
-                markets.append(symbol)
+                api_symbol = self.convert_symbol_to_bitvavo_format(symbol)
+                markets.append(api_symbol)
                 
             subscribe_message["markets"] = markets
             ws.send(json.dumps(subscribe_message))
             
             # Also subscribe to candle data
             for symbol in self.symbols:
+                api_symbol = self.convert_symbol_to_bitvavo_format(symbol)
                 candle_message = {
                     "action": "subscribe",
                     "channels": ["candles"],
-                    "markets": [symbol],
+                    "markets": [api_symbol],
                     "interval": ["15m"]
                 }
                 ws.send(json.dumps(candle_message))
@@ -366,10 +405,23 @@ class PaperTrader:
             # Update ticker data for all symbols
             for symbol in self.symbols:
                 try:
+                    # Convert symbol to Bitvavo API format
+                    api_symbol = self.convert_symbol_to_bitvavo_format(symbol)
+                    
                     # Get current ticker
-                    url = f"https://api.bitvavo.com/v2/ticker/price?market={symbol}"
+                    url = f"https://api.bitvavo.com/v2/ticker/price?market={api_symbol}"
                     response = requests.get(url)
-                    data = response.json()
+                    
+                    # Handle API errors
+                    if response.status_code != 200:
+                        logger.error(f"Error updating API data for {symbol}: HTTP {response.status_code} - {response.text}")
+                        continue
+                    
+                    try:
+                        data = response.json()
+                    except json.JSONDecodeError:
+                        logger.error(f"Error updating API data for {symbol}: Invalid JSON response")
+                        continue
                     
                     if 'price' in data:
                         self.current_prices[symbol] = float(data['price'])
@@ -382,9 +434,19 @@ class PaperTrader:
                             self.last_prediction_time[symbol] = now
                     
                     # Get latest candle
-                    url = f"https://api.bitvavo.com/v2/candles?market={symbol}&interval=15m&limit=1"
+                    url = f"https://api.bitvavo.com/v2/{api_symbol}/candles?interval=15m&limit=1"
                     response = requests.get(url)
-                    candles = response.json()
+                    
+                    # Handle API errors
+                    if response.status_code != 200:
+                        logger.error(f"Error updating candle data for {symbol}: HTTP {response.status_code} - {response.text}")
+                        continue
+                    
+                    try:
+                        candles = response.json()
+                    except json.JSONDecodeError:
+                        logger.error(f"Error updating candle data for {symbol}: Invalid JSON response")
+                        continue
                     
                     if candles and len(candles) > 0:
                         candle = candles[0]
@@ -417,7 +479,8 @@ class PaperTrader:
         try:
             # Handle ticker events
             if event.get('event') == 'ticker24h':
-                symbol = event.get('market')
+                api_symbol = event.get('market')
+                symbol = self.convert_symbol_from_bitvavo_format(api_symbol)
                 if symbol in self.symbols:
                     self.current_prices[symbol] = float(event.get('last'))
                     logger.debug(f"Updated price for {symbol}: {self.current_prices[symbol]}")
@@ -430,7 +493,8 @@ class PaperTrader:
                         
             # Handle candle events
             elif event.get('event') == 'candle':
-                symbol = event.get('market')
+                api_symbol = event.get('market')
+                symbol = self.convert_symbol_from_bitvavo_format(api_symbol)
                 if symbol in self.symbols:
                     candle_data = {
                         'timestamp': pd.to_datetime(event.get('timestamp'), unit='ms'),
