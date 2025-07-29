@@ -1057,7 +1057,7 @@ class PaperTrader:
                             # Try to fix by removing features that might cause issues
                             if X_filtered.shape[1] > expected_feature_count:
                                 # Too many features - try removing some
-                                features_to_try_removing = ['lstm_delta', 'hour', 'upper_wick', 'candle_body', 'lower_wick', 'day_of_week', 'is_weekend']
+                                features_to_try_removing = FEATURES_TO_REMOVE_FOR_ALIGNMENT
                                 adjusted_features = [f for f in model_features if f not in features_to_try_removing[:X_filtered.shape[1] - expected_feature_count]]
                                 
                                 if len(adjusted_features) == expected_feature_count:
