@@ -165,7 +165,7 @@ class PaperTrader:
             df["volatility_4h"] = df["returns"].rolling(64).std()
             df["volatility_20"] = df["returns"].rolling(20).std()
             df["volatility_50"] = df["returns"].rolling(50).std()
-            df["volatility_ratio"] = df["volatility_20"] / df["volatility_50"]
+            df["volatility_ratio"] = np.where(df["volatility_50"] == 0, np.nan, df["volatility_20"] / df["volatility_50"])
             
             # ATR
             df["atr"] = ta.trend.ADXIndicator(df["high"], df["low"], df["close"]).adx()
