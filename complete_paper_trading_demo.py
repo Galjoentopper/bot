@@ -152,6 +152,9 @@ class CompletePaperTradingSystem:
             momentum = df['price_change_1h'].iloc[-1] if not pd.isna(df['price_change_1h'].iloc[-1]) else 0
             volatility = df['volatility'].iloc[-1] if not pd.isna(df['volatility'].iloc[-1]) else 0.01
             
+            # Set a fixed random seed for deterministic behavior
+            np.random.seed(42)
+            
             # Generate prediction
             lstm_delta = (recent_returns * 0.5 + momentum * 0.3) + np.random.normal(0, volatility * 0.1)
             
