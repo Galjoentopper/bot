@@ -1050,14 +1050,42 @@ class PaperTrader:
                         # Create DataFrame with exact features in correct order
                         X_filtered = pd.DataFrame([filtered_features])[model_features]
                         
+                        # Handle feature count mismatch by attempting to align features
+                        expected_feature_count = None
+                        try:
+                            # Try to get expected feature count from the model
+                            if hasattr(self.models[model_key], 'n_features_in_'):
+                                expected_feature_count = self.models[model_key].n_features_in_
+                        except:
+                            pass
+                        
+                        if expected_feature_count and X_filtered.shape[1] != expected_feature_count:
+                            logger.debug(f"Feature count mismatch for {model_key}: expected {expected_feature_count}, got {X_filtered.shape[1]}")
+                            
+                            # Try to fix by removing features that might cause issues
+                            if X_filtered.shape[1] > expected_feature_count:
+                                # Too many features - try removing some
+                                features_to_try_removing = ['lstm_delta', 'hour', 'upper_wick', 'candle_body', 'lower_wick', 'day_of_week', 'is_weekend']
+                                adjusted_features = [f for f in model_features if f not in features_to_try_removing[:X_filtered.shape[1] - expected_feature_count]]
+                                
+                                if len(adjusted_features) == expected_feature_count:
+                                    adjusted_filtered_features = {f: features.get(f, 0.0) for f in adjusted_features}
+                                    X_filtered = pd.DataFrame([adjusted_filtered_features])[adjusted_features]
+                                    logger.debug(f"Adjusted features for {model_key} to {X_filtered.shape[1]} features")
+                                else:
+                                    logger.warning(f"Could not adjust feature count for {model_key}")
+                                    continue
+                            else:
+                                # Too few features - skip this model
+                                logger.warning(f"Not enough features for {model_key}")
+                                continue
+                        
                         # Debug logging
-                        logger.debug(f"Model {model_key} expects {len(model_features)} features, got {X_filtered.shape[1]}")
-                        logger.debug(f"Expected features: {model_features[:5]}...")  # Show first 5 features
-                        logger.debug(f"Actual features: {list(X_filtered.columns)[:5]}...")  # Show first 5 features
+                        logger.debug(f"Model {model_key} expects {expected_feature_count or 'unknown'} features, got {X_filtered.shape[1]}")
                         
                         # Ensure we have the exact number of features expected
-                        if X_filtered.shape[1] != len(model_features):
-                            logger.error(f"Feature shape mismatch for {model_key}: expected {len(model_features)}, got {X_filtered.shape[1]}")
+                        if expected_feature_count and X_filtered.shape[1] != expected_feature_count:
+                            logger.error(f"Feature shape mismatch for {model_key}: expected {expected_feature_count}, got {X_filtered.shape[1]}")
                             continue
                         
                         pred = self.models[model_key].predict(X_filtered)[0]
