@@ -723,9 +723,13 @@ class HybridModelTrainer:
         os.makedirs(f"{self.models_dir}/xgboost", exist_ok=True)
         os.makedirs(f"{self.models_dir}/scalers", exist_ok=True)
         os.makedirs(f"{self.models_dir}/feature_columns", exist_ok=True)
-        os.makedirs("results", exist_ok=True)
-        os.makedirs("logs", exist_ok=True)
-        os.makedirs("logs/feature_importance", exist_ok=True)
+        
+        # Create results and logs directories in train_hybrid_models subdirectory
+        self.results_dir = "train_hybrid_models/results"
+        self.logs_dir = "train_hybrid_models/logs"
+        os.makedirs(self.results_dir, exist_ok=True)
+        os.makedirs(self.logs_dir, exist_ok=True)
+        os.makedirs(f"{self.logs_dir}/feature_importance", exist_ok=True)
 
         # Enhanced Model parameters for improved profitability
         self.lstm_sequence_length = 120  # Extended from 96 to 120 timesteps (30 hours)
@@ -2412,7 +2416,7 @@ class HybridModelTrainer:
         }
 
         # Save results
-        with open(f"results/{symbol.lower()}_evaluation.json", "w") as f:
+        with open(f"{self.results_dir}/{symbol.lower()}_evaluation.json", "w") as f:
             json.dump(
                 {
                     "lstm_mae": float(lstm_mae),
@@ -2433,7 +2437,7 @@ class HybridModelTrainer:
         """
         Log detailed results to CSV for analysis
         """
-        csv_path = f"logs/{symbol.lower()}_metrics.csv"
+        csv_path = f"{self.logs_dir}/{symbol.lower()}_metrics.csv"
 
         # Create DataFrame from results
         df_row = pd.DataFrame([window_results])
@@ -2474,7 +2478,7 @@ class HybridModelTrainer:
         plt.xlabel("Importance Score")
         plt.tight_layout()
 
-        plot_path = f"logs/feature_importance/{symbol.lower()}_window_{window_idx}.png"
+        plot_path = f"{self.logs_dir}/feature_importance/{symbol.lower()}_window_{window_idx}.png"
         plt.savefig(plot_path, dpi=300, bbox_inches="tight")
         plt.close()
 
@@ -2485,7 +2489,7 @@ class HybridModelTrainer:
         Check the metrics CSV file to determine the last completed window for resume functionality
         Returns the window number to start from (0-based indexing)
         """
-        metrics_file = f"logs/{symbol.lower()}_metrics.csv"
+        metrics_file = f"{self.logs_dir}/{symbol.lower()}_metrics.csv"
 
         if not os.path.exists(metrics_file):
             print(f"📄 No existing metrics file found for {symbol}, starting from window 1")
@@ -2765,7 +2769,7 @@ class HybridModelTrainer:
                             "importance": importance_values,
                         }
                     ).sort_values("importance", ascending=False)
-                    importance_df.to_csv(f"results/{symbol.lower()}_feature_importance.csv", index=False)
+                    importance_df.to_csv(f"{self.results_dir}/{symbol.lower()}_feature_importance.csv", index=False)
                     print(f"🔍 Top 5 features: {importance_df.head()['feature'].tolist()}")
                 else:
                     print(f"⚠️ Could not extract feature importance for final model of {symbol}")
@@ -2857,7 +2861,7 @@ class HybridModelTrainer:
 
         # Save comprehensive results
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = f"results/walkforward_results_{timestamp}.json"
+        results_file = f"{self.results_dir}/walkforward_results_{timestamp}.json"
 
         summary = {
             "timestamp": timestamp,
@@ -2894,7 +2898,7 @@ class HybridModelTrainer:
             json.dump(summary, f, indent=2, default=str)
 
         # Update consolidated training summary
-        summary_path = "results/training_summary.json"
+        summary_path = f"{self.results_dir}/training_summary.json"
         existing_summary = {}
         if os.path.exists(summary_path) and os.path.getsize(summary_path) > 0:
             try:
@@ -3036,7 +3040,7 @@ def main():
 
     print("\n🎯 Training pipeline completed successfully!")
     print("\n📋 Next steps:")
-    print("   1. Review model performance in results/")
+    print("   1. Review model performance in train_hybrid_models/results/")
     print("   2. Analyze feature importance files")
     print("   3. Implement trading strategy using trained models")
     print("   4. Set up paper trading for validation")
