@@ -367,7 +367,8 @@ class EnhancedPaperTrader:
             data["stoch_overbought"] = (data["stoch_k"] > 80).astype(int)
             
             # Feature interactions
-            data["volatility_ema_ratio"] = data["volatility_20"] / (data["ema_21"] + 1e-8)
+            epsilon = 1e-8  # Small value to handle division by zero
+            data["volatility_ema_ratio"] = np.where(data["ema_21"] == 0, 0, data["volatility_20"] / data["ema_21"])
             data["volume_price_momentum"] = data["volume_ratio"] * data["momentum_10"]
             data["bb_rsi_signal"] = data["bb_position"] * data["rsi"]
             data["trend_strength"] = data["price_vs_ema9"] * data["price_vs_ema21"]
