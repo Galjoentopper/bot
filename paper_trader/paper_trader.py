@@ -383,9 +383,10 @@ class PaperTrader:
             sequence_length = len(available_data)
             feature_length = len(available_data[0])
             
-            # Pad with the first feature vector repeated
+            # Pad with zeros
             padding_needed = 120 - sequence_length
-            padded_sequence = [available_data[0]] * padding_needed + available_data
+            zero_padding = [[0.0] * feature_length] * padding_needed
+            padded_sequence = zero_padding + available_data
             return np.array(padded_sequence).reshape(1, 120, feature_length)
         else:
             # No historical data available
