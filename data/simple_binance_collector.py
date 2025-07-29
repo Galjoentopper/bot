@@ -176,7 +176,7 @@ class SimpleBinanceCollector:
                 'limit': limit
             }
             
-            logger.info(f"📡 API request for {symbol} from {datetime.fromtimestamp(start_time/1000)}")
+            logger.info(f"📡 API request for {symbol}")
             response = requests.get(f"{self.base_url}/klines", params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
