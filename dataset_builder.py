@@ -404,10 +404,10 @@ class DatasetBuilder:
         data = data.replace([np.inf, -np.inf], np.nan)
         
         # Forward fill first to preserve time series structure
-        data = data.fillna(method='ffill')
+        data = data.ffill()
         
         # Backward fill for any remaining NaN at the beginning
-        data = data.fillna(method='bfill')
+        data = data.bfill()
         
         # For any still remaining NaN, fill with median
         numeric_columns = data.select_dtypes(include=[np.number]).columns

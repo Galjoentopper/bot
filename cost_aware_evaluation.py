@@ -205,7 +205,7 @@ class CostAwareEvaluator:
             y_true, y_pred_proba, returns, optimal_threshold, position_size
         )
         
-        logger.info(f"Optimal threshold: {optimal_threshold:.3f}, {metric}: {getattr(best_metrics, metric):.4f}")
+        logger.info(f"Optimal threshold: {optimal_threshold:.3f}, {metric}: {getattr(best_metrics, metric.replace('net_sharpe', 'net_sharpe_ratio')):.4f}")
         return optimal_threshold, best_metrics
     
     def evaluate_threshold_range(self,

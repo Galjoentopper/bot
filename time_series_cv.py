@@ -239,7 +239,7 @@ class WalkForwardValidation:
 
 def validate_time_series_split(train_idx: np.ndarray, 
                               val_idx: np.ndarray,
-                              timestamps: pd.DatetimeIndex) -> Dict[str, Any]:
+                              timestamps: pd.DatetimeIndex) -> dict:
     """
     Validate time series split to ensure no leakage.
     
