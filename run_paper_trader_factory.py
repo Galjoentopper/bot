@@ -52,13 +52,14 @@ class PaperTrader:
         
         logger.info(f"Initializing Paper Trader for {symbol}")
         
-        # Initialize data fetcher
-        self.data_fetcher = DataFetcher(symbol)
+        # Initialize data fetcher with 30m intervals
+        self.data_fetcher = DataFetcher(symbol, interval="30m")
         
-        # Load historical data
-        logger.info("Loading historical data...")
+        # Load historical data - fetch 300 30-minute candles from API
+        logger.info("Loading historical data (300 30-minute candles from Binance API)...")
         self.historical_data = self.data_fetcher.get_historical_data(
-            limit=max(window_sizes) * 5  # Get enough data for all windows
+            limit=300,  # Fetch exactly 300 30-minute candles
+            force_api=True  # Force fetch from API, not database
         )
         
         # Validate data
@@ -91,23 +92,23 @@ class PaperTrader:
         logger.info("Paper Trader initialized successfully")
     
     def update_data(self) -> None:
-        """Fetch latest market data and update the feature factory."""
+        """Fetch fresh 300 30-minute candles from Binance API for each trading iteration."""
         try:
-            # Get latest candle
-            latest_data = self.data_fetcher.get_latest_data()
+            # Fetch fresh 300 30-minute candles from API each iteration
+            logger.info("Fetching fresh 300 30-minute candles from Binance API...")
+            self.historical_data = self.data_fetcher.get_historical_data(
+                limit=300,  # Fetch exactly 300 30-minute candles
+                force_api=True  # Force fetch from API, not database
+            )
             
-            # Append to historical data
-            self.historical_data = pd.concat([self.historical_data, latest_data]).reset_index(drop=True)
+            # Validate the fresh data
+            if not self.data_fetcher.validate_data(self.historical_data):
+                raise ValueError("Invalid fresh historical data")
             
-            # Keep only necessary amount of historical data
-            max_needed = max(self.window_sizes) * 5
-            if len(self.historical_data) > max_needed:
-                self.historical_data = self.historical_data.iloc[-max_needed:]
-            
-            # Update feature factory with new data
+            # Update feature factory with fresh data
             self.feature_factory = FeatureFactory(self.historical_data)
             
-            logger.debug("Data updated successfully")
+            logger.debug(f"Fresh data updated successfully - {len(self.historical_data)} candles")
             
         except Exception as e:
             logger.error(f"Failed to update data: {e}")
@@ -343,7 +344,8 @@ class PaperTrader:
             logger.info(f"\n--- Iteration {i+1}/{iterations} ---")
             
             try:
-                # Update data
+                # Update data - fetch fresh 300 30-minute candles each iteration
+                logger.info("Fetching fresh market data for this iteration...")
                 self.update_data()
                 
                 # Make trading decision
