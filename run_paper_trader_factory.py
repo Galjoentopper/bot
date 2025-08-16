@@ -52,13 +52,14 @@ class PaperTrader:
         
         logger.info(f"Initializing Paper Trader for {symbol}")
         
-        # Initialize data fetcher
-        self.data_fetcher = DataFetcher(symbol)
+        # Initialize data fetcher with 30m intervals
+        self.data_fetcher = DataFetcher(symbol, interval="30m")
         
-        # Load historical data
-        logger.info("Loading historical data...")
+        # Load historical data - fetch 300 30-minute candles from API
+        logger.info("Loading historical data (300 30-minute candles from Binance API)...")
         self.historical_data = self.data_fetcher.get_historical_data(
-            limit=max(window_sizes) * 5  # Get enough data for all windows
+            limit=300,  # Fetch exactly 300 30-minute candles
+            force_api=True  # Force fetch from API, not database
         )
         
         # Validate data
@@ -93,16 +94,15 @@ class PaperTrader:
     def update_data(self) -> None:
         """Fetch latest market data and update the feature factory."""
         try:
-            # Get latest candle
+            # Get latest candle from API
             latest_data = self.data_fetcher.get_latest_data()
             
             # Append to historical data
             self.historical_data = pd.concat([self.historical_data, latest_data]).reset_index(drop=True)
             
-            # Keep only necessary amount of historical data
-            max_needed = max(self.window_sizes) * 5
-            if len(self.historical_data) > max_needed:
-                self.historical_data = self.historical_data.iloc[-max_needed:]
+            # Keep exactly 300 candles (rolling window)
+            if len(self.historical_data) > 300:
+                self.historical_data = self.historical_data.iloc[-300:]
             
             # Update feature factory with new data
             self.feature_factory = FeatureFactory(self.historical_data)
