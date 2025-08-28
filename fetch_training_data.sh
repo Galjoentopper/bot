@@ -2,14 +2,14 @@
 
 # Streamlined Fetch Training Data Script for Linux Training Computer
 # ==================================================================
-# This script uses the config_based_collector.py to fetch training data
-# based on configuration from config/config_training.yaml
+# This script automatically downloads and preprocesses datasets based on 
+# input symbols defined in the centralized training configuration file
 
 set -e  # Exit on any error
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/config/config_training.yaml"
+CONFIG_FILE="$SCRIPT_DIR/training_config.yaml"
 DATA_DIR="$SCRIPT_DIR/data"
 COLLECTOR_SCRIPT="$DATA_DIR/config_based_collector.py"
 LOG_FILE="$DATA_DIR/fetch_data.log"
@@ -48,12 +48,12 @@ show_usage() {
     echo "Options:"
     echo "  -h, --help          Show this help message"
     echo "  -s, --symbol SYMBOL Collect data for specific symbol only"
-    echo "  -c, --config FILE   Use specific config file (default: config/config_training.yaml)"
+    echo "  -c, --config FILE   Use specific config file (default: training_config.yaml)"
     echo "  -u, --update        Update mode: only fetch recent data"
     echo "  -f, --full          Full collection mode (default)"
     echo ""
     echo "Examples:"
-    echo "  $0                  # Collect all symbols from config"
+    echo "  $0                  # Collect all symbols from centralized config"
     echo "  $0 -s BTCEUR        # Collect only BTCEUR data"
     echo "  $0 -c custom.yaml   # Use custom config file"
 }

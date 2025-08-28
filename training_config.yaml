@@ -1,0 +1,146 @@
+# Centralized Training Configuration
+# This single file controls all aspects of the automated trading system pipeline
+
+# Data Acquisition Configuration
+data_acquisition:
+  symbols: ['BTCEUR', 'ETHEUR', 'ADAEUR']
+  interval: '30m'
+  lookback_days: 365
+  data_sources:
+    primary: 'binance'
+    fallback: 'yfinance'
+  output_directory: './data'
+  cache_duration: 3600  # 1 hour
+
+# Training Configuration  
+training:
+  # Model types to train
+  models: ['gru', 'lightgbm', 'ppo']
+  
+  # Cross-validation settings
+  validation_split: 0.2
+  test_split: 0.1
+  cv_splits: 5
+  embargo_period: 24  # hours
+  
+  # Training parameters
+  max_workers: 8
+  batch_size: 512
+  epochs: 100
+  early_stopping_patience: 10
+  
+  # Optimization
+  optuna_trials: 100
+  optuna_timeout: 7200  # 2 hours
+  
+  # Resource allocation
+  memory_limit: '16GB'
+  gpu_enabled: true
+  gpu_memory_fraction: 0.8
+
+# Model-specific parameters
+model_parameters:
+  lightgbm:
+    objective: 'regression'
+    metric: 'rmse'
+    boosting_type: 'gbdt'
+    num_leaves: 31
+    learning_rate: 0.05
+    feature_fraction: 0.9
+    bagging_fraction: 0.8
+    bagging_freq: 5
+    n_estimators: 1000
+    early_stopping_rounds: 50
+  
+  gru:
+    hidden_size: 128
+    num_layers: 3
+    dropout: 0.2
+    learning_rate: 0.001
+    sequence_length: 60
+    epochs: 100
+  
+  ppo:
+    learning_rate: 0.0003
+    n_steps: 2048
+    batch_size: 64
+    n_epochs: 10
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_range: 0.2
+    ent_coef: 0.01
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+    total_timesteps: 100000
+
+# Feature Engineering
+features:
+  technical_indicators: true
+  price_features: true
+  volume_features: true
+  volatility_features: true
+  momentum_features: true
+  trend_features: true
+  statistical_features: true
+  fourier_features: true
+  wavelet_features: true
+  fractal_features: true
+  entropy_features: true
+  feature_selection: true
+  max_features: 200
+  selection_method: 'mutual_info'
+
+# Model Export Configuration
+export:
+  base_directory: './models'
+  create_zip_archive: true
+  include_metadata: true
+  include_preprocessors: true
+  include_feature_configs: true
+  archive_name_template: 'trading_models_{timestamp}.zip'
+  
+# Trading Configuration (for deployment)
+trading:
+  initial_balance: 10000
+  max_position_size: 0.1
+  transaction_fee: 0.001
+  slippage: 0.0005
+  
+  # Model weights for ensemble
+  model_weights:
+    gru: 0.45
+    lightgbm: 0.45
+    ppo: 0.1
+  
+  # Risk management
+  stop_loss: 0.02
+  take_profit: 0.04
+  max_drawdown: 0.1
+
+# Logging Configuration
+logging:
+  level: 'INFO'
+  training_log: 'logs/training.log'
+  trading_log: 'logs/trading.log'
+  max_size: '100MB'
+  backup_count: 5
+
+# Notifications Configuration
+notifications:
+  telegram:
+    enabled: true
+    bot_token: '7733436451:AAH6Sls8uL4fEgd6Ty7VEKSBIMauhaVkN4c'
+    chat_id: '7988790407'
+
+# Cross-platform Configuration
+cross_platform:
+  linux_training_dir: '/tmp/trading_models'
+  windows_deployment_dir: 'C:\\trading_models'
+  transfer_package_name: 'models_transfer.zip'
+  
+# Error Handling
+error_handling:
+  max_retries: 3
+  retry_delay: 5
+  auto_recovery: true
+  recovery_timeout: 300
