@@ -17,34 +17,42 @@ class DataFetcher:
     and provides a clean API for the feature factory and models.
     """
     
-    def __init__(self, symbol: str, data_dir: str = None):
+    def __init__(self, symbol: str, data_dir: str = None, interval: str = "30m"):
         """
         Initialize the DataFetcher.
         
         Args:
             symbol: Trading symbol (e.g., 'BTCUSDT', 'BTCEUR')
             data_dir: Directory containing the data files
+            interval: Candle interval (default: 30m)
         """
         self.symbol = symbol.upper()
+        self.interval = interval
         self.data_dir = data_dir or os.path.join(os.path.dirname(__file__), 'data')
         self.base_url = "https://api.binance.com/api/v3"
         
         # Determine database file name
-        self.db_file = os.path.join(self.data_dir, f"{symbol.lower()}_15m.db")
+        self.db_file = os.path.join(self.data_dir, f"{symbol.lower()}_{interval}.db")
         
-    def get_historical_data(self, limit: int = 1000, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
+    def get_historical_data(self, limit: int = 300, start_date: Optional[str] = None, end_date: Optional[str] = None, force_api: bool = True) -> pd.DataFrame:
         """
-        Get historical data from the local database or API.
+        Get historical data from the API or local database.
         
         Args:
-            limit: Maximum number of records to retrieve
+            limit: Maximum number of records to retrieve (default: 300 for 300 30-min candles)
             start_date: Start date in 'YYYY-MM-DD' format
             end_date: End date in 'YYYY-MM-DD' format
+            force_api: If True, fetch from API directly instead of database
             
         Returns:
             DataFrame with OHLCV data
         """
-        # Try to get data from local database first
+        # Fetch from API directly for trading (default behavior)
+        if force_api:
+            logger.info(f"Getting {limit} {self.interval} candles from API for {self.symbol}")
+            return self._get_data_from_api(limit)
+        
+        # Try to get data from local database first (only when force_api=False)
         if os.path.exists(self.db_file):
             try:
                 return self._get_data_from_db(limit, start_date, end_date)
@@ -103,12 +111,12 @@ class DataFetcher:
         
         return df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
     
-    def _get_data_from_api(self, limit: int = 1000) -> pd.DataFrame:
+    def _get_data_from_api(self, limit: int = 300) -> pd.DataFrame:
         """Get data from Binance API."""
         endpoint = f"{self.base_url}/klines"
         params = {
             'symbol': self.symbol,
-            'interval': '15m',
+            'interval': self.interval,
             'limit': min(limit, 1000)  # API limit
         }
         
@@ -151,7 +159,7 @@ class DataFetcher:
         Returns:
             DataFrame with latest OHLCV data
         """
-        return self.get_historical_data(limit=count)
+        return self.get_historical_data(limit=count, force_api=True)
     
     def get_current_price(self) -> Dict[str, float]:
         """
