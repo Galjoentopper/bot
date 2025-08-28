@@ -1,0 +1,35 @@
+
+================================================================================
+TRADER COMPONENT TEST REPORT
+================================================================================
+Generated: 2025-08-27 12:02:12
+
+SUMMARY:
+  Total Tests: 3
+  Passed: 2
+  Failed: 1
+  Success Rate: 66.7%
+
+INDIVIDUAL TEST RESULTS:
+----------------------------------------
+config_loader                  PASS   (35.85s)
+feature_engine                 PASS   (26.41s)
+model_loading                  FAIL   (42.52s)
+    ERROR: 2025-08-27 12:01:45.514435: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+    ERROR: 2025-08-27 12:01:48.388316: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+
+DETAILED ANALYSIS:
+----------------------------------------
+
+FAILED TESTS:
+
+model_loading:
+  Duration: 42.52s
+  Return Code: 1
+  Error: 2025-08-27 12:01:45.514435: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different ...
+
+RECOMMENDations:
+  1 component(s) need attention:
+    - Address model loading failures
+
+================================================================================

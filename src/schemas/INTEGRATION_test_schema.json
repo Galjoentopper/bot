@@ -1,0 +1,27 @@
+{
+  "version": "20250827_122017",
+  "created_at": "2025-08-27T12:20:17.039958",
+  "features": {
+    "price": {
+      "dtype": "int64",
+      "nullable": "False",
+      "min_value": 100.0,
+      "max_value": 102.0,
+      "null_count": 0,
+      "description": "Auto-generated schema for price"
+    },
+    "volume": {
+      "dtype": "int64",
+      "nullable": "False",
+      "min_value": 1000.0,
+      "max_value": 1200.0,
+      "null_count": 0,
+      "description": "Auto-generated schema for volume"
+    }
+  },
+  "metadata": {
+    "auto_generated": true,
+    "row_count": 3,
+    "feature_count": 2
+  }
+}

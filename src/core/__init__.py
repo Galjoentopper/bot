@@ -1,0 +1,1 @@
+"""Core architecture components for the trading system."""

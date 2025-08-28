@@ -1,0 +1,15 @@
+Feature Generation Summary
+==================================================
+
+Models analyzed: 9
+Feature types detected: technical_indicators, volatility_features, trend_features, fractal_features, feature_selection, volume_features, wavelet_features, price_features, fourier_features, momentum_features, statistical_features, entropy_features
+Model types: lightgbm, ppo, gru
+Symbols: ETHEUR, ADAEUR, BTCEUR
+Max features: 200
+Selection methods: mutual_info
+
+Generated Files:
+- feature_config.json: Main feature configuration
+- feature_config.yaml: Human-readable configuration
+- feature_mapping.json: Model-specific feature mapping
+- feature_generation_summary.txt: This summary

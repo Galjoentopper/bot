@@ -1,0 +1,66 @@
+feature_generation:
+  enabled_features:
+    price_features:
+      price_position:
+      - close_to_high
+      - close_to_low
+      price_ratios:
+      - high_low
+      - close_open
+      returns:
+        periods:
+        - 1
+        - 5
+        - 10
+        - 20
+      volatility:
+        window: 20
+    technical_indicators:
+      bollinger_bands:
+        period: 20
+        std: 2
+      ema:
+        periods:
+        - 5
+        - 10
+        - 20
+        - 50
+      macd:
+        fast: 12
+        signal: 9
+        slow: 26
+      rsi:
+        period: 14
+      sma:
+        periods:
+        - 5
+        - 10
+        - 20
+        - 50
+      stochastic:
+        d_period: 3
+        k_period: 14
+    volume_features:
+      price_volume:
+      - vwap
+      - volume_price_trend
+      volume_ratio:
+        period: 20
+      volume_sma:
+        periods:
+        - 5
+        - 10
+        - 20
+  max_features: 200
+  model_types:
+  - lightgbm
+  - ppo
+  - gru
+  selection_method: mutual_info
+  symbols:
+  - ETHEUR
+  - ADAEUR
+  - BTCEUR
+generated_at: C:\Users\best test\Documents\GitHub\Bot_kilo
+models_analyzed: 3
+version: '1.0'

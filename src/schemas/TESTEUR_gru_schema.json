@@ -1,0 +1,43 @@
+{
+  "version": "20250827_122016",
+  "created_at": "2025-08-27T12:20:16.663267",
+  "features": {
+    "close": {
+      "dtype": "float64",
+      "nullable": "False",
+      "min_value": 44997.06470914994,
+      "max_value": 45002.811499065705,
+      "null_count": 0,
+      "description": "Auto-generated schema for close"
+    },
+    "volume": {
+      "dtype": "float64",
+      "nullable": "False",
+      "min_value": 997.9392793341395,
+      "max_value": 1002.1610456087739,
+      "null_count": 0,
+      "description": "Auto-generated schema for volume"
+    },
+    "rsi": {
+      "dtype": "float64",
+      "nullable": "False",
+      "min_value": -3.073600124953863,
+      "max_value": 104.76566606612401,
+      "null_count": 0,
+      "description": "Auto-generated schema for rsi"
+    },
+    "macd": {
+      "dtype": "float64",
+      "nullable": "False",
+      "min_value": -234.15450289254576,
+      "max_value": 284.9774829460815,
+      "null_count": 0,
+      "description": "Auto-generated schema for macd"
+    }
+  },
+  "metadata": {
+    "auto_generated": true,
+    "row_count": 100,
+    "feature_count": 4
+  }
+}

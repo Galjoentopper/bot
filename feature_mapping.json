@@ -1,0 +1,252 @@
+{
+  "models": {
+    "gru_ADAEUR": {
+      "model_type": "gru",
+      "symbol": "ADAEUR",
+      "required_features": [
+        "price_features",
+        "technical_indicators",
+        "volume_features"
+      ],
+      "feature_config": {
+        "technical_indicators": true,
+        "price_features": true,
+        "volume_features": true,
+        "volatility_features": true,
+        "momentum_features": true,
+        "trend_features": true,
+        "statistical_features": true,
+        "fourier_features": true,
+        "wavelet_features": true,
+        "fractal_features": true,
+        "entropy_features": true,
+        "feature_selection": true,
+        "max_features": 200,
+        "selection_method": "mutual_info"
+      },
+      "expected_feature_count": 100
+    },
+    "gru_BTCEUR": {
+      "model_type": "gru",
+      "symbol": "BTCEUR",
+      "required_features": [
+        "price_features",
+        "technical_indicators",
+        "volume_features"
+      ],
+      "feature_config": {
+        "technical_indicators": true,
+        "price_features": true,
+        "volume_features": true,
+        "volatility_features": true,
+        "momentum_features": true,
+        "trend_features": true,
+        "statistical_features": true,
+        "fourier_features": true,
+        "wavelet_features": true,
+        "fractal_features": true,
+        "entropy_features": true,
+        "feature_selection": true,
+        "max_features": 200,
+        "selection_method": "mutual_info"
+      },
+      "expected_feature_count": 100
+    },
+    "gru_ETHEUR": {
+      "model_type": "gru",
+      "symbol": "ETHEUR",
+      "required_features": [
+        "price_features",
+        "technical_indicators",
+        "volume_features"
+      ],
+      "feature_config": {
+        "technical_indicators": true,
+        "price_features": true,
+        "volume_features": true,
+        "volatility_features": true,
+        "momentum_features": true,
+        "trend_features": true,
+        "statistical_features": true,
+        "fourier_features": true,
+        "wavelet_features": true,
+        "fractal_features": true,
+        "entropy_features": true,
+        "feature_selection": true,
+        "max_features": 200,
+        "selection_method": "mutual_info"
+      },
+      "expected_feature_count": 100
+    },
+    "lightgbm_ADAEUR": {
+      "model_type": "lightgbm",
+      "symbol": "ADAEUR",
+      "required_features": [
+        "technical_indicators",
+        "price_features"
+      ],
+      "feature_config": {
+        "technical_indicators": true,
+        "price_features": true,
+        "volume_features": true,
+        "volatility_features": true,
+        "momentum_features": true,
+        "trend_features": true,
+        "statistical_features": true,
+        "fourier_features": true,
+        "wavelet_features": true,
+        "fractal_features": true,
+        "entropy_features": true,
+        "feature_selection": true,
+        "max_features": 200,
+        "selection_method": "mutual_info"
+      },
+      "expected_feature_count": 100
+    },
+    "lightgbm_BTCEUR": {
+      "model_type": "lightgbm",
+      "symbol": "BTCEUR",
+      "required_features": [
+        "technical_indicators",
+        "price_features"
+      ],
+      "feature_config": {
+        "technical_indicators": true,
+        "price_features": true,
+        "volume_features": true,
+        "volatility_features": true,
+        "momentum_features": true,
+        "trend_features": true,
+        "statistical_features": true,
+        "fourier_features": true,
+        "wavelet_features": true,
+        "fractal_features": true,
+        "entropy_features": true,
+        "feature_selection": true,
+        "max_features": 200,
+        "selection_method": "mutual_info"
+      },
+      "expected_feature_count": 100
+    },
+    "lightgbm_ETHEUR": {
+      "model_type": "lightgbm",
+      "symbol": "ETHEUR",
+      "required_features": [
+        "technical_indicators",
+        "price_features"
+      ],
+      "feature_config": {
+        "technical_indicators": true,
+        "price_features": true,
+        "volume_features": true,
+        "volatility_features": true,
+        "momentum_features": true,
+        "trend_features": true,
+        "statistical_features": true,
+        "fourier_features": true,
+        "wavelet_features": true,
+        "fractal_features": true,
+        "entropy_features": true,
+        "feature_selection": true,
+        "max_features": 200,
+        "selection_method": "mutual_info"
+      },
+      "expected_feature_count": 100
+    },
+    "ppo_ADAEUR": {
+      "model_type": "ppo",
+      "symbol": "ADAEUR",
+      "required_features": [
+        "market_features",
+        "price_features",
+        "technical_indicators"
+      ],
+      "feature_config": {
+        "technical_indicators": true,
+        "price_features": true,
+        "volume_features": true,
+        "volatility_features": true,
+        "momentum_features": true,
+        "trend_features": true,
+        "statistical_features": true,
+        "fourier_features": true,
+        "wavelet_features": true,
+        "fractal_features": true,
+        "entropy_features": true,
+        "feature_selection": true,
+        "max_features": 200,
+        "selection_method": "mutual_info"
+      },
+      "expected_feature_count": 13
+    },
+    "ppo_BTCEUR": {
+      "model_type": "ppo",
+      "symbol": "BTCEUR",
+      "required_features": [
+        "market_features",
+        "price_features",
+        "technical_indicators"
+      ],
+      "feature_config": {
+        "technical_indicators": true,
+        "price_features": true,
+        "volume_features": true,
+        "volatility_features": true,
+        "momentum_features": true,
+        "trend_features": true,
+        "statistical_features": true,
+        "fourier_features": true,
+        "wavelet_features": true,
+        "fractal_features": true,
+        "entropy_features": true,
+        "feature_selection": true,
+        "max_features": 200,
+        "selection_method": "mutual_info"
+      },
+      "expected_feature_count": 13
+    },
+    "ppo_ETHEUR": {
+      "model_type": "ppo",
+      "symbol": "ETHEUR",
+      "required_features": [
+        "market_features",
+        "price_features",
+        "technical_indicators"
+      ],
+      "feature_config": {
+        "technical_indicators": true,
+        "price_features": true,
+        "volume_features": true,
+        "volatility_features": true,
+        "momentum_features": true,
+        "trend_features": true,
+        "statistical_features": true,
+        "fourier_features": true,
+        "wavelet_features": true,
+        "fractal_features": true,
+        "entropy_features": true,
+        "feature_selection": true,
+        "max_features": 200,
+        "selection_method": "mutual_info"
+      },
+      "expected_feature_count": 13
+    }
+  },
+  "global_features": [
+    "technical_indicators",
+    "price_features",
+    "volume_features",
+    "market_features"
+  ],
+  "feature_counts": {
+    "gru_ADAEUR": 100,
+    "gru_BTCEUR": 100,
+    "gru_ETHEUR": 100,
+    "lightgbm_ADAEUR": 100,
+    "lightgbm_BTCEUR": 100,
+    "lightgbm_ETHEUR": 100,
+    "ppo_ADAEUR": 13,
+    "ppo_BTCEUR": 13,
+    "ppo_ETHEUR": 13
+  }
+}
