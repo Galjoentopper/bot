@@ -1,0 +1,14 @@
+artifact_uri: file:///home/runner/work/bot/bot/mlruns/0/b093e393d2b145b08f9267f5e2e9a611/artifacts
+end_time: 1756405329984
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: b093e393d2b145b08f9267f5e2e9a611
+run_name: lgbm_20250828_182207
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1756405327492
+status: 3
+tags: []
+user_id: runner
