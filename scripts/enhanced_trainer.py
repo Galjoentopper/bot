@@ -695,6 +695,8 @@ def main() -> None:
     
     # Resolve trainer defaults from config when CLI not provided
     trainer_cfg = config.get('trainer', {}) if isinstance(config, dict) else {}
+    # Also check 'training' section for additional config (the main section in training_config.yaml)
+    training_cfg = config.get('training', {}) if isinstance(config, dict) else {}
     symbols_default = trainer_cfg.get('symbols') if isinstance(trainer_cfg.get('symbols'), list) else None
     symbols_to_train = args.symbols or symbols_default or available_symbols
     symbols_to_train = [s for s in symbols_to_train if s in available_symbols]
@@ -719,6 +721,20 @@ def main() -> None:
     objective = args.objective or trainer_cfg.get('objective', 'sharpe_ratio')
     cache = args.cache if args.cache is not None else bool(trainer_cfg.get('cache', True))
     seed = args.seed if args.seed is not None else int(trainer_cfg.get('seed', 42))
+    
+    # Auto-enable hyperparameter optimization based on config
+    # If optuna_trials is configured and > 0, automatically enable hyperparameter optimization
+    configured_optuna_trials = training_cfg.get('optuna_trials') or trainer_cfg.get('optuna_trials')
+    configured_optuna_timeout = training_cfg.get('optuna_timeout') or trainer_cfg.get('optuna_timeout')
+    
+    if not args.tune_hyperparameters and configured_optuna_trials and int(configured_optuna_trials) > 0:
+        logger.info(f"Auto-enabling hyperparameter optimization: optuna_trials={configured_optuna_trials} configured in training_config.yaml")
+        args.tune_hyperparameters = True
+        # Use configured values if not overridden by command line
+        if args.optuna_trials == 50:  # 50 is the default, so user didn't override
+            args.optuna_trials = int(configured_optuna_trials)
+        if args.optuna_timeout == 3600 and configured_optuna_timeout:  # 3600 is the default
+            args.optuna_timeout = int(configured_optuna_timeout)
     
     # Explicit start_date support
     start_date = (
