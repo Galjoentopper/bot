@@ -1,7 +1,7 @@
 {
   "version": "1.0",
-  "generated_at": "/home/runner/work/bot/bot",
-  "models_analyzed": 0,
+  "generated_at": "C:\\Users\\best test\\Documents\\GitHub\\Bot_kilo",
+  "models_analyzed": 3,
   "feature_generation": {
     "enabled_features": {
       "technical_indicators": {
@@ -58,11 +58,35 @@
           "close_to_high",
           "close_to_low"
         ]
+      },
+      "volume_features": {
+        "volume_sma": {
+          "periods": [
+            5,
+            10,
+            20
+          ]
+        },
+        "volume_ratio": {
+          "period": 20
+        },
+        "price_volume": [
+          "vwap",
+          "volume_price_trend"
+        ]
       }
     },
-    "max_features": 50,
-    "selection_method": "variance",
-    "symbols": [],
-    "model_types": []
+    "max_features": 200,
+    "selection_method": "mutual_info",
+    "symbols": [
+      "ETHEUR",
+      "ADAEUR",
+      "BTCEUR"
+    ],
+    "model_types": [
+      "lightgbm",
+      "ppo",
+      "gru"
+    ]
   }
 }
