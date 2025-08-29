@@ -100,8 +100,9 @@ class FinancialHyperparameterOptimizer:
         self.constraints = constraints or FinancialMLConstraints()
         self.risk_free_rate = risk_free_rate
         
-        # Load domain-specific parameter ranges
-        self.param_ranges = self._get_financial_parameter_ranges()
+        # Parameter ranges will be loaded when model type is specified
+        self.param_ranges = {}
+        self.current_model_type = None
         
         # Initialize optimization history
         self.optimization_history = []
@@ -110,8 +111,24 @@ class FinancialHyperparameterOptimizer:
         if market_regime:
             logger.info(f"Optimizing for {market_regime.value} market conditions")
     
-    def _get_financial_parameter_ranges(self) -> Dict[str, Dict[str, Any]]:
+    def set_model_type(self, model_type: str) -> None:
+        """Set the model type and load appropriate parameter ranges."""
+        self.current_model_type = model_type.lower()
+        self.param_ranges = self._get_financial_parameter_ranges(self.current_model_type)
+        logger.info(f"Loaded parameter ranges for {model_type} model: {len(self.param_ranges)} parameters")
+    
+    def _get_financial_parameter_ranges(self, model_type: str = 'gru') -> Dict[str, Dict[str, Any]]:
         """Get domain-specific parameter ranges for financial ML models."""
+        
+        if model_type.lower() == 'lightgbm':
+            return self._get_lightgbm_parameter_ranges()
+        elif model_type.lower() == 'ppo':
+            return self._get_ppo_parameter_ranges()
+        else:  # Default to GRU ranges
+            return self._get_gru_parameter_ranges()
+    
+    def _get_gru_parameter_ranges(self) -> Dict[str, Dict[str, Any]]:
+        """Get parameter ranges specific to GRU models for financial applications."""
         
         # Base ranges for GRU models in financial applications
         base_ranges = {
@@ -190,6 +207,191 @@ class FinancialHyperparameterOptimizer:
             base_ranges['learning_rate']['high'] *= 1.2
             base_ranges['hidden_size']['choices'].extend([384, 512])
             
+        return base_ranges
+    
+    def _get_lightgbm_parameter_ranges(self) -> Dict[str, Dict[str, Any]]:
+        """Get parameter ranges specific to LightGBM models for financial applications."""
+        
+        # LightGBM parameters based on research best practices for financial ML
+        base_ranges = {
+            'n_estimators': {
+                'type': 'choice',
+                'choices': [100, 200, 500, 1000, 1500],
+                'prior': 'prefer_high'  # More trees with early stopping
+            },
+            'learning_rate': {
+                'type': 'log_uniform',
+                'low': 0.001,
+                'high': 0.1,
+                'prior': 'prefer_low'  # Conservative learning rates
+            },
+            'num_leaves': {
+                'type': 'choice',
+                'choices': [20, 31, 50, 100, 150],
+                'prior': 'prefer_moderate'  # Balanced complexity
+            },
+            'max_depth': {
+                'type': 'choice',
+                'choices': [3, 5, 7, 10, 15],
+                'prior': 'prefer_moderate'  # Avoid overly deep trees
+            },
+            'feature_fraction': {
+                'type': 'uniform',
+                'low': 0.7,
+                'high': 1.0,
+                'prior': 'prefer_high'  # Conservative feature sampling
+            },
+            'bagging_fraction': {
+                'type': 'uniform',
+                'low': 0.7,
+                'high': 1.0,
+                'prior': 'prefer_high'  # Conservative data sampling
+            },
+            'bagging_freq': {
+                'type': 'choice',
+                'choices': [1, 3, 5, 7],
+                'prior': 'prefer_moderate'
+            },
+            'min_data_in_leaf': {
+                'type': 'choice',
+                'choices': [10, 20, 50, 100],
+                'prior': 'prefer_high'  # Prevent overfitting
+            },
+            'min_child_weight': {
+                'type': 'log_uniform',
+                'low': 1e-3,
+                'high': 1e1,
+                'prior': 'prefer_moderate'
+            },
+            'reg_alpha': {
+                'type': 'log_uniform',
+                'low': 1e-6,
+                'high': 1e1,
+                'prior': 'prefer_moderate'  # L1 regularization
+            },
+            'reg_lambda': {
+                'type': 'log_uniform',
+                'low': 1e-6,
+                'high': 1e1,
+                'prior': 'prefer_moderate'  # L2 regularization
+            }
+        }
+        
+        # Asset class specific adjustments for LightGBM
+        if self.asset_class == AssetClass.CRYPTO:
+            # Crypto needs more regularization and conservative parameters
+            base_ranges['learning_rate']['high'] = 0.05
+            base_ranges['feature_fraction']['low'] = 0.8
+            base_ranges['reg_lambda']['high'] = 10.0
+            
+        elif self.asset_class == AssetClass.FOREX:
+            # Forex needs very conservative parameters
+            base_ranges['learning_rate']['high'] = 0.03
+            base_ranges['num_leaves']['choices'] = [20, 31, 50]
+            base_ranges['max_depth']['choices'] = [3, 5, 7]
+            
+        # Market regime adjustments for LightGBM
+        if self.market_regime == MarketRegime.HIGH_VOL:
+            # High volatility needs maximum regularization
+            base_ranges['learning_rate']['high'] *= 0.5
+            base_ranges['feature_fraction']['low'] = 0.8
+            base_ranges['min_data_in_leaf']['choices'] = [50, 100, 200]
+            
+        elif self.market_regime == MarketRegime.LOW_VOL:
+            # Low volatility can handle slightly more complex models
+            base_ranges['num_leaves']['choices'].extend([200, 300])
+            base_ranges['max_depth']['choices'].extend([20])
+        
+        return base_ranges
+    
+    def _get_ppo_parameter_ranges(self) -> Dict[str, Dict[str, Any]]:
+        """Get parameter ranges specific to PPO models for financial applications."""
+        
+        # PPO parameters based on Stable-Baselines3 and financial RL research
+        base_ranges = {
+            'learning_rate': {
+                'type': 'log_uniform',
+                'low': 1e-5,
+                'high': 1e-3,
+                'prior': 'prefer_conservative'  # Conservative learning rates for stable training
+            },
+            'n_steps': {
+                'type': 'choice',
+                'choices': [1024, 2048, 4096, 8192],
+                'prior': 'prefer_moderate'  # Balanced rollout length
+            },
+            'batch_size': {
+                'type': 'choice',
+                'choices': [32, 64, 128, 256],
+                'prior': 'prefer_moderate'
+            },
+            'n_epochs': {
+                'type': 'choice',
+                'choices': [5, 10, 15, 20],
+                'prior': 'prefer_moderate'  # Avoid overtraining
+            },
+            'gamma': {
+                'type': 'uniform',
+                'low': 0.95,
+                'high': 0.999,
+                'prior': 'prefer_high'  # Long-term focus for trading
+            },
+            'gae_lambda': {
+                'type': 'uniform',
+                'low': 0.9,
+                'high': 0.99,
+                'prior': 'prefer_high'  # Bias-variance tradeoff
+            },
+            'clip_range': {
+                'type': 'uniform',
+                'low': 0.1,
+                'high': 0.3,
+                'prior': 'prefer_conservative'  # Conservative policy updates
+            },
+            'ent_coef': {
+                'type': 'log_uniform',
+                'low': 1e-6,
+                'high': 1e-1,
+                'prior': 'prefer_low'  # Limited exploration in financial markets
+            },
+            'vf_coef': {
+                'type': 'uniform',
+                'low': 0.1,
+                'high': 1.0,
+                'prior': 'prefer_moderate'
+            },
+            'max_grad_norm': {
+                'type': 'uniform',
+                'low': 0.1,
+                'high': 2.0,
+                'prior': 'prefer_conservative'  # Gradient clipping for stability
+            }
+        }
+        
+        # Asset class specific adjustments for PPO
+        if self.asset_class == AssetClass.CRYPTO:
+            # Crypto markets are volatile, need more exploration and shorter horizons
+            base_ranges['ent_coef']['high'] = 1e-2
+            base_ranges['n_steps']['choices'] = [1024, 2048, 4096]
+            base_ranges['gamma']['low'] = 0.97  # Shorter horizon for volatile markets
+            
+        elif self.asset_class == AssetClass.FOREX:
+            # Forex has lower signal-to-noise, needs very conservative exploration
+            base_ranges['ent_coef']['high'] = 1e-3
+            base_ranges['clip_range']['high'] = 0.2
+            
+        # Market regime adjustments for PPO
+        if self.market_regime == MarketRegime.HIGH_VOL:
+            # High volatility needs very conservative policy updates
+            base_ranges['learning_rate']['high'] *= 0.5
+            base_ranges['clip_range']['high'] = 0.15
+            base_ranges['ent_coef']['high'] *= 0.1
+            
+        elif self.market_regime == MarketRegime.LOW_VOL:
+            # Low volatility allows for more aggressive exploration
+            base_ranges['ent_coef']['high'] *= 5.0
+            base_ranges['learning_rate']['high'] *= 1.5
+        
         return base_ranges
     
     def get_financial_objective_function(

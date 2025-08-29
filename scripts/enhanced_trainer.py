@@ -51,6 +51,10 @@ from src.utils.model_packaging import ModelPackager
 from src.utils.model_transfer import ModelTransferManager
 from src.utils.training_checkpoint import TrainingCheckpoint, TrainingProgress, CheckpointMetadata
 
+# Import hyperparameter optimization modules
+from src.optimization.financial_hyperopt import FinancialHyperparameterOptimizer, AssetClass, MarketRegime
+from src.optimization.bayesian_optimizer import FinancialBayesianOptimizer
+
 # Global variables for checkpoint management
 checkpoint_manager = None
 shutdown_requested = False
@@ -292,6 +296,186 @@ def package_and_export_models(output_dir: str, symbols: List[str], models: List[
     return packaging_results
 
 
+def run_hyperparameter_optimization(
+    model_type: str,
+    symbol: str,
+    dataset_builder: Any,
+    config: Dict[str, Any],
+    n_trials: int = 50,
+    timeout: int = 3600,
+    optimization_metric: str = 'sharpe_ratio'
+) -> Dict[str, Any]:
+    """
+    Run hyperparameter optimization for a specific model and symbol.
+    
+    Args:
+        model_type: Type of model to optimize ('gru', 'lightgbm', 'ppo')
+        symbol: Trading symbol
+        dataset_builder: DatasetBuilder instance
+        config: Configuration dictionary
+        n_trials: Number of optimization trials
+        timeout: Optimization timeout in seconds
+        optimization_metric: Metric to optimize for
+        
+    Returns:
+        Dictionary with optimization results and best parameters
+    """
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting hyperparameter optimization for {model_type} on {symbol}")
+    
+    try:
+        # Import optuna for optimization
+        import optuna
+        
+        # Initialize financial hyperparameter optimizer
+        financial_optimizer = FinancialHyperparameterOptimizer(
+            asset_class=AssetClass.CRYPTO,  # Assuming crypto for this dataset
+            market_regime=None,  # Auto-detect or use default
+        )
+        financial_optimizer.set_model_type(model_type)
+        
+        # Create Bayesian optimizer
+        bayesian_optimizer = FinancialBayesianOptimizer(
+            financial_optimizer=financial_optimizer,
+            config_manager=None,  # Will use direct config
+            n_calls=n_trials
+        )
+        
+        # Get training data
+        X, y, timestamps, feature_names, metadata = dataset_builder.build_dataset(
+            symbol=symbol,
+            interval='30m',  # Default to 30m interval
+            use_cache=True,
+            target_type='return',
+            target_horizon=1
+        )
+        
+        if X is None or y is None:
+            logger.error(f"No data available for {symbol}")
+            return {'success': False, 'error': 'No data available'}
+        
+        # Split data for validation
+        n = len(X)
+        split_idx = int(n * 0.8)
+        X_train, X_val = X[:split_idx], X[split_idx:]
+        y_train, y_val = y[:split_idx], y[split_idx:]
+        
+        # Define objective function
+        def objective(trial):
+            try:
+                # Suggest hyperparameters based on model type
+                if model_type == 'lightgbm':
+                    params = {
+                        'n_estimators': trial.suggest_categorical('n_estimators', [100, 200, 500, 1000]),
+                        'learning_rate': trial.suggest_loguniform('learning_rate', 0.001, 0.1),
+                        'num_leaves': trial.suggest_categorical('num_leaves', [20, 31, 50, 100]),
+                        'max_depth': trial.suggest_categorical('max_depth', [3, 5, 7, 10]),
+                        'feature_fraction': trial.suggest_uniform('feature_fraction', 0.7, 1.0),
+                        'bagging_fraction': trial.suggest_uniform('bagging_fraction', 0.7, 1.0),
+                        'min_data_in_leaf': trial.suggest_categorical('min_data_in_leaf', [10, 20, 50]),
+                        'reg_alpha': trial.suggest_loguniform('reg_alpha', 1e-6, 1e1),
+                        'reg_lambda': trial.suggest_loguniform('reg_lambda', 1e-6, 1e1),
+                    }
+                elif model_type == 'gru':
+                    params = {
+                        'learning_rate': trial.suggest_loguniform('learning_rate', 1e-5, 5e-4),
+                        'hidden_size': trial.suggest_categorical('hidden_size', [32, 64, 96, 128, 192]),
+                        'num_layers': trial.suggest_categorical('num_layers', [1, 2, 3]),
+                        'dropout': trial.suggest_uniform('dropout', 0.2, 0.6),
+                        'batch_size': trial.suggest_categorical('batch_size', [16, 32, 64]),
+                        'sequence_length': trial.suggest_categorical('sequence_length', [15, 30, 45, 60]),
+                        'weight_decay': trial.suggest_loguniform('weight_decay', 1e-6, 5e-3),
+                    }
+                elif model_type == 'ppo':
+                    params = {
+                        'learning_rate': trial.suggest_loguniform('learning_rate', 1e-5, 1e-3),
+                        'n_steps': trial.suggest_categorical('n_steps', [1024, 2048, 4096]),
+                        'batch_size': trial.suggest_categorical('batch_size', [32, 64, 128]),
+                        'n_epochs': trial.suggest_categorical('n_epochs', [5, 10, 15]),
+                        'gamma': trial.suggest_uniform('gamma', 0.95, 0.999),
+                        'gae_lambda': trial.suggest_uniform('gae_lambda', 0.9, 0.99),
+                        'clip_range': trial.suggest_uniform('clip_range', 0.1, 0.3),
+                        'ent_coef': trial.suggest_loguniform('ent_coef', 1e-6, 1e-2),
+                    }
+                else:
+                    raise ValueError(f"Unsupported model type: {model_type}")
+                
+                # Create model adapter with suggested parameters
+                model_config = config.copy()
+                model_config['model_parameters'] = model_config.get('model_parameters', {})
+                model_config['model_parameters'][model_type] = params
+                
+                adapter = create_model_adapter(model_type, model_config, 'regression')
+                
+                # Train model
+                train_idx = np.arange(len(X_train))
+                val_idx = np.arange(len(X_val))
+                
+                if model_type == 'ppo':
+                    # PPO needs special handling
+                    full_data = np.vstack([X_train, X_val])
+                    full_targets = np.hstack([y_train, y_val])
+                    adapter.fit(X=full_data, y=full_targets, train_idx=train_idx, valid_idx=val_idx)
+                else:
+                    adapter.fit(X=X_train, y=y_train, train_idx=train_idx, valid_idx=val_idx)
+                
+                # Evaluate model
+                y_pred = adapter.predict(X_val)
+                
+                # Calculate financial metrics
+                from src.utils.metrics import TradingMetrics
+                metrics_calc = TradingMetrics()
+                
+                # Calculate returns-based metrics
+                returns = y_pred.flatten() if hasattr(y_pred, 'flatten') else y_pred
+                actual_returns = y_val.flatten() if hasattr(y_val, 'flatten') else y_val
+                
+                # Simple Sharpe ratio calculation
+                if len(returns) > 1:
+                    sharpe_ratio = np.mean(returns) / (np.std(returns) + 1e-8) * np.sqrt(252)
+                else:
+                    sharpe_ratio = 0.0
+                
+                # Return the optimization metric
+                if optimization_metric == 'sharpe_ratio':
+                    return sharpe_ratio
+                else:
+                    # For now, default to Sharpe ratio
+                    return sharpe_ratio
+                    
+            except Exception as e:
+                logger.warning(f"Trial failed: {e}")
+                return -np.inf
+        
+        # Run optimization
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=n_trials, timeout=timeout)
+        
+        # Get best results
+        best_params = study.best_params
+        best_value = study.best_value
+        
+        logger.info(f"Hyperparameter optimization completed for {model_type} on {symbol}")
+        logger.info(f"Best {optimization_metric}: {best_value:.4f}")
+        logger.info(f"Best parameters: {best_params}")
+        
+        return {
+            'success': True,
+            'best_params': best_params,
+            'best_value': best_value,
+            'optimization_metric': optimization_metric,
+            'n_trials': len(study.trials),
+            'study': study
+        }
+        
+    except ImportError:
+        logger.error("Optuna not available for hyperparameter optimization")
+        return {'success': False, 'error': 'Optuna not available'}
+    except Exception as e:
+        logger.error(f"Hyperparameter optimization failed: {e}")
+        return {'success': False, 'error': str(e)}
+
+
 def main() -> None:
     # If run without flags, default to the walk-forward + Optuna harness
     if len(sys.argv) == 1:
@@ -452,6 +636,13 @@ def main() -> None:
     parser.add_argument('--resume', action='store_true', help='Resume training from last checkpoint')
     parser.add_argument('--checkpoint-dir', type=str, default='checkpoints', help='Directory for checkpoint files')
     parser.add_argument('--verbose', action='store_true')
+    
+    # Hyperparameter optimization flags
+    parser.add_argument('--tune-hyperparameters', action='store_true', help='Enable hyperparameter optimization')
+    parser.add_argument('--optuna-trials', type=int, default=50, help='Number of optimization trials')
+    parser.add_argument('--optuna-timeout', type=int, default=3600, help='Optimization timeout in seconds')
+    parser.add_argument('--optimization-metric', type=str, choices=['sharpe_ratio', 'sortino_ratio', 'calmar_ratio'], 
+                        default='sharpe_ratio', help='Metric to optimize for')
 
     args = parser.parse_args()
 
@@ -712,6 +903,41 @@ def main() -> None:
             logger.info(f"Training {model_type} for {symbol} (Progress: {len(current_progress.completed_models)}/{len(symbols_to_train) * len(model_list)} models completed)")
             
             try:
+                # Run hyperparameter optimization if requested
+                optimized_params = None
+                if args.tune_hyperparameters:
+                    logger.info(f"Running hyperparameter optimization for {model_type} on {symbol}")
+                    optimization_result = run_hyperparameter_optimization(
+                        model_type=model_type,
+                        symbol=symbol,
+                        dataset_builder=dataset_builder,
+                        config=config,
+                        n_trials=args.optuna_trials,
+                        timeout=args.optuna_timeout,
+                        optimization_metric=args.optimization_metric
+                    )
+                    
+                    if optimization_result['success']:
+                        optimized_params = optimization_result['best_params']
+                        logger.info(f"Optimization successful! Best {optimization_result['optimization_metric']}: {optimization_result['best_value']:.4f}")
+                        
+                        # Update config with optimized parameters
+                        if 'model_parameters' not in config:
+                            config['model_parameters'] = {}
+                        if model_type not in config['model_parameters']:
+                            config['model_parameters'][model_type] = {}
+                        config['model_parameters'][model_type].update(optimized_params)
+                        
+                        # Save optimization results
+                        optimization_dir = os.path.join(args.output_dir, 'optimization_results')
+                        os.makedirs(optimization_dir, exist_ok=True)
+                        opt_file = os.path.join(optimization_dir, f'{model_type}_{symbol}_optimization.json')
+                        with open(opt_file, 'w') as f:
+                            json.dump(optimization_result, f, indent=2, default=str)
+                        logger.info(f"Optimization results saved to {opt_file}")
+                    else:
+                        logger.warning(f"Hyperparameter optimization failed: {optimization_result.get('error', 'Unknown error')}")
+                
                 task_type = 'classification' if target_type == 'direction' else 'regression'
                 adapter = create_model_adapter(model_type, config, task_type)
 
