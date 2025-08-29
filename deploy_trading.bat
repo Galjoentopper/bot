@@ -248,22 +248,26 @@ if errorlevel 1 (
 
 REM Extract and validate trading symbols
 call :log_info "Extracting trading symbols from configuration..."
-python -c "
-import yaml
-with open('%CONFIG_FILE%', 'r') as f:
-    config = yaml.safe_load(f)
-symbols = config.get('data_acquisition', {}).get('symbols', [])
-if not symbols:
-    symbols = config.get('data', {}).get('symbols', [])
-if not symbols:
-    symbols = config.get('symbols', [])
-if symbols:
-    print('SYMBOLS_FOUND:' + ','.join(symbols))
-else:
-    print('NO_SYMBOLS_FOUND')
-" > temp_symbols.txt 2>nul
+(
+echo import yaml
+echo with open('%CONFIG_FILE%', 'r'^) as f:
+echo     config = yaml.safe_load(f^)
+echo symbols = config.get('data_acquisition', {}^).get('symbols', []^)
+echo if not symbols:
+echo     symbols = config.get('data', {}^).get('symbols', []^)
+echo if not symbols:
+echo     symbols = config.get('symbols', []^)
+echo if symbols:
+echo     print('SYMBOLS_FOUND:' + ','.join(symbols^)^)
+echo else:
+echo     print('NO_SYMBOLS_FOUND'^)
+) > temp_extract_symbols.py
 
-if errorlevel 1 (
+python temp_extract_symbols.py > temp_symbols.txt 2>nul
+set "python_result=!errorlevel!"
+del temp_extract_symbols.py 2>nul
+
+if not !python_result! == 0 (
     call :log_error "Failed to extract symbols from configuration"
     exit /b 1
 )
@@ -275,21 +279,24 @@ for /f "tokens=2 delims=:" %%i in ('type temp_symbols.txt ^| findstr "SYMBOLS_FO
 )
 del temp_symbols.txt 2>nul
 
-if "%TRADING_SYMBOLS%"=="" (
+if "!TRADING_SYMBOLS!"=="" (
     call :log_error "No trading symbols found in configuration"
     echo   Please ensure symbols are defined in the configuration file
     exit /b 1
 )
 
-call :log_info "Trading symbols extracted: %TRADING_SYMBOLS%"
+call :log_info "Trading symbols extracted: !TRADING_SYMBOLS!"
+
+REM Convert comma-separated symbols to space-separated for batch processing
+set "SYMBOLS_SPACED=!TRADING_SYMBOLS:,= !"
 
 REM Validate each symbol configuration
 call :log_info "Validating symbol configurations..."
 set "VALID_SYMBOLS="
-for %%s in (%TRADING_SYMBOLS%) do (
+for %%s in (!SYMBOLS_SPACED!) do (
     call :validate_symbol_config "%%s"
     if not errorlevel 1 (
-        if "%VALID_SYMBOLS%"=="" (
+        if "!VALID_SYMBOLS!"=="" (
             set "VALID_SYMBOLS=%%s"
         ) else (
             set "VALID_SYMBOLS=!VALID_SYMBOLS!,%%s"
@@ -297,12 +304,12 @@ for %%s in (%TRADING_SYMBOLS%) do (
     )
 )
 
-if "%VALID_SYMBOLS%"=="" (
+if "!VALID_SYMBOLS!"=="" (
     call :log_error "No valid symbol configurations found"
     exit /b 1
 )
 
-call :log_success "Configuration processing completed. Valid symbols: %VALID_SYMBOLS%"
+call :log_success "Configuration processing completed. Valid symbols: !VALID_SYMBOLS!"
 exit /b 0
 
 :validate_symbol_config
@@ -335,10 +342,10 @@ if not exist "models" (
 set "VERIFIED_SYMBOLS="
 set "MODEL_TYPES=gru lightgbm ppo"
 
-for %%s in (%VALID_SYMBOLS%) do (
+for %%s in (!VALID_SYMBOLS!) do (
     call :verify_symbol_models "%%s"
     if not errorlevel 1 (
-        if "%VERIFIED_SYMBOLS%"=="" (
+        if "!VERIFIED_SYMBOLS!"=="" (
             set "VERIFIED_SYMBOLS=%%s"
         ) else (
             set "VERIFIED_SYMBOLS=!VERIFIED_SYMBOLS!,%%s"
@@ -346,12 +353,12 @@ for %%s in (%VALID_SYMBOLS%) do (
     )
 )
 
-if "%VERIFIED_SYMBOLS%"=="" (
+if "!VERIFIED_SYMBOLS!"=="" (
     call :log_error "No symbols have complete model sets"
     exit /b 1
 )
 
-call :log_success "Model verification completed. Verified symbols: %VERIFIED_SYMBOLS%"
+call :log_success "Model verification completed. Verified symbols: !VERIFIED_SYMBOLS!"
 exit /b 0
 
 :verify_symbol_models
@@ -361,26 +368,26 @@ set "missing_models="
 
 call :log_info "Verifying models for symbol: %symbol%"
 
-for %%m in (%MODEL_TYPES%) do (
-    if exist "models\%%m\%symbol%" (
-        set /a models_found+=1
-        call :log_info "  Found %%m model for %symbol%"
+for %%m in (!MODEL_TYPES!) do (
+    if exist "models\%%m\!symbol!" (
+        set /a models_found=!models_found!+1
+        call :log_info "  Found %%m model for !symbol!"
     ) else (
-        if "%missing_models%"=="" (
+        if "!missing_models!"=="" (
             set "missing_models=%%m"
         ) else (
             set "missing_models=!missing_models!,%%m"
         )
-        call :log_warning "  Missing %%m model for %symbol%"
+        call :log_warning "  Missing %%m model for !symbol!"
     )
 )
 
-if %models_found% LSS 2 (
-    call :log_warning "Symbol %symbol% has insufficient models (%models_found%/3). Missing: %missing_models%"
+if !models_found! LSS 2 (
+    call :log_warning "Symbol !symbol! has insufficient models (!models_found!/3). Missing: !missing_models!"
     exit /b 1
 )
 
-call :log_success "Symbol %symbol% has sufficient models (%models_found%/3)"
+call :log_success "Symbol !symbol! has sufficient models (!models_found!/3)"
 exit /b 0
 
 :initialize_trading_system
@@ -388,17 +395,21 @@ call :log_info "Initializing comprehensive trading system..."
 
 REM Validate Python trading environment
 call :log_info "Validating Python trading environment..."
-python -c "
-try:
-    import pandas, numpy, yaml, ccxt
-    import sklearn, lightgbm
-    print('Core trading dependencies verified')
-except ImportError as e:
-    print(f'Missing dependency: {e}')
-    exit(1)
-" 2>nul
+(
+echo try:
+echo     import pandas, numpy, yaml, ccxt
+echo     import sklearn, lightgbm
+echo     print('Core trading dependencies verified'^)
+echo except ImportError as e:
+echo     print(f'Missing dependency: {e}'^)
+echo     exit(1^)
+) > temp_validate_env.py
 
-if errorlevel 1 (
+python temp_validate_env.py 2>nul
+set "validation_result=!errorlevel!"
+del temp_validate_env.py 2>nul
+
+if not !validation_result! == 0 (
     call :log_warning "Some trading dependencies missing, attempting recovery..."
     call :install_essential_packages
 )
