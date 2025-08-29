@@ -369,7 +369,8 @@ set "missing_models="
 call :log_info "Verifying models for symbol: %symbol%"
 
 for %%m in (!MODEL_TYPES!) do (
-    if exist "models\%%m\!symbol!" (
+    call :find_model_for_symbol_and_type "!symbol!" "%%m"
+    if not errorlevel 1 (
         set /a models_found=!models_found!+1
         call :log_info "  Found %%m model for !symbol!"
     ) else (
@@ -382,13 +383,57 @@ for %%m in (!MODEL_TYPES!) do (
     )
 )
 
-if !models_found! LSS 2 (
-    call :log_warning "Symbol !symbol! has insufficient models (!models_found!/3). Missing: !missing_models!"
+if !models_found! LSS 1 (
+    call :log_warning "Symbol !symbol! has no models (!models_found!/3). Missing: !missing_models!"
     exit /b 1
 )
 
-call :log_success "Symbol !symbol! has sufficient models (!models_found!/3)"
+call :log_success "Symbol !symbol! has !models_found! model(s) available"
 exit /b 0
+
+:find_model_for_symbol_and_type
+set "check_symbol=%~1"
+set "check_model_type=%~2"
+
+REM Enhanced model search with multiple fallback strategies
+REM 1. Standard directory structure: models/model_type/symbol/
+if exist "models\%check_model_type%\!check_symbol!" (
+    for %%f in ("models\%check_model_type%\!check_symbol!\*") do (
+        if exist "%%f" exit /b 0
+    )
+)
+
+REM 2. Flat structure with various naming patterns
+for %%e in (pkl pt joblib zip) do (
+    if exist "models\%check_model_type%_!check_symbol!.%%e" exit /b 0
+    if exist "models\%check_model_type%\%check_model_type%_!check_symbol!.%%e" exit /b 0
+    if exist "models\best_wf_%check_model_type%_!check_symbol!.%%e" exit /b 0
+    if exist "models\%check_model_type%\best_wf_%check_model_type%_!check_symbol!.%%e" exit /b 0
+    if exist "models\!check_symbol!_%check_model_type%.%%e" exit /b 0
+)
+
+REM 3. Search in subdirectories for any model files
+if exist "models\%check_model_type%" (
+    for /r "models\%check_model_type%" %%f in (*!check_symbol!*) do (
+        if exist "%%f" exit /b 0
+    )
+)
+
+REM 4. Fallback directories
+for %%d in (imported_models packaged_models legacy_models) do (
+    if exist "%%d" (
+        for %%e in (pkl pt joblib zip) do (
+            if exist "%%d\%check_model_type%_!check_symbol!.%%e" exit /b 0
+            if exist "%%d\%check_model_type%\!check_symbol!" (
+                for %%f in ("%%d\%check_model_type%\!check_symbol!\*") do (
+                    if exist "%%f" exit /b 0
+                )
+            )
+        )
+    )
+)
+
+exit /b 1
 
 :initialize_trading_system
 call :log_info "Initializing comprehensive trading system..."
