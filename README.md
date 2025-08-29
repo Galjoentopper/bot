@@ -26,9 +26,21 @@ import_models.bat
 deploy_trading.bat
 ```
 
+### Linux Trading Environment (Alternative)
+
+```bash
+# 3. Import models (extract deployment package)
+chmod +x import_models.sh
+./import_models.sh
+
+# 4. Start live trading
+chmod +x deploy_trading.sh
+./deploy_trading.sh
+```
+
 ## 📋 System Components
 
-The system consists of exactly **5 core components**:
+The system consists of **7 core components** with full cross-platform support:
 
 ### 1. **fetch_training_data.sh** (Linux)
 - Automatically downloads and preprocesses datasets
@@ -48,13 +60,13 @@ The system consists of exactly **5 core components**:
 - Cross-platform compatible format
 - Includes metadata and configuration
 
-### 4. **import_models.bat** (Windows)
+### 4. **import_models.bat** (Windows) / **import_models.sh** (Linux)
 - Extracts and configures imported models
 - Robust error handling and validation
 - Automatic directory structure creation
 - Progress indicators and dependency checking
 
-### 5. **deploy_trading.bat** (Windows)
+### 5. **deploy_trading.bat** (Windows) / **deploy_trading.sh** (Linux)
 - Initializes and starts live trading system
 - Automatic model validation and loading
 - Real-time monitoring and logging
