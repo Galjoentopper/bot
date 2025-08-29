@@ -331,7 +331,7 @@ class PPOTrainer:
                 )
                 # In gymnasium, set seeds via reset(seed=...)
                 try:
-                    self.env.reset(seed=env_seed)
+                    self.env.reset(seed=env_seed)  # type: ignore[attr-defined]
                     logger.info(f"Applied VecNormalize wrapper and set seed {env_seed}")
                 except Exception:
                     pass
@@ -339,7 +339,7 @@ class PPOTrainer:
                 pass
         # Ensure seeding even if VecNormalize not applied
         try:
-            self.env.reset(seed=env_seed)
+            self.env.reset(seed=env_seed)  # type: ignore[attr-defined]
             logger.info(f"Set vector environment seed {env_seed}")
         except Exception:
             pass
@@ -354,7 +354,7 @@ class PPOTrainer:
             # Use a single evaluation env; seed via reset rather than constructor
             self.eval_env = DummyVecEnv([make_eval_env])
             try:
-                self.eval_env.reset(seed=env_seed + 1000)
+                self.eval_env.reset(seed=env_seed + 1000)  # type: ignore[attr-defined]
                 logger.info(f"Created evaluation environment with seed {env_seed + 1000}")
             except Exception:
                 logger.info("Created evaluation environment")
@@ -824,16 +824,35 @@ class PPOTrainer:
             import json
             if os.path.exists(metadata_path):
                 with open(metadata_path, 'r') as f:
-                    metadata = json.load(f)
-                
-                # Restore feature information
-                trainer.feature_names = metadata.get('feature_names', [])
-                trainer.observation_shape = tuple(metadata['observation_shape']) if metadata.get('observation_shape') else None
-                trainer.action_space_info = metadata.get('action_space_info')
-                trainer.input_size = metadata.get('input_size')
-                trainer.feature_count = metadata.get('feature_count')
-                trainer.vecnormalize_path = metadata.get('vecnormalize_path')
-                
+                    metadata = json.load(f) or {}
+
+                # Defensive extraction with robust fallbacks
+                feature_names = metadata.get('feature_names') or []
+                if not isinstance(feature_names, list):
+                    feature_names = []
+                trainer.feature_names = feature_names
+
+                obs_shape = metadata.get('observation_shape') or None
+                if isinstance(obs_shape, (list, tuple)) and all(isinstance(x, int) for x in obs_shape):
+                    trainer.observation_shape = tuple(obs_shape)
+                else:
+                    trainer.observation_shape = None
+
+                action_info = metadata.get('action_space_info')
+                if isinstance(action_info, dict):
+                    trainer.action_space_info = action_info
+                else:
+                    trainer.action_space_info = None
+
+                trainer.input_size = metadata.get('input_size') if isinstance(metadata.get('input_size'), int) else None
+                trainer.feature_count = metadata.get('feature_count') if isinstance(metadata.get('feature_count'), int) else None
+
+                vec_path = metadata.get('vecnormalize_path')
+                if isinstance(vec_path, str) and os.path.exists(vec_path):
+                    trainer.vecnormalize_path = vec_path
+                else:
+                    trainer.vecnormalize_path = None
+
                 logger.info(f"PPO metadata loaded from {metadata_path}")
                 logger.info(f"Restored {len(trainer.feature_names)} feature names")
                 if trainer.observation_shape:
@@ -951,11 +970,11 @@ class PPOTrainer:
             try:
                 # Close SubprocVecEnv properly
                 if hasattr(self.env, 'close'):
-                    self.env.close()
+                    self.env.close()  # type: ignore[attr-defined]
                     logger.info("Training environment closed")
                 # If it's a VecNormalize wrapper, close the underlying env too
-                if hasattr(self.env, 'venv') and hasattr(self.env.venv, 'close'):
-                    self.env.venv.close()
+                if hasattr(self.env, 'venv') and hasattr(self.env.venv, 'close'):  # type: ignore[attr-defined]
+                    self.env.venv.close()  # type: ignore[attr-defined]
                     logger.info("Underlying training environment closed")
             except Exception as e:
                 logger.warning(f"Error closing training environment: {e}")
@@ -966,11 +985,11 @@ class PPOTrainer:
         if self.eval_env is not None:
             try:
                 if hasattr(self.eval_env, 'close'):
-                    self.eval_env.close()
+                    self.eval_env.close()  # type: ignore[attr-defined]
                     logger.info("Evaluation environment closed")
                 # If it's a VecNormalize wrapper, close the underlying env too
-                if hasattr(self.eval_env, 'venv') and hasattr(self.eval_env.venv, 'close'):
-                    self.eval_env.venv.close()
+                if hasattr(self.eval_env, 'venv') and hasattr(self.eval_env.venv, 'close'):  # type: ignore[attr-defined]
+                    self.eval_env.venv.close()  # type: ignore[attr-defined]
                     logger.info("Underlying evaluation environment closed")
             except Exception as e:
                 logger.warning(f"Error closing evaluation environment: {e}")

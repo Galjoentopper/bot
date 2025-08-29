@@ -35,7 +35,7 @@ class ModelMetadata:
 class MetadataManager:
     """Manages model metadata lifecycle and hygiene processes."""
     
-    def __init__(self, models_dir: str, config: Dict[str, Any] = None):
+    def __init__(self, models_dir: str, config: Optional[Dict[str, Any]] = None):
         self.models_dir = Path(models_dir)
         self.config = config or {}
         self.logger = logging.getLogger(__name__)
@@ -47,45 +47,41 @@ class MetadataManager:
         
     def regenerate_all_metadata(self) -> Dict[str, Any]:
         """Regenerate metadata for all models in the models directory."""
-        results = {
+        results: Dict[str, Any] = {
             'processed': 0,
             'updated': 0,
             'errors': [],
             'warnings': []
         }
-        
-        self.logger.info("Starting metadata regeneration for all models")
-        
-        # Find all model files
-        model_files = []
+
+        self.logger.debug("Starting metadata regeneration for all models")
+
+        # Gather model files
+        model_files: List[Path] = []
         for pattern in ['*.pkl', '*.joblib', '*.zip']:
             model_files.extend(self.models_dir.rglob(pattern))
-        
+
         for model_file in model_files:
             try:
                 results['processed'] += 1
-                
-                # Skip if not a model file
                 if self._is_metadata_file(model_file):
                     continue
-                    
-                # Generate metadata
                 metadata = self._generate_metadata_for_file(model_file)
                 if metadata:
-                    # Save metadata
                     metadata_path = self._get_metadata_path(model_file)
                     self._save_metadata(metadata, metadata_path)
                     results['updated'] += 1
-                    self.logger.info(f"Updated metadata for {model_file.name}")
+                    self.logger.debug(f"Updated metadata for {model_file.name}")
                 else:
                     results['warnings'].append(f"Could not generate metadata for {model_file}")
-                    
             except Exception as e:
-                error_msg = f"Error processing {model_file}: {str(e)}"
+                error_msg = f"Error processing {model_file}: {e}"
                 results['errors'].append(error_msg)
                 self.logger.error(error_msg)
-        
-        self.logger.info(f"Metadata regeneration complete: {results['updated']}/{results['processed']} updated")
+
+        self.logger.info(
+            f"Metadata regeneration summary: {results['updated']}/{results['processed']} updated (details at debug level)"
+        )
         return results
     
     def validate_metadata_hygiene(self) -> Dict[str, Any]:
@@ -327,6 +323,6 @@ class MetadataManager:
         except Exception:
             return 0
 
-def create_metadata_manager(models_dir: str, config: Dict[str, Any] = None) -> MetadataManager:
+def create_metadata_manager(models_dir: str, config: Optional[Dict[str, Any]] = None) -> MetadataManager:
     """Create a metadata manager instance."""
     return MetadataManager(models_dir, config)

@@ -78,13 +78,13 @@ class ModelMetadata:
 class EnhancedUnifiedPaperTrader:
     """Enterprise-ready paper trader with robust model loading and health monitoring."""
     
-    def __init__(self, config_path: str = None, models_dir: str = 'models', 
-                 symbols: List[str] = None, models: List[str] = None, 
-                 show_available_mode: bool = False):
+    def __init__(self, config_path: Optional[str] = None, models_dir: str = 'models', 
+                 symbols: Optional[List[str]] = None, models: Optional[List[str]] = None, 
+                 show_available_mode: bool = False, warm_start: bool = False):
         """Initialize the enhanced trader."""
         # Use auto-detection if no config path specified, otherwise use explicit path
         if config_path:
-            self.config = ConfigLoader(config_path).config
+            self.config = ConfigLoader(str(config_path)).config
         else:
             self.config = ConfigLoader().config
         
@@ -102,8 +102,19 @@ class EnhancedUnifiedPaperTrader:
         self.logger.logger.info(f"Available model types: {sorted(available_models)}")
         
         # Set symbols from parameters if provided, otherwise use config, then filter by availability
-        if symbols:
-            requested_symbols = symbols
+        if symbols is not None:
+            # symbols can arrive already tokenized by argparse (nargs='+'), but if the batch script
+            # passed a single comma-separated string (due to earlier formatting) we normalize here.
+            normalized: List[str] = []
+            for s in symbols:
+                if isinstance(s, str) and ',' in s:
+                    for part in s.split(','):
+                        part = part.strip()
+                        if part:
+                            normalized.append(part)
+                else:
+                    normalized.append(s)
+            requested_symbols = normalized
         else:
             # Extract symbols from config
             config_symbols = self.config.get('data_acquisition', {}).get('symbols', [])
@@ -120,8 +131,8 @@ class EnhancedUnifiedPaperTrader:
             self.logger.logger.warning(f"Excluded symbols without models: {sorted(missing_symbols)}")
         
         # Set models from parameters if provided, otherwise use config, then filter by availability
-        if models:
-            requested_models = models
+        if models is not None:
+            requested_models = list(models)
         else:
             # Extract models from config
             requested_models = self.config.get('training', {}).get('models', ['gru', 'lightgbm', 'ppo'])
@@ -156,11 +167,13 @@ class EnhancedUnifiedPaperTrader:
         # Initialize Telegram notifier using proper configuration method
         self.telegram_notifier = TelegramNotifier.from_config(self.config)
         self.logger.logger.info(f"Telegram notifier initialized: enabled={getattr(self.telegram_notifier, 'enabled', False)}")
-        
-        # Model management
+
+        # Model management (ensure proper indentation within __init__)
         self.model_packager = ModelPackager()
+        # Cache for recently fetched market data (symbol -> DataFrame or dict)
+        self._market_data_cache = {}
         self.transfer_manager = ModelTransferManager()
-        
+
         # Validation system
         validation_config_dir = self.config.get('validation', {}).get('config_dir', './validation')
         self.validation_manager = create_validation_manager(
@@ -168,7 +181,7 @@ class EnhancedUnifiedPaperTrader:
             models_dir=str(self.models_dir),
             auto_start=True
         )
-        
+
         # Metadata management
         metadata_config = {
             'max_model_age_days': self.config.get('model_management', {}).get('max_age_days', 30),
@@ -179,7 +192,7 @@ class EnhancedUnifiedPaperTrader:
             models_dir=str(self.models_dir),
             config=metadata_config
         )
-        
+
         # Trading configuration - get symbols from parameters or data section or fallback to root symbols
         # self.symbols is already set and filtered earlier in the constructor; do not overwrite here.
         self.interval = self.config.get('interval', '30m')
@@ -211,30 +224,26 @@ class EnhancedUnifiedPaperTrader:
             self.vol_bounds = (float(bounds[0]), float(bounds[1]))
         except Exception:
             self.vol_bounds = (0.5, 2.0)
-        
-        # Model storage
-        self.models: Dict[str, Dict[str, Any]] = {}
-        self.model_metadata: Dict[str, Dict[str, ModelMetadata]] = {}
-        self.preprocessors: Dict[str, Any] = {}
-        self.symbol_feature_metadata: Dict[str, List[str]] = {}
-        
-        # Trading state
-        self.positions = {symbol: 0.0 for symbol in self.symbols}
-        self.balance = self.initial_balance
-        self.last_prices = {}
-        # Caching and performance tracking
-        self.data_cache = {}
-        self.cache_expiry = {}
-        self.cache_duration = 60  # seconds
-        self.performance_history = []
-        self.rejected_trades_count = 0
-        
-        # Data caching
-        self.data_cache = {}
-        self.cache_expiry = {}
-        self.cache_duration = 60  # seconds
-        
-        self.logger.logger.info(f"Enhanced trader initialized with ${self.initial_balance:,.2f}")
+    # Model storage
+    self.models = {}
+    self.model_metadata = {}
+    self.preprocessors = {}
+    self.symbol_feature_metadata = {}
+
+    # Trading state
+    self.positions = {symbol: 0.0 for symbol in self.symbols}
+    self.balance = self.initial_balance
+    self.last_prices = {}
+    # Caching and performance tracking
+    self.data_cache = {}
+    self.cache_expiry = {}
+    self.cache_duration = 60  # seconds
+    self.performance_history = []
+    self.rejected_trades_count = 0
+
+    # Warm start flag (skip heavy startup work when True)
+    self.warm_start = warm_start
+    self.logger.logger.info(f"Enhanced trader initialized with ${self.initial_balance:,.2f} (warm_start={self.warm_start})")
     
     def _discover_available_models(self) -> Tuple[List[str], List[str]]:
         """Discover available symbols and model types from the models directory structure."""
@@ -406,11 +415,12 @@ class EnhancedUnifiedPaperTrader:
     def load_all_models(self):
         """Load all models with enhanced fallback mechanisms."""
         self.logger.logger.info("Loading models with enhanced fallback mechanisms...")
-        
+        load_summary: Dict[str, Dict[str, str]] = {}
         for symbol in self.symbols:
             self.models[symbol] = {}
             self.model_metadata[symbol] = {}
             self.preprocessors[symbol] = {}
+            load_summary[symbol] = {}
             
             # Load each model type with multiple fallback sources
             for model_type in self.model_types:
@@ -428,12 +438,24 @@ class EnhancedUnifiedPaperTrader:
                     self.preprocessors[symbol][model_type] = preprocessor
                 else:
                     self.logger.logger.warning(f"Failed to load {model_type} model for {symbol}")
+                    load_summary[symbol][model_type] = 'missing'
             
             # Load feature metadata
             self._load_feature_metadata(symbol)
         
         total_models = sum(len(models) for models in self.models.values())
         self.logger.logger.info(f"Loaded {total_models} models across {len(self.symbols)} symbols")
+        # Aggregated per-symbol summary (task 5)
+        try:
+            for symbol in self.symbols:
+                loaded_types = sorted(list(self.models.get(symbol, {}).keys()))
+                missing_types = [mt for mt in self.model_types if mt not in loaded_types]
+                if missing_types:
+                    self.logger.logger.info(f"Model summary {symbol}: loaded={loaded_types} missing={missing_types}")
+                else:
+                    self.logger.logger.info(f"Model summary {symbol}: all {loaded_types} loaded")
+        except Exception:
+            pass
     
     def _load_models_for_symbol(self, symbol: str) -> Dict[str, Any]:
         """Load models for a specific symbol and return them."""
@@ -823,58 +845,69 @@ class EnhancedUnifiedPaperTrader:
         self.symbol_feature_metadata[symbol] = []
     
     async def get_market_data(self) -> dict:
-        """Get latest market data for all symbols."""
-        market_data = {}
-        
-        # Check cache first
+        """Get latest market data for all symbols with parallel fetching (task 4)."""
+        market_data: Dict[str, pd.DataFrame] = {}
         current_time = time.time()
+        # Cache short-circuit
         if self._has_cached_data(current_time):
             self.logger.logger.debug("Using cached market data")
             return self.data_cache.copy()
-        
-        # Fetch fresh data
+
+        # Prepare concurrent tasks (use thread executor because ccxt calls are blocking)
+        loop = asyncio.get_running_loop()
+        tasks = []
+        for symbol in self.symbols:
+            tasks.append(loop.run_in_executor(None, self._fetch_and_process_symbol_blocking, symbol))
         try:
-            for symbol in self.symbols:
-                try:
-                    self.logger.logger.info(f"Fetching {symbol} data from Binance API...")
-                    api_df = await self._fetch_data_from_binance_api(symbol, limit=300)
-                    
-                    if api_df is None or api_df.empty:
-                        self.logger.logger.warning(f"No data fetched from API for {symbol}")
-                        continue
-                    
-                    # Generate features
-                    df_with_features = self.feature_engine.generate_all_features(api_df)
-                    
-                    # Use current FeatureEngine output instead of outdated metadata
-                    # This ensures we always use the correct 113 features generated by FeatureEngine
-                    feature_names = self.feature_engine.get_feature_names(df_with_features)
-                    
-                    # Clean features
-                    df_with_features = self._clean_features_for_inference(df_with_features, symbol)
-                    
-                    if self._validate_market_data(df_with_features, symbol):
-                        market_data[symbol] = df_with_features
-                        self.last_prices[symbol] = df_with_features['close'].iloc[-1]
-                        self.logger.logger.info(
-                            f"Fetched {len(df_with_features)} records for {symbol} with {len(feature_names)} features"
-                        )
-                    else:
-                        self.logger.logger.warning(f"Invalid market data for {symbol}")
-                        
-                except Exception as e:
-                    self.logger.logger.error(f"Error processing data for {symbol}: {e}")
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for symbol, result in zip(self.symbols, results):
+                if isinstance(result, BaseException):
+                    self.logger.logger.error(f"Error fetching {symbol}: {result}")
                     continue
-        
+                if result is None:
+                    continue
+                if not isinstance(result, pd.DataFrame) or result.empty:
+                    continue
+                market_data[symbol] = result
+                try:
+                    self.last_prices[symbol] = float(result['close'].iloc[-1])
+                except Exception:
+                    pass
         except Exception as e:
-            self.logger.logger.error(f"Error in data pipeline: {e}")
+            self.logger.logger.error(f"Parallel market data fetch failed: {e}")
             return {}
-        
         # Update cache
         self.data_cache = market_data.copy()
         self.cache_expiry = {symbol: current_time + self.cache_duration for symbol in market_data}
-        
         return market_data
+
+    def _fetch_and_process_symbol_blocking(self, symbol: str) -> Optional[pd.DataFrame]:
+        """Blocking helper run in thread to fetch and process one symbol (task 4)."""
+        try:
+            # Reuse existing synchronous logic via internal async call executed in new loop
+            try:
+                # Create a temporary event loop for the async fetch function
+                import asyncio as _a
+                _loop = _a.new_event_loop()
+                _a.set_event_loop(_loop)
+                try:
+                    api_df = _loop.run_until_complete(self._fetch_data_from_binance_api(symbol, limit=300))
+                finally:
+                    _loop.close()
+            except Exception as e:
+                self.logger.logger.error(f"{symbol} API fetch error: {e}")
+                return None
+            if api_df is None or api_df.empty:
+                return None
+            df_with_features = self.feature_engine.generate_all_features(api_df)
+            df_with_features = self._clean_features_for_inference(df_with_features, symbol)
+            if not self._validate_market_data(df_with_features, symbol):
+                return None
+            self.logger.logger.info(f"Fetched {len(df_with_features)} records for {symbol} (parallel)")
+            return df_with_features
+        except Exception as e:
+            self.logger.logger.error(f"Error processing {symbol}: {e}")
+            return None
     
     def _has_cached_data(self, current_time: float) -> bool:
         """Check if we have valid cached data."""
@@ -1092,7 +1125,9 @@ class EnhancedUnifiedPaperTrader:
             except Exception as e:
                 self.logger.logger.error(f"Signal generation failed for {symbol}: {e}")
                 signals[symbol] = 0
-                self.logger.logger.info(f"Completed {symbol} (error) - signal: {signal}")
+                # signal may not be set if exception occurred before assignment
+                safe_signal = locals().get('signal', 0.0)
+                self.logger.logger.info(f"Completed {symbol} (error) - signal: {safe_signal}")
         
         self.logger.logger.info(f"Signal generation completed for all symbols: {signals}")
         return signals
@@ -1243,8 +1278,9 @@ class EnhancedUnifiedPaperTrader:
             # Calculate essential technical indicators (only 3 needed for PPO)
             if 'rsi' not in market_df.columns:
                 delta = market_df['close'].diff()
-                gain = delta.where(delta > 0, 0.0).rolling(window=14).mean()
-                loss = (-delta.where(delta < 0, 0.0)).rolling(window=14).mean()
+                delta_float = delta.astype(float)
+                gain = delta_float.where(delta_float > 0, 0.0).rolling(window=14).mean()
+                loss = (-delta_float.where(delta_float < 0, 0.0)).rolling(window=14).mean()
                 rs = gain / (loss + 1e-10)
                 market_df['rsi'] = 100 - (100 / (1 + rs))
                 market_df['rsi'] = market_df['rsi'].fillna(50.0)  # Neutral RSI
@@ -1352,8 +1388,26 @@ class EnhancedUnifiedPaperTrader:
             if not predictions:
                 return 0
             
-            # Get model weights from config
-            model_weights = self.model_weights
+            # Get model weights from config; dynamically renormalize for available models
+            requested_weights = self.model_weights
+            available_types = {mt for mt, _ in predictions}
+            # Filter to only weights for available model types and > 0
+            filtered = {k: v for k, v in requested_weights.items() if k in available_types and v > 0}
+            if not filtered:
+                # Fallback: equal weights
+                filtered = {mt: 1.0 for mt in available_types}
+                self.logger.logger.warning(
+                    f"No configured weights for available models {available_types}; using equal weights"
+                )
+            else:
+                # Renormalize to sum to 1.0
+                total_w = sum(filtered.values())
+                if total_w <= 0:
+                    filtered = {mt: 1.0 for mt in available_types}
+                    total_w = float(len(filtered))
+                filtered = {k: v / total_w for k, v in filtered.items()}
+            model_weights = filtered
+            self.logger.logger.debug(f"Dynamic model weights used: {model_weights}")
             
             # Calculate weighted average of predictions
             weighted_sum = 0.0
@@ -1535,9 +1589,9 @@ class EnhancedUnifiedPaperTrader:
         except Exception:
             pass
 
-    def run_trading_loop(self, align_to_candles: bool = True) -> None:
-        """Main trading loop: fetch -> signal -> trade -> sleep."""
-        self.logger.logger.info("Starting trading loop...")
+    def run_trading_loop_legacy(self, align_to_candles: bool = True) -> None:
+        """Legacy synchronous trading loop: fetch -> signal -> trade -> sleep."""
+        self.logger.logger.info("Starting legacy trading loop...")
         try:
             while True:
                 try:
@@ -1557,9 +1611,9 @@ class EnhancedUnifiedPaperTrader:
                 self.logger.logger.debug(f"Sleeping {sleep_s} seconds until next iteration...")
                 time.sleep(max(1, int(sleep_s)))
         except KeyboardInterrupt:
-            self.logger.logger.info("Trading loop stopped by user.")
+            self.logger.logger.info("Legacy trading loop stopped by user.")
         except Exception as e:
-            self.logger.logger.error(f"Trading loop error: {e}")
+            self.logger.logger.error(f"Legacy trading loop error: {e}")
 
     
     def _get_dynamic_threshold(self, symbol: str, df: pd.DataFrame) -> float:
@@ -1766,14 +1820,20 @@ class EnhancedUnifiedPaperTrader:
             return False
 
     async def run_trading_loop(self):
-        """Main trading loop"""
+        """Main trading loop with warm-start optimization (task 1)."""
         self.logger.logger.info("Starting Enhanced Unified Paper Trader...")
-        
-        # Run metadata hygiene on startup
-        self.run_metadata_hygiene()
-        
-        # Load all models
-        self.load_all_models()
+
+        if self.warm_start:
+            self.logger.logger.info("Warm start enabled: skipping metadata hygiene")
+        else:
+            # Run metadata hygiene on cold start
+            self.run_metadata_hygiene()
+
+        # Load models unless warm-start indicates to reuse already loaded ones
+        if not (self.warm_start and self.models):
+            self.load_all_models()
+        else:
+            self.logger.logger.info("Warm start: reusing already loaded models in memory")
         
         if not self.models:
             self.logger.logger.error("No models loaded. Exiting.")
@@ -1858,8 +1918,8 @@ class EnhancedUnifiedPaperTrader:
     # ==========================================
     
     def health_check(self) -> Dict[str, Any]:
-        """Perform comprehensive health check of the trading system."""
-        health_status = {
+        """Lightweight health check (does not reload models to reduce noise)."""
+        status: Dict[str, Any] = {
             'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
             'overall_status': 'healthy',
             'components': {},
@@ -1867,72 +1927,74 @@ class EnhancedUnifiedPaperTrader:
             'warnings': [],
             'errors': []
         }
-        
         try:
-            # Check model availability
-            total_models = 0
-            failed_models = 0
+            expected = len(self.symbols) * len(self.model_types)
+            available = 0
+            degraded_symbols: List[str] = []
             for symbol in self.symbols:
-                models = self._load_models_for_symbol(symbol)
-                total_models += len(self.model_types)
-                failed_models += len(self.model_types) - len(models)
-            
-            health_status['components']['models'] = {
-                'status': 'healthy' if failed_models == 0 else 'degraded',
-                'total_expected': total_models,
-                'available': total_models - failed_models,
-                'failed': failed_models
+                symbol_available = 0
+                for mt in self.model_types:
+                    if symbol in self.models and mt in self.models[symbol]:
+                        symbol_available += 1
+                    elif self._model_exists(symbol, mt):
+                        symbol_available += 1
+                available += symbol_available
+                if symbol_available < len(self.model_types):
+                    degraded_symbols.append(symbol)
+            missing = expected - available
+            status['components']['models'] = {
+                'status': 'healthy' if missing == 0 else 'degraded',
+                'total_expected': expected,
+                'available': available,
+                'failed': missing,
+                'degraded_symbols': degraded_symbols
             }
-            
-            # Check configuration
-            health_status['components']['configuration'] = {
+            status['components']['configuration'] = {
                 'status': 'healthy',
                 'symbols_count': len(self.symbols),
                 'model_types_count': len(self.model_types)
             }
-            
-            # Check directory structure
             required_dirs = ['models', 'logs', 'data']
             missing_dirs = [d for d in required_dirs if not Path(d).exists()]
-            health_status['components']['directories'] = {
+            status['components']['directories'] = {
                 'status': 'healthy' if not missing_dirs else 'warning',
                 'missing': missing_dirs
             }
-            
-            # Performance metrics
-            health_status['metrics'] = {
+            status['metrics'] = {
                 'memory_usage_mb': self._get_memory_usage(),
-                'models_loaded': total_models - failed_models,
+                'models_loaded': available,
                 'uptime_seconds': time.time() - getattr(self, '_start_time', time.time())
             }
-            
-            # Overall status determination
-            if failed_models > 0:
-                health_status['overall_status'] = 'degraded'
-                health_status['warnings'].append(f"{failed_models} models failed to load")
-            
+            if missing > 0:
+                status['overall_status'] = 'degraded'
+                status['warnings'].append(f"{missing} models missing (symbols: {degraded_symbols})")
             if missing_dirs:
-                health_status['warnings'].append(f"Missing directories: {missing_dirs}")
-            
-            self.logger.logger.info(f"Health check completed: {health_status['overall_status']}")
-            return health_status
-            
+                status['warnings'].append(f"Missing directories: {missing_dirs}")
+            self.logger.logger.info(f"Health check completed: {status['overall_status']}")
+            return status
         except Exception as e:
-            health_status['overall_status'] = 'critical'
-            health_status['errors'].append(f"Health check failed: {str(e)}")
+            status['overall_status'] = 'critical'
+            status['errors'].append(f"Health check failed: {e}")
             self.logger.logger.error(f"Health check failed: {e}")
-            return health_status
-    
-    def _get_memory_usage(self) -> float:
-        """Get current memory usage in MB."""
-        try:
-            import psutil
-            process = psutil.Process()
-            return process.memory_info().rss / 1024 / 1024
-        except ImportError:
-            return 0.0
-        except Exception:
-            return 0.0
+            return status
+
+    def _model_exists(self, symbol: str, model_type: str) -> bool:
+        """Check on-disk existence of model artifacts without loading them."""
+        base = self.models_dir / model_type / symbol
+        if not base.exists():
+            return False
+        patterns = {
+            'gru': ['model.pth', '*.pth', '*.pt'],
+            'lightgbm': ['model.pkl', '*.pkl', '*.joblib'],
+            'ppo': ['model.zip', '*.zip']
+        }
+        for pat in patterns.get(model_type, ['*']):
+            if list(base.glob(pat)):
+                return True
+            for sub in base.glob('*'):
+                if sub.is_dir() and list(sub.glob(pat)):
+                    return True
+        return False
     
     def auto_recovery(self) -> bool:
         """Attempt automatic recovery from common issues."""
@@ -2013,7 +2075,7 @@ CONFIGURATION:
 - Trading Symbols: {', '.join(self.symbols)}
 - Model Types: {', '.join(self.model_types)}
 - Models Directory: {self.models_dir}
-- Configuration: {getattr(self, 'config_path', 'auto-detected')}
+- Configuration: {getattr(self, 'config_path', 'auto-detect')}
 
 COMPONENT STATUS:
 """
@@ -2048,7 +2110,7 @@ MODEL STATUS:
         
         return report
     
-    def save_deployment_report(self, filename: str = None) -> str:
+    def save_deployment_report(self, filename: Optional[str] = None) -> str:
         """Save deployment report to file."""
         if filename is None:
             timestamp = time.strftime('%Y%m%d_%H%M%S')
@@ -2115,119 +2177,10 @@ MODEL STATUS:
             
         except Exception as e:
             self.logger.logger.error(f"Periodic health check failed: {e}")
-
-
-def parse_arguments():
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description='Enhanced Unified Trading Script')
-    parser.add_argument('--config', type=str, default=None,
-                       help='Path to configuration file (default: auto-detect)')
-    parser.add_argument('--models-dir', type=str, default='models',
-                       help='Path to models directory (default: models)')
-    parser.add_argument('--symbols', type=str, nargs='+', default=None,
-                       help='Trading symbols to use (default: from config)')
-    parser.add_argument('--models', type=str, nargs='+', default=None,
-                       help='Model types to use (default: from config)')
-    parser.add_argument('--test-mode', action='store_true',
-                       help='Run in test mode (validate configuration and models)')
-    parser.add_argument('--single-cycle', action='store_true',
-                       help='Run a single trading cycle instead of continuous loop')
-    parser.add_argument('--show-available', action='store_true',
-                       help='Show available models and exit')
-    return parser.parse_args()
-
-
-async def main():
-    """Main function to run the enhanced trader."""
-    try:
-        args = parse_arguments()
-        
-        trader = EnhancedUnifiedPaperTrader(
-            config_path=args.config,
-            models_dir=args.models_dir,
-            symbols=args.symbols,
-            models=args.models,
-            show_available_mode=args.show_available
-        )
-        
-        if args.show_available:
-            # Show available models and exit
-            trader.show_available_models()
-            return 0
-        
-        if args.test_mode:
-            # Test mode: validate configuration and models only
-            trader.logger.logger.info("Running in test mode - validating configuration and models")
-            
-            # Enable enterprise monitoring for test
-            trader.enable_enterprise_monitoring()
-            
-            # Report discovered models
-            trader.logger.logger.info("=== MODEL DISCOVERY REPORT ===")
-            trader.logger.logger.info(f"Models directory: {trader.models_dir}")
-            trader.logger.logger.info(f"Available symbols: {trader.symbols}")
-            trader.logger.logger.info(f"Available model types: {trader.model_types}")
-            
-            # Perform health check
-            health_status = trader.health_check()
-            trader.logger.logger.info("=== HEALTH CHECK RESULTS ===")
-            trader.logger.logger.info(f"Overall status: {health_status['overall_status']}")
-            
-            # Test model loading for each symbol
-            total_models_found = 0
-            for symbol in trader.symbols:
-                trader.logger.logger.info(f"\n--- Testing models for {symbol} ---")
-                models = trader._load_models_for_symbol(symbol)
-                if models:
-                    trader.logger.logger.info(f"✓ Found models for {symbol}: {list(models.keys())}")
-                    total_models_found += len(models)
-                    
-                    # Test each model type
-                    for model_type, model in models.items():
-                        if model:
-                            trader.logger.logger.info(f"  ✓ {model_type}: Model loaded successfully")
-                        else:
-                            trader.logger.logger.warning(f"  ✗ {model_type}: Model failed to load")
-                else:
-                    trader.logger.logger.warning(f"✗ No models found for {symbol}")
-            
-            # Generate and save deployment report
-            report_filename = trader.save_deployment_report()
-            trader.logger.logger.info(f"Deployment report saved to: {report_filename}")
-            
-            trader.logger.logger.info(f"\n=== SUMMARY ===")
-            trader.logger.logger.info(f"Total symbols with models: {len(trader.symbols)}")
-            trader.logger.logger.info(f"Total models loaded: {total_models_found}")
-            trader.logger.logger.info(f"Health status: {health_status['overall_status']}")
-            
-            if total_models_found > 0:
-                trader.logger.logger.info("✓ Test mode completed successfully - models are available")
-                return 0
-            else:
-                trader.logger.logger.error("✗ Test mode failed - no models could be loaded")
-                return 1
-        
-        if args.single_cycle:
-            # Single cycle mode: run once for each symbol
-            trader.logger.logger.info("Running in single cycle mode")
-            for symbol in trader.symbols:
-                trader.logger.logger.info(f"Running single cycle for {symbol}")
-                # Here you would implement a single trading cycle
-                # For now, just validate that models can be loaded
-                models = trader._load_models_for_symbol(symbol)
-                if models:
-                    trader.logger.logger.info(f"Single cycle completed for {symbol}")
-                else:
-                    trader.logger.logger.warning(f"Could not run cycle for {symbol} - no models available")
-            return 0
-        
-        # Normal mode: continuous trading loop
-        await trader.run_trading_loop()
-    except Exception as e:
-        print(f"Failed to start trader: {e}")
-        return 1
-    return 0
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    
+    def _get_memory_usage(self) -> float:
+        try:
+            import psutil
+            return psutil.Process().memory_info().rss / 1024 / 1024
+        except Exception:
+            return 0.0

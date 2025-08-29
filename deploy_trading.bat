@@ -34,7 +34,8 @@ echo [%date% %time%] Error tracking log initialized > "%ERROR_LOG%"
 
 REM Initialize CSV report with headers
 if not exist "%TRADES_CSV%" (
-    echo Timestamp,Symbol,TradeType,Quantity,Price,OrderStatus,Notes,ModelUsed,Confidence,Balance > "%TRADES_CSV%"
+    REM Added TradeID column (optional) and corrected header ordering (Symbol retained second)
+    echo Timestamp,TradeID,Symbol,TradeType,Quantity,Price,OrderStatus,Notes,ModelUsed,Confidence,Balance > "%TRADES_CSV%"
 )
 
 call :log_info "Enhanced automated trading system deployment started"
@@ -103,10 +104,12 @@ echo [%date% %time%] [ERROR] %~1 >> "%ERROR_LOG%"
 exit /b 0
 
 :log_trade
-REM Parameters: symbol, trade_type, quantity, price, status, notes, model, confidence, balance
+REM Parameters: trade_id, symbol, trade_type, quantity, price, status, notes, model, confidence, balance
 set "timestamp=%date% %time%"
-echo %timestamp%,%~1,%~2,%~3,%~4,%~5,%~6,%~7,%~8,%~9 >> "%TRADES_CSV%"
-call :log_info "Trade logged: %~1 %~2 %~3 @ %~4 - Status: %~5"
+set "trade_id=%~1"
+REM Shift remaining parameters (symbol now %2 etc.)
+echo %timestamp%,%trade_id%,%~2,%~3,%~4,%~5,%~6,%~7,%~8,%~9 >> "%TRADES_CSV%"
+call :log_info "Trade logged: %~2 %~3 %~4 @ %~5 - Status: %~6 (ID=%trade_id%)"
 exit /b 0
 
 REM ==========================================
@@ -346,6 +349,8 @@ if not exist "models" (
 
 set "VERIFIED_SYMBOLS="
 set "MODEL_TYPES=gru lightgbm ppo"
+REM Track per-model-type availability to allow degraded operation later
+set "AVAILABLE_MODEL_TYPES="
 
 for %%s in (!VALID_SYMBOLS!) do (
     call :verify_symbol_models "%%s"
@@ -355,6 +360,8 @@ for %%s in (!VALID_SYMBOLS!) do (
         ) else (
             set "VERIFIED_SYMBOLS=!VERIFIED_SYMBOLS!,%%s"
         )
+    ) else (
+        call :log_warning "Excluding symbol %%s due to missing models"
     )
 )
 
@@ -370,6 +377,7 @@ exit /b 0
 set "symbol=%~1"
 set "models_found=0"
 set "missing_models="
+set "found_types="
 
 call :log_info "Verifying models for symbol: %symbol%"
 
@@ -377,6 +385,7 @@ for %%m in (!MODEL_TYPES!) do (
     call :find_model_for_symbol_and_type "!symbol!" "%%m"
     if not errorlevel 1 (
         set /a models_found=!models_found!+1
+        if "!found_types!"=="" (set "found_types=%%m") else (set "found_types=!found_types!,%%m")
         call :log_info "  Found %%m model for !symbol!"
     ) else (
         if "!missing_models!"=="" (
@@ -393,6 +402,11 @@ if !models_found! LSS 1 (
     exit /b 1
 )
 
+REM Record globally which model types are present at least somewhere
+for %%t in (!found_types!) do (
+    echo !AVAILABLE_MODEL_TYPES! | find /i "%%t" >nul || set "AVAILABLE_MODEL_TYPES=!AVAILABLE_MODEL_TYPES! %%t"
+)
+
 call :log_success "Symbol !symbol! has !models_found! model(s) available"
 exit /b 0
 
@@ -403,8 +417,20 @@ set "check_model_type=%~2"
 REM Enhanced model search with multiple fallback strategies
 REM 1. Standard directory structure: models/model_type/symbol/
 if exist "models\%check_model_type%\!check_symbol!" (
-    for %%f in ("models\%check_model_type%\!check_symbol!\*") do (
+    REM Look for direct files OR one level deeper (timestamped directories)
+    for %%f in ("models\%check_model_type%\!check_symbol!\*.pkl" "models\%check_model_type%\!check_symbol!\*.pt" "models\%check_model_type%\!check_symbol!\*.pth" "models\%check_model_type%\!check_symbol!\*.zip" "models\%check_model_type%\!check_symbol!\*.joblib") do (
         if exist "%%f" exit /b 0
+    )
+    for /d %%d in ("models\%check_model_type%\!check_symbol!\*") do (
+        for %%f in ("%%d\*.pkl" "%%d\*.pt" "%%d\*.pth" "%%d\*.zip" "%%d\*.joblib") do (
+            if exist "%%f" exit /b 0
+        )
+        REM One more nested level (e.g., model_type\symbol\model_type\timestamp\file)
+        for /d %%e in ("%%d\*") do (
+            for %%g in ("%%e\*.pkl" "%%e\*.pt" "%%e\*.pth" "%%e\*.zip" "%%e\*.joblib") do (
+                if exist "%%g" exit /b 0
+            )
+        )
     )
 )
 
@@ -517,14 +543,16 @@ exit /b 0
 call :log_info "Starting unified continuous trading for all symbols: %VERIFIED_SYMBOLS%"
 
 REM Execute unified continuous trading (let it run indefinitely)
-python "%TRADER_SCRIPT%" --symbols %VERIFIED_SYMBOLS% --config "%CONFIG_FILE%" 2>temp_error.log
+REM Normalize VERIFIED_SYMBOLS (comma-separated) to space-delimited for argparse nargs+
+set "SYMBOL_ARGS=%VERIFIED_SYMBOLS:,= %"
+python "%TRADER_SCRIPT%" --symbols %SYMBOL_ARGS% --config "%CONFIG_FILE%" 2>temp_error.log
 set "trade_result=%errorlevel%"
 
 if %trade_result% EQU 0 (
     call :log_success "Unified continuous trading session completed"
     
     REM Log trading session end
-    call :log_trade "ALL_SYMBOLS" "CONTINUOUS_SESSION_END" "N/A" "N/A" "SUCCESS" "Continuous trading session ended normally" "ENSEMBLE" "N/A" "N/A"
+    call :log_trade "SESSION" "ALL_SYMBOLS" "CONTINUOUS_SESSION_END" "N/A" "N/A" "SUCCESS" "Continuous trading session ended normally" "ENSEMBLE" "N/A" "N/A"
     
     if exist temp_error.log del temp_error.log
     exit /b 0
@@ -539,7 +567,7 @@ if %trade_result% EQU 0 (
     call :log_error "Unified continuous trading failed: %error_msg%"
     
     REM Log failed trading session
-    call :log_trade "ALL_SYMBOLS" "CONTINUOUS_SESSION_FAILED" "N/A" "N/A" "ERROR" "Continuous trading failed: %error_msg%" "N/A" "N/A" "N/A"
+    call :log_trade "SESSION" "ALL_SYMBOLS" "CONTINUOUS_SESSION_FAILED" "N/A" "N/A" "ERROR" "Continuous trading failed: %error_msg%" "N/A" "N/A" "N/A"
     
     exit /b 1
 )

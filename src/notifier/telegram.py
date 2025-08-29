@@ -21,11 +21,10 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class TelegramNotifier:
-    """
-    Telegram notification system for trading bot.
-    """
+    """Telegram notification system with async queue, retry & rate limiting."""
     
-    def __init__(self, bot_token: str, chat_id: str, enabled: bool = True):
+    def __init__(self, bot_token: str, chat_id: str, enabled: bool = True,
+                 rate_limit_per_sec: float = 1.0, max_retries: int = 3):
         """
         Initialize Telegram notifier.
         
@@ -44,10 +43,28 @@ class TelegramNotifier:
         self.enabled = enabled and bool(bot_token) and bool(chat_id)
         
         if self.enabled:
-            self.bot = Bot(token=bot_token)
+            try:
+                self.bot = Bot(token=bot_token)  # type: ignore
+            except Exception as e:
+                logger.warning(f"Failed to init Bot instance: {e}; disabling Telegram")
+                self.bot = None
+                self.enabled = False
+                return
             logger.info("Telegram notifier initialized")
+            # Async queue infrastructure
+            self._queue: asyncio.Queue = asyncio.Queue()
+            self._worker_task: Optional[asyncio.Task] = None
+            self._stop = False
+            self._rate_limit_per_sec = max(rate_limit_per_sec, 0.1)
+            self._min_interval = 1.0 / self._rate_limit_per_sec
+            self._last_send_ts: float = 0.0
+            self._max_retries = max_retries
+            self._start_worker_if_loop()
         else:
             self.bot = None
+            self._queue = asyncio.Queue()
+            self._worker_task = None
+            self._stop = True
             logger.warning("Telegram notifier disabled - missing token or chat_id")
     
     async def send_message(self, message: str, parse_mode: str = 'HTML') -> bool:
@@ -65,21 +82,28 @@ class TelegramNotifier:
             logger.debug(f"Telegram disabled - would send: {message}")
             return False
         
-        try:
-            await self.bot.send_message(
-                chat_id=self.chat_id,
-                text=message,
-                parse_mode=parse_mode
-            )
-            logger.debug("Telegram message sent successfully")
-            return True
-            
-        except TelegramError as e:
-            logger.error(f"Failed to send Telegram message: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error sending Telegram message: {e}")
-            return False
+        # Rate limiting spacing
+        now = asyncio.get_event_loop().time()
+        delay = self._min_interval - (now - self._last_send_ts)
+        if delay > 0:
+            await asyncio.sleep(delay)
+        attempt = 0
+        while attempt < self._max_retries:
+            try:
+                await self.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=message,
+                    parse_mode=parse_mode
+                )
+                self._last_send_ts = asyncio.get_event_loop().time()
+                logger.debug("Telegram message sent successfully")
+                return True
+            except Exception as e:  # Broad catch (TelegramError may be missing when library absent)
+                attempt += 1
+                logger.warning(f"Telegram send attempt {attempt} failed: {e}")
+                await asyncio.sleep(min(2 ** attempt, 10))
+        logger.error("All Telegram send attempts failed")
+        return False
     
     def send_message_sync(self, message: str, parse_mode: str = 'HTML') -> bool:
         """
@@ -94,10 +118,62 @@ class TelegramNotifier:
         """
         try:
             loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Fallback to enqueue if running loop
+                if self._queue is not None:
+                    loop.create_task(self.enqueue_message(message, parse_mode=parse_mode))
+                    return True
+                return False
             return loop.run_until_complete(self.send_message(message, parse_mode))
         except RuntimeError:
-            # No event loop running, create a new one
             return asyncio.run(self.send_message(message, parse_mode))
+
+    async def enqueue_message(self, message: str, parse_mode: str = 'HTML') -> bool:
+        """Enqueue message for background delivery."""
+        if not self.enabled or self._queue is None:
+            return False
+        try:
+            await self._queue.put((message, parse_mode))
+            return True
+        except Exception:
+            return False
+
+    def _start_worker_if_loop(self):
+        """Start background worker if there's an active loop."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running() and self._queue and not self._worker_task:
+                self._worker_task = loop.create_task(self._worker())
+        except RuntimeError:
+            # No loop yet; worker will start on first enqueue when loop is running
+            pass
+
+    async def _worker(self):
+        """Background worker draining queue with graceful shutdown."""
+        while not self._stop:
+            try:
+                message, parse_mode = await self._queue.get()
+                await self.send_message(message, parse_mode=parse_mode)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"Telegram worker error: {e}")
+            finally:
+                try:
+                    self._queue.task_done()
+                except Exception:
+                    pass
+        logger.info("Telegram notifier worker stopped")
+
+    async def stop(self):
+        """Stop background worker."""
+        self._stop = True
+        if self._worker_task:
+            self._worker_task.cancel()
+            try:
+                await self._worker_task
+            except Exception:
+                pass
     
     async def send_trade_notification(
         self,
@@ -418,13 +494,19 @@ Telegram notifications are working correctly!
         Returns:
             TelegramNotifier instance
         """
-        telegram_config = config.get('notifications', {}).get('telegram', {})
-        
-        bot_token = telegram_config.get('bot_token') or os.getenv('TELEGRAM_BOT_TOKEN')
-        chat_id = telegram_config.get('chat_id') or os.getenv('TELEGRAM_CHAT_ID')
+        telegram_config = config.get('notifications', {}).get('telegram', {}) or {}
+        bot_token = telegram_config.get('bot_token') or os.getenv('TELEGRAM_BOT_TOKEN') or ""
+        chat_id = telegram_config.get('chat_id') or os.getenv('TELEGRAM_CHAT_ID') or ""
         enabled = telegram_config.get('enabled', True)
-        
-        return cls(bot_token=bot_token, chat_id=chat_id, enabled=enabled)
+        rate_limit = telegram_config.get('rate_limit_per_sec', 1.0)
+        max_retries = telegram_config.get('max_retries', 3)
+        return cls(
+            bot_token=bot_token,
+            chat_id=str(chat_id),
+            enabled=enabled,
+            rate_limit_per_sec=rate_limit,
+            max_retries=max_retries
+        )
 
 class NotificationManager:
     """
