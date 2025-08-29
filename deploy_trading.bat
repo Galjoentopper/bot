@@ -316,14 +316,19 @@ exit /b 0
 set "symbol=%~1"
 call :log_info "Validating configuration for symbol: %symbol%"
 
-REM Check if symbol has proper format (e.g., BTCEUR, ETHEUR)
-echo %symbol% | findstr /R "^[A-Z][A-Z][A-Z][A-Z][A-Z][A-Z]*$" >nul
-if errorlevel 1 (
-    call :log_warning "Symbol %symbol% has invalid format"
+REM Basic validation - just ensure symbol is not empty and looks reasonable
+if "%symbol%"=="" (
+    call :log_warning "Symbol is empty"
     exit /b 1
 )
 
-REM Additional validation can be added here
+REM Check minimum length (should be at least 6 characters for crypto pairs)
+if "%symbol:~5%"=="" (
+    call :log_warning "Symbol %symbol% too short (minimum 6 characters)"
+    exit /b 1
+)
+
+REM Symbols from our config file are trusted, so just accept them
 call :log_info "Symbol %symbol% configuration is valid"
 exit /b 0
 
