@@ -49,7 +49,6 @@ from src.notifier.telegram import TelegramNotifier
 
 # Enhanced model loading utilities
 from src.utils.model_packaging import ModelPackager
-from src.utils.model_transfer import ModelTransferManager
 
 # Validation system
 from src.validation.validation_integration import create_validation_manager
@@ -172,7 +171,6 @@ class EnhancedUnifiedPaperTrader:
         self.model_packager = ModelPackager()
         # Cache for recently fetched market data (symbol -> DataFrame or dict)
         self._market_data_cache = {}
-        self.transfer_manager = ModelTransferManager()
 
         # Validation system
         validation_config_dir = self.config.get('validation', {}).get('config_dir', './validation')
@@ -224,26 +222,28 @@ class EnhancedUnifiedPaperTrader:
             self.vol_bounds = (float(bounds[0]), float(bounds[1]))
         except Exception:
             self.vol_bounds = (0.5, 2.0)
-    # Model storage
-    self.models = {}
-    self.model_metadata = {}
-    self.preprocessors = {}
-    self.symbol_feature_metadata = {}
+        
+        # Model storage
+        self.models = {}
+        self.model_metadata = {}
+        self.preprocessors = {}
+        self.symbol_feature_metadata = {}
 
-    # Trading state
-    self.positions = {symbol: 0.0 for symbol in self.symbols}
-    self.balance = self.initial_balance
-    self.last_prices = {}
-    # Caching and performance tracking
-    self.data_cache = {}
-    self.cache_expiry = {}
-    self.cache_duration = 60  # seconds
-    self.performance_history = []
-    self.rejected_trades_count = 0
+        # Trading state
+        self.positions = {symbol: 0.0 for symbol in self.symbols}
+        self.balance = self.initial_balance
+        self.last_prices = {}
+        
+        # Caching and performance tracking
+        self.data_cache = {}
+        self.cache_expiry = {}
+        self.cache_duration = 60  # seconds
+        self.performance_history = []
+        self.rejected_trades_count = 0
 
-    # Warm start flag (skip heavy startup work when True)
-    self.warm_start = warm_start
-    self.logger.logger.info(f"Enhanced trader initialized with ${self.initial_balance:,.2f} (warm_start={self.warm_start})")
+        # Warm start flag (skip heavy startup work when True)
+        self.warm_start = warm_start
+        self.logger.logger.info(f"Enhanced trader initialized with ${self.initial_balance:,.2f} (warm_start={self.warm_start})")
     
     def _discover_available_models(self) -> Tuple[List[str], List[str]]:
         """Discover available symbols and model types from the models directory structure."""
@@ -921,7 +921,7 @@ class EnhancedUnifiedPaperTrader:
         return True
     
     async def _fetch_data_from_binance_api(self, symbol: str, limit: int = 300) -> Optional[pd.DataFrame]:
-        """Fetch data directly from Binance API."""
+        """Fetch data directly from Binance API with optimization for 30-minute candles."""
         try:
             exchange = ccxt.binance({
                 'enableRateLimit': True,
@@ -931,7 +931,20 @@ class EnhancedUnifiedPaperTrader:
             exchange.load_markets()
             
             formatted_symbol = self._convert_symbol_format(symbol)
-            self.logger.logger.info(f"Fetching {limit} candles for {symbol} from Binance API")
+            
+            # For 30-minute candles, log timing information
+            if self.interval == '30m':
+                now = time.time()
+                current_30m_boundary = (now // 1800) * 1800  # Last 30m boundary
+                next_30m_boundary = current_30m_boundary + 1800  # Next 30m boundary
+                seconds_since_boundary = now - current_30m_boundary
+                
+                self.logger.logger.info(
+                    f"Fetching 30m candles for {symbol}: {seconds_since_boundary:.0f}s since last boundary, "
+                    f"next boundary in {next_30m_boundary - now:.0f}s"
+                )
+            else:
+                self.logger.logger.info(f"Fetching {limit} {self.interval} candles for {symbol} from Binance API")
             
             ohlcv = await self._fetch_with_retry(exchange, formatted_symbol, limit=limit)
             
@@ -939,6 +952,19 @@ class EnhancedUnifiedPaperTrader:
                 df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                 df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
                 df = df.set_index('datetime')
+                
+                # For 30-minute candles, verify we have recent data
+                if self.interval == '30m' and not df.empty:
+                    latest_candle_time = df.index.max()
+                    current_time = pd.Timestamp.now(tz='UTC')
+                    if latest_candle_time.tz is None:
+                        latest_candle_time = latest_candle_time.tz_localize('UTC')
+                    
+                    time_diff = current_time - latest_candle_time
+                    self.logger.logger.info(
+                        f"Latest 30m candle for {symbol}: {latest_candle_time.strftime('%H:%M')} UTC "
+                        f"({time_diff.total_seconds()/60:.1f} minutes ago)"
+                    )
                 
                 # Add missing columns
                 df['quote_volume'] = df['volume']
@@ -1566,10 +1592,29 @@ class EnhancedUnifiedPaperTrader:
         return 60
 
     def _time_to_next_candle(self) -> int:
-        """Seconds until next candle boundary based on self.interval."""
+        """Seconds until next candle boundary based on self.interval.
+        
+        For 30m candles, this ensures we wait until the next 30-minute boundary
+        (00:00, 00:30, etc.) plus a small buffer to get the freshest data.
+        """
         sec = self._interval_to_seconds()
         now = int(time.time())
-        return sec - (now % sec)
+        
+        # Calculate seconds until next candle boundary
+        time_to_boundary = sec - (now % sec)
+        
+        # For 30-minute candles specifically, add a small buffer (30 seconds)
+        # to ensure the candle is fully published on Binance
+        if sec == 1800:  # 30 minutes = 1800 seconds
+            buffer_seconds = 30
+            time_to_boundary = min(time_to_boundary + buffer_seconds, sec)
+            
+            self.logger.logger.debug(
+                f"30m candle timing: {time_to_boundary}s until next fetch "
+                f"(includes {buffer_seconds}s buffer for fresh data)"
+            )
+        
+        return max(1, time_to_boundary)
 
     def _time_to_next_tick(self) -> int:
         """Fallback small sleep when not aligning to candle boundaries."""
@@ -2184,3 +2229,76 @@ MODEL STATUS:
             return psutil.Process().memory_info().rss / 1024 / 1024
         except Exception:
             return 0.0
+
+
+def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
+    """Load configuration using ConfigLoader with auto-detection."""
+    try:
+        config_loader = ConfigLoader(config_path)
+        return config_loader.config
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        return {}
+
+
+async def main():
+    """Main entry point for Enhanced Unified Trading Script."""
+    parser = argparse.ArgumentParser(description='Enhanced Unified Crypto Trading Bot')
+    parser.add_argument('--config', type=str, default=None,
+                       help='Path to configuration file')
+    parser.add_argument('--models-dir', type=str, default='./models',
+                       help='Directory containing trained models')
+    parser.add_argument('--iterations', type=int, default=None,
+                       help='Number of trading iterations (default: infinite)')
+    parser.add_argument('--symbols', nargs='+', default=None,
+                       help='Specific symbols to trade (default: from config)')
+    parser.add_argument('--interval', type=str, default=None,
+                       help='Trading interval override (e.g., 30m)')
+    
+    args = parser.parse_args()
+    
+    # Load configuration
+    config = load_config(args.config)
+    if not config:
+        print("Failed to load configuration. Exiting.")
+        return
+
+    # Override symbols and interval if provided via command line
+    if args.symbols:
+        if 'data' not in config:
+            config['data'] = {}
+        config['data']['symbols'] = args.symbols
+    
+    if args.interval:
+        if 'data' not in config:
+            config['data'] = {}
+        config['data']['interval'] = args.interval
+        if 'trainer' not in config:
+            config['trainer'] = {}
+        config['trainer']['interval'] = args.interval
+
+    # Initialize and run enhanced trader
+    try:
+        trader = EnhancedUnifiedPaperTrader(config, args.models_dir)
+        
+        # Send startup notification
+        trader._send_startup_notification()
+        
+        # Enable enterprise monitoring if available
+        trader.enable_enterprise_monitoring()
+        
+        # Run trading loop
+        await trader.run_trading_loop()
+        
+    except KeyboardInterrupt:
+        print("Trading interrupted by user")
+    except Exception as e:
+        print(f"Enhanced trading failed: {e}")
+        raise
+    finally:
+        if 'trader' in locals():
+            trader._send_shutdown_notification()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
