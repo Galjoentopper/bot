@@ -181,8 +181,48 @@ process_single_package() {
         import_bundle_package "$temp_dir"
         import_result=$?
     else
-        log_error "Unknown package format: $package_file"
-        import_result=1
+        # Check if this is a training models package with files directly in root
+        log_info "Checking for training models package format..."
+        local has_model_files=0
+        
+        # Check for model files in root
+        if ls "$temp_dir"/*.pkl >/dev/null 2>&1 || \
+           ls "$temp_dir"/*.pt >/dev/null 2>&1 || \
+           ls "$temp_dir"/*.joblib >/dev/null 2>&1; then
+            has_model_files=1
+        fi
+        
+        # Check for model files in subdirectories
+        for dir in "$temp_dir"/*; do
+            if [ -d "$dir" ]; then
+                if ls "$dir"/*.pkl >/dev/null 2>&1 || \
+                   ls "$dir"/*.pt >/dev/null 2>&1 || \
+                   ls "$dir"/*.joblib >/dev/null 2>&1; then
+                    has_model_files=1
+                    break
+                fi
+            fi
+        done
+        
+        if [ $has_model_files -eq 1 ]; then
+            log_info "Found training models package format"
+            import_training_package "$temp_dir"
+            import_result=$?
+        else
+            log_error "Unknown package format: $package_file"
+            log_info "Package contents:"
+            ls -la "$temp_dir"
+            log_info "Temp directory path: $temp_dir"
+            log_info "Checking if temp directory exists:"
+            if [ -d "$temp_dir" ]; then
+                log_info "Temp directory exists"
+                log_info "Detailed directory listing:"
+                find "$temp_dir" -type f | head -10
+            else
+                log_info "Temp directory does not exist"
+            fi
+            import_result=1
+        fi
     fi
     
     # Cleanup and move processed package
@@ -198,6 +238,21 @@ process_single_package() {
     fi
     
     return $import_result
+}
+
+# Import training package
+import_training_package() {
+    local source_dir="$1"
+    log_info "Importing training package format..."
+    
+    # Copy all model files and directories to models folder
+    if ! cp -r "$source_dir/"* "models/" 2>/dev/null; then
+        log_error "Failed to copy training models"
+        return 1
+    fi
+    
+    log_success "Training package imported successfully"
+    return 0
 }
 
 # Import models from package

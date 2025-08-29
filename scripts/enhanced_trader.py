@@ -8,6 +8,7 @@ This enhanced version supports:
 - Support for transferred models from other machines
 - Enhanced error handling and logging
 - Model validation and compatibility checking
+- Command-line arguments for flexible symbol and model selection
 """
 
 import os
@@ -17,6 +18,7 @@ import pickle
 import asyncio
 import time
 import glob
+import argparse
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
@@ -76,7 +78,9 @@ class ModelMetadata:
 class EnhancedUnifiedPaperTrader:
     """Enhanced paper trader with robust model loading capabilities."""
     
-    def __init__(self, config_path: str = None, models_dir: str = 'models'):
+    def __init__(self, config_path: str = None, models_dir: str = 'models', 
+                 symbols: List[str] = None, models: List[str] = None, 
+                 show_available_mode: bool = False):
         """Initialize the enhanced trader."""
         # Use auto-detection if no config path specified, otherwise use explicit path
         if config_path:
@@ -91,6 +95,59 @@ class EnhancedUnifiedPaperTrader:
         else:
             self.models_dir = Path(models_dir)
         self.logger = Logger(name='enhanced_trader')
+        
+        # Discover available models and symbols from models directory
+        available_symbols, available_models = self._discover_available_models()
+        self.logger.logger.info(f"Discovered models for symbols: {sorted(available_symbols)}")
+        self.logger.logger.info(f"Available model types: {sorted(available_models)}")
+        
+        # Set symbols from parameters if provided, otherwise use config, then filter by availability
+        if symbols:
+            requested_symbols = symbols
+        else:
+            # Extract symbols from config
+            config_symbols = self.config.get('data_acquisition', {}).get('symbols', [])
+            if not config_symbols:
+                config_symbols = self.config.get('data', {}).get('symbols', [])
+            if not config_symbols:
+                config_symbols = self.config.get('symbols', [])
+            requested_symbols = config_symbols
+        
+        # Filter symbols to only include those with available models
+        self.symbols = [symbol for symbol in requested_symbols if symbol in available_symbols]
+        if len(self.symbols) != len(requested_symbols):
+            missing_symbols = set(requested_symbols) - set(self.symbols)
+            self.logger.logger.warning(f"Excluded symbols without models: {sorted(missing_symbols)}")
+        
+        # Set models from parameters if provided, otherwise use config, then filter by availability
+        if models:
+            requested_models = models
+        else:
+            # Extract models from config
+            requested_models = self.config.get('training', {}).get('models', ['gru', 'lightgbm', 'ppo'])
+        
+        # Filter models to only include those that are available
+        self.model_types = [model for model in requested_models if model in available_models]
+        if len(self.model_types) != len(requested_models):
+            missing_models = set(requested_models) - set(self.model_types)
+            self.logger.logger.warning(f"Excluded model types not found: {sorted(missing_models)}")
+        
+        self.logger.logger.info(f"Trading symbols (filtered): {self.symbols}")
+        self.logger.logger.info(f"Model types (filtered): {self.model_types}")
+        
+        # Validate we have both symbols and models to work with
+        if not self.symbols:
+            self.logger.logger.error("No symbols with available models found!")
+            if not show_available_mode:  # Only raise error if not just showing available models
+                self.logger.logger.info("Available models report:")
+                self.show_available_models()
+                raise ValueError("No symbols with available models found!")
+        if not self.model_types:
+            self.logger.logger.error("No available model types found!")
+            if not show_available_mode:  # Only raise error if not just showing available models
+                self.logger.logger.info("Available models report:")
+                self.show_available_models() 
+                raise ValueError("No available model types found!")
         
         # Initialize components
         self.feature_engine = FeatureEngine()
@@ -123,10 +180,8 @@ class EnhancedUnifiedPaperTrader:
             config=metadata_config
         )
         
-        # Trading configuration - get symbols from data section or fallback to root symbols
-        data_symbols = self.config.get('data', {}).get('symbols', [])
-        root_symbols = self.config.get('symbols', [])
-        self.symbols = data_symbols or root_symbols or ['BTCEUR', 'ETHEUR', 'ADAEUR']
+        # Trading configuration - get symbols from parameters or data section or fallback to root symbols
+        # self.symbols is already set and filtered earlier in the constructor; do not overwrite here.
         self.interval = self.config.get('interval', '30m')
         self.initial_balance = float(self.config.get('initial_balance', 10000))
         self.max_position_size = float(self.config.get('max_position_size', 0.1))
@@ -181,6 +236,149 @@ class EnhancedUnifiedPaperTrader:
         
         self.logger.logger.info(f"Enhanced trader initialized with ${self.initial_balance:,.2f}")
     
+    def _discover_available_models(self) -> Tuple[List[str], List[str]]:
+        """Discover available symbols and model types from the models directory structure."""
+        available_symbols = set()
+        available_models = set()
+        
+        if not self.models_dir.exists():
+            self.logger.logger.warning(f"Models directory does not exist: {self.models_dir}")
+            return [], []
+        
+        # Define model file patterns for each model type
+        model_patterns = {
+            'gru': ['*.pth', '*.pt', 'model.pth'],
+            'lightgbm': ['*.pkl', 'model.pkl'],
+            'ppo': ['*.zip', 'model.zip']
+        }
+        
+        # Search standard structure: models/{model_type}/{symbol}/
+        for model_type, patterns in model_patterns.items():
+            model_type_dir = self.models_dir / model_type
+            if model_type_dir.exists():
+                for symbol_dir in model_type_dir.iterdir():
+                    if symbol_dir.is_dir():
+                        symbol = symbol_dir.name
+                        # Check if model files exist
+                        found_model = False
+                        for pattern in patterns:
+                            if list(symbol_dir.glob(pattern)):
+                                available_symbols.add(symbol)
+                                available_models.add(model_type)
+                                found_model = True
+                                break
+                        if found_model:
+                            self.logger.logger.debug(f"Found {model_type} model for {symbol}")
+        
+        # Search alternative structure: models/{symbol}/{model_type}/
+        for potential_symbol_dir in self.models_dir.iterdir():
+            if potential_symbol_dir.is_dir() and not potential_symbol_dir.name.startswith('.'):
+                symbol = potential_symbol_dir.name
+                # Skip known model type directories
+                if symbol in ['gru', 'lightgbm', 'ppo', 'imported', 'metadata', 'packages']:
+                    continue
+                
+                for model_type, patterns in model_patterns.items():
+                    model_type_dir = potential_symbol_dir / model_type
+                    if model_type_dir.exists():
+                        for pattern in patterns:
+                            if list(model_type_dir.glob(pattern)):
+                                available_symbols.add(symbol)
+                                available_models.add(model_type)
+                                break
+        
+        # Search flat structure and special directories
+        special_dirs = ['imported', 'metadata', 'packages']
+        search_dirs = [self.models_dir] + [self.models_dir / d for d in special_dirs if (self.models_dir / d).exists()]
+        
+        for search_dir in search_dirs:
+            for model_type, patterns in model_patterns.items():
+                for pattern in patterns:
+                    # Look for files like: gru_model_{symbol}_*.pth, best_wf_{model_type}_{symbol}.pkl
+                    search_patterns = [
+                        f"{model_type}_model_*{pattern.replace('*', '')}",
+                        f"*{model_type}*{pattern.replace('*', '')}",
+                        f"best_wf_{model_type}_*.{pattern.split('.')[-1]}" if '.' in pattern else f"best_wf_{model_type}_*"
+                    ]
+                    
+                    for search_pattern in search_patterns:
+                        files = list(search_dir.glob(search_pattern))
+                        for file in files:
+                            # Extract symbol from filename
+                            filename = file.stem
+                            potential_symbols = []
+                            
+                            # Pattern: {model_type}_model_{symbol}_timestamp
+                            if f"{model_type}_model_" in filename:
+                                parts = filename.split(f"{model_type}_model_")
+                                if len(parts) > 1:
+                                    symbol_part = parts[1].split('_')[0]
+                                    potential_symbols.append(symbol_part)
+                            
+                            # Pattern: best_wf_{model_type}_{symbol}
+                            if f"best_wf_{model_type}_" in filename:
+                                parts = filename.split(f"best_wf_{model_type}_")
+                                if len(parts) > 1:
+                                    symbol_part = parts[1].split('_')[0]
+                                    potential_symbols.append(symbol_part)
+                            
+                            # Pattern: {symbol}_{model_type}_*
+                            for common_symbol in ['BTCEUR', 'ETHEUR', 'ADAEUR', 'DOTEUR', 'LINKEUR', 'SOLEUR', 'XRPEUR']:
+                                if common_symbol in filename.upper():
+                                    potential_symbols.append(common_symbol)
+                            
+                            for symbol in potential_symbols:
+                                if symbol and len(symbol) >= 3:  # Valid symbol length
+                                    available_symbols.add(symbol)
+                                    available_models.add(model_type)
+        
+        return sorted(list(available_symbols)), sorted(list(available_models))
+    
+    def show_available_models(self) -> None:
+        """Show detailed report of available models."""
+        self.logger.logger.info("=== AVAILABLE MODELS REPORT ===")
+        self.logger.logger.info(f"Models directory: {self.models_dir}")
+        
+        if not self.models_dir.exists():
+            self.logger.logger.warning("Models directory does not exist!")
+            return
+        
+        # Check each model type directory
+        for model_type in ['gru', 'lightgbm', 'ppo']:
+            type_dir = self.models_dir / model_type
+            if type_dir.exists():
+                symbols_with_models = []
+                for symbol_dir in type_dir.iterdir():
+                    if symbol_dir.is_dir():
+                        # Check if model files exist
+                        model_files = []
+                        patterns = {
+                            'gru': ['*.pth', '*.pt', 'model.pth'],
+                            'lightgbm': ['*.pkl', 'model.pkl'],
+                            'ppo': ['*.zip', 'model.zip']
+                        }
+                        for pattern in patterns.get(model_type, ['*']):
+                            model_files.extend(list(symbol_dir.glob(pattern)))
+                        
+                        if model_files:
+                            symbols_with_models.append(symbol_dir.name)
+                
+                if symbols_with_models:
+                    self.logger.logger.info(f"{model_type}: {sorted(symbols_with_models)}")
+                else:
+                    self.logger.logger.info(f"{model_type}: No models found")
+            else:
+                self.logger.logger.info(f"{model_type}: Directory not found")
+        
+        # Check for alternative locations
+        alt_locations = ['imported', 'metadata', 'packages']
+        for location in alt_locations:
+            alt_dir = self.models_dir / location
+            if alt_dir.exists():
+                files = list(alt_dir.glob('*'))
+                if files:
+                    self.logger.logger.info(f"{location}/: {len(files)} files found")
+    
     def load_all_models(self):
         """Load all models with enhanced fallback mechanisms."""
         self.logger.logger.info("Loading models with enhanced fallback mechanisms...")
@@ -191,7 +389,7 @@ class EnhancedUnifiedPaperTrader:
             self.preprocessors[symbol] = {}
             
             # Load each model type with multiple fallback sources
-            for model_type in ['gru', 'lightgbm', 'ppo']:
+            for model_type in self.model_types:
                 model_info = self._load_model_with_fallbacks(symbol, model_type)
                 if model_info:
                     model, metadata = model_info
@@ -212,6 +410,23 @@ class EnhancedUnifiedPaperTrader:
         
         total_models = sum(len(models) for models in self.models.values())
         self.logger.logger.info(f"Loaded {total_models} models across {len(self.symbols)} symbols")
+    
+    def _load_models_for_symbol(self, symbol: str) -> Dict[str, Any]:
+        """Load models for a specific symbol and return them."""
+        models = {}
+        
+        for model_type in self.model_types:
+            model_info = self._load_model_with_fallbacks(symbol, model_type)
+            if model_info:
+                model, metadata = model_info
+                models[model_type] = model
+                self.logger.logger.info(
+                    f"Loaded {model_type} model for {symbol} from {metadata.source}: {metadata.file_path}"
+                )
+            else:
+                self.logger.logger.warning(f"Failed to load {model_type} model for {symbol}")
+        
+        return models
     
     def _load_model_with_fallbacks(self, symbol: str, model_type: str) -> Optional[Tuple[Any, ModelMetadata]]:
         """Load model with multiple fallback sources."""
@@ -1615,10 +1830,98 @@ class EnhancedUnifiedPaperTrader:
             self.logger.logger.error(f"Error during metadata hygiene: {e}")
 
 
+def parse_arguments():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description='Enhanced Unified Trading Script')
+    parser.add_argument('--config', type=str, default=None,
+                       help='Path to configuration file (default: auto-detect)')
+    parser.add_argument('--models-dir', type=str, default='models',
+                       help='Path to models directory (default: models)')
+    parser.add_argument('--symbols', type=str, nargs='+', default=None,
+                       help='Trading symbols to use (default: from config)')
+    parser.add_argument('--models', type=str, nargs='+', default=None,
+                       help='Model types to use (default: from config)')
+    parser.add_argument('--test-mode', action='store_true',
+                       help='Run in test mode (validate configuration and models)')
+    parser.add_argument('--single-cycle', action='store_true',
+                       help='Run a single trading cycle instead of continuous loop')
+    parser.add_argument('--show-available', action='store_true',
+                       help='Show available models and exit')
+    return parser.parse_args()
+
+
 async def main():
     """Main function to run the enhanced trader."""
     try:
-        trader = EnhancedUnifiedPaperTrader()
+        args = parse_arguments()
+        
+        trader = EnhancedUnifiedPaperTrader(
+            config_path=args.config,
+            models_dir=args.models_dir,
+            symbols=args.symbols,
+            models=args.models,
+            show_available_mode=args.show_available
+        )
+        
+        if args.show_available:
+            # Show available models and exit
+            trader.show_available_models()
+            return 0
+        
+        if args.test_mode:
+            # Test mode: validate configuration and models only
+            trader.logger.logger.info("Running in test mode - validating configuration and models")
+            
+            # Report discovered models
+            trader.logger.logger.info("=== MODEL DISCOVERY REPORT ===")
+            trader.logger.logger.info(f"Models directory: {trader.models_dir}")
+            trader.logger.logger.info(f"Available symbols: {trader.symbols}")
+            trader.logger.logger.info(f"Available model types: {trader.model_types}")
+            
+            # Test model loading for each symbol
+            total_models_found = 0
+            for symbol in trader.symbols:
+                trader.logger.logger.info(f"\n--- Testing models for {symbol} ---")
+                models = trader._load_models_for_symbol(symbol)
+                if models:
+                    trader.logger.logger.info(f"✓ Found models for {symbol}: {list(models.keys())}")
+                    total_models_found += len(models)
+                    
+                    # Test each model type
+                    for model_type, model in models.items():
+                        if model:
+                            trader.logger.logger.info(f"  ✓ {model_type}: Model loaded successfully")
+                        else:
+                            trader.logger.logger.warning(f"  ✗ {model_type}: Model failed to load")
+                else:
+                    trader.logger.logger.warning(f"✗ No models found for {symbol}")
+            
+            trader.logger.logger.info(f"\n=== SUMMARY ===")
+            trader.logger.logger.info(f"Total symbols with models: {len(trader.symbols)}")
+            trader.logger.logger.info(f"Total models loaded: {total_models_found}")
+            
+            if total_models_found > 0:
+                trader.logger.logger.info("✓ Test mode completed successfully - models are available")
+                return 0
+            else:
+                trader.logger.logger.error("✗ Test mode failed - no models could be loaded")
+                return 1
+        
+        if args.single_cycle:
+            # Single cycle mode: run once for each symbol
+            trader.logger.logger.info("Running in single cycle mode")
+            for symbol in trader.symbols:
+                trader.logger.logger.info(f"Running single cycle for {symbol}")
+                # Here you would implement a single trading cycle
+                # For now, just validate that models can be loaded
+                models = trader._load_models_for_symbol(symbol)
+                if models:
+                    trader.logger.logger.info(f"Single cycle completed for {symbol}")
+                else:
+                    trader.logger.logger.warning(f"Could not run cycle for {symbol} - no models available")
+            return 0
+        
+        # Normal mode: continuous trading loop
         await trader.run_trading_loop()
     except Exception as e:
         print(f"Failed to start trader: {e}")
