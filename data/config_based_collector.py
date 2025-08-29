@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Config-Based Binance Data Collector
-===================================
+Centralized Config-Based Data Collector
+======================================
 
 A streamlined data collector that:
-1. Reads configuration directly from config/config_training.yaml
+1. Reads configuration directly from training_config.yaml
 2. Automatically collects data for specified symbols, interval, and timeframe
 3. Creates properly named SQLite databases (symbol_interval.db)
 4. Uses bulk data download when available, API for recent data
@@ -27,8 +27,6 @@ import pandas as pd
 import logging
 from pathlib import Path
 
-from src.config import ConfigLoader
-
 # Configure logging with Windows-compatible encoding
 import sys
 if sys.platform == 'win32':
@@ -46,31 +44,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class ConfigBasedCollector:
-    """Config-based Binance data collector for streamlined model training"""
+class CentralizedDataCollector:
+    """Centralized config-based data collector for streamlined model training"""
     
     def __init__(self, config_path: str = None):
-        """Initialize collector with config file"""
+        """Initialize collector with centralized config file"""
         # Determine paths
         self.script_dir = Path(__file__).parent
         self.project_root = self.script_dir.parent
         
-        # Load configuration using ConfigLoader
-        config_loader = ConfigLoader()
-        self.config = config_loader.load_config(config_path)
-        self.data_config = self.config.get('data', {})
+        # Default to centralized config
+        if config_path is None:
+            config_path = self.project_root / 'training_config.yaml'
+        
+        # Load centralized configuration
+        self.config = self.load_centralized_config(config_path)
+        self.data_config = self.config.get('data_acquisition', {})
         
         # Extract data parameters
-        self.symbols = self.data_config.get('symbols', [])
+        self.symbols = self.data_config.get('symbols', ['BTCEUR', 'ETHEUR', 'ADAEUR'])
         self.interval = self.data_config.get('interval', '30m')
         self.lookback_days = self.data_config.get('lookback_days', 365)
+        self.output_directory = self.data_config.get('output_directory', './data')
         
         # API endpoints
         self.base_url = "https://api.binance.com/api/v3"
         self.bulk_url = "https://data.binance.vision/data/spot/monthly/klines"
         
-        # Data directory (same as script location)
-        self.data_dir = self.script_dir
+        # Data directory
+        self.data_dir = Path(self.output_directory)
+        self.data_dir.mkdir(exist_ok=True)
         
         # State file for resume capability
         self.state_file = self.data_dir / 'config_collector_state.json'
@@ -82,11 +85,23 @@ class ConfigBasedCollector:
         
         self.print_config()
     
-
+    def load_centralized_config(self, config_path: Path) -> Dict[str, Any]:
+        """Load the centralized configuration file"""
+        try:
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+            logger.info(f"Loaded centralized configuration from {config_path}")
+            return config
+        except FileNotFoundError:
+            logger.error(f"Configuration file not found: {config_path}")
+            raise
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing configuration file: {e}")
+            raise
     
     def print_config(self):
         """Print configuration summary"""
-        print(f"\n[INFO] Config-Based Binance Data Collector")
+        print(f"\n[INFO] Centralized Data Collector")
         print(f"{'='*50}")
         print(f"[INFO] Data directory: {self.data_dir}")
         print(f"[INFO] Symbols: {', '.join(self.symbols)}")
@@ -499,23 +514,37 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(
-        description='Config-based Binance data collector for model training'
+        description='Centralized config-based data collector for model training'
     )
     parser.add_argument(
         '--config', '-c',
         type=str,
-        help='Path to config file (default: config/config_training.yaml)'
+        help='Path to config file (default: training_config.yaml)'
     )
     parser.add_argument(
         '--symbol', '-s',
         type=str,
         help='Collect data for specific symbol only'
     )
+    parser.add_argument(
+        '--summary',
+        action='store_true',
+        help='Show summary of existing data'
+    )
+    parser.add_argument(
+        '--update-only',
+        action='store_true',
+        help='Update mode: only fetch recent data'
+    )
     
     args = parser.parse_args()
     
     try:
-        collector = ConfigBasedCollector(args.config)
+        collector = CentralizedDataCollector(args.config)
+        
+        if args.summary:
+            collector.print_summary()
+            return
         
         if args.symbol:
             if args.symbol.upper() in collector.symbols:

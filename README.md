@@ -1,232 +1,147 @@
-# Bot Kilo Trading System
+# Streamlined Automated Trading System
 
-A comprehensive trading system with advanced model validation, feature drift monitoring, and metadata management.
+A minimal yet comprehensive automated trading system with cross-platform compatibility between Linux training and Windows deployment environments.
 
-## Quick Start
+## 🚀 Quick Start
 
-### 1. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Run the Enhanced Trading System
-```bash
-python scripts/enhanced_trader.py
-```
-
-### 3. Test Metadata Hygiene (Optional)
-```bash
-python test_metadata_hygiene.py
-```
-
-## Key Features
-
-### Model Validation & Monitoring
-- **Schema Validation**: Automatic validation of model inputs using Great Expectations
-- **Feature Drift Detection**: Real-time monitoring of feature distributions and statistical properties
-- **Advanced Drift Algorithms**: KS test, Wasserstein distance, PSI, Jensen-Shannon divergence
-- **Enhanced Logging**: Comprehensive logging of validation decisions and drift events
-
-### Metadata Management
-- **Automated Regeneration**: Periodic regeneration of model metadata
-- **Hygiene Validation**: Checks for missing, corrupted, or outdated metadata
-- **Model Cleanup**: Automatic removal of outdated models based on age thresholds
-
-### Model Support
-- **GRU Models**: Recurrent neural networks for time series prediction
-- **LightGBM Models**: Gradient boosting for structured data
-- **PPO Models**: Reinforcement learning for trading decisions
-
-## Configuration
-
-The system uses configuration files in the `config/` directory:
-- `config.yaml`: Main trading configuration
-- `validation/`: Validation system configuration
-
-### Key Configuration Options
-```yaml
-model_management:
-  models_dir: "models"
-  max_age_days: 30
-
-validation:
-  config_dir: "./validation"
-  drift_detection:
-    enabled: true
-    threshold: 0.05
-  logging:
-    level: "INFO"
-```
-
-## File Structure
-
-```
-Bot_kilo/
-├── scripts/
-│   └── enhanced_trader.py          # Main trading script
-├── src/
-│   ├── validation/
-│   │   ├── schema_validator.py     # Great Expectations validation
-│   │   ├── drift_monitor.py        # Real-time drift monitoring
-│   │   ├── advanced_drift_monitor.py # Advanced drift algorithms
-│   │   ├── enhanced_logger.py      # Enhanced logging system
-│   │   ├── metadata_manager.py     # Metadata lifecycle management
-│   │   └── validation_integration.py # Integration layer
-│   └── ...
-├── test_metadata_hygiene.py        # Test script for metadata hygiene
-└── README.md                       # This file
-```
-
-## Testing
-
-### Metadata Hygiene Test
-Run the metadata hygiene test to verify the system can:
-- Regenerate model metadata
-- Validate metadata integrity
-- Clean up outdated models
+### Linux Training Environment
 
 ```bash
-python test_metadata_hygiene.py
-```
+# 1. Fetch training data
+chmod +x fetch_training_data.sh
+./fetch_training_data.sh
 
-### Manual Validation
-To manually trigger validation processes:
-
-```python
-from scripts.enhanced_trader import EnhancedUnifiedPaperTrader
-
-trader = EnhancedUnifiedPaperTrader()
-trader.run_metadata_hygiene()  # Run metadata hygiene
-report = trader.validation_manager.get_validation_report()  # Get validation report
-```
-
-## Troubleshooting
-
-### Common Issues
-1. **Missing Dependencies**: Ensure all packages in `requirements.txt` are installed
-2. **Model Loading Errors**: Check that model files exist in the configured `models_dir`
-3. **Validation Failures**: Review logs for specific validation errors and schema mismatches
-
-### Logs
-Logs are written to the `logs/` directory with detailed information about:
-- Model loading and validation
-- Feature drift detection
-- Schema validation decisions
-- Metadata hygiene processes
-
-## Notes
-
-- **Test Files**: Files with "test" in the name can be safely removed
-- **Model Training**: This system is designed for inference only - train models on a separate machine
-- **Windows Compatibility**: All scripts are designed to work on Windows systems
-
-This system provides ML runtime initialization and model import functionality for crypto trading bot operations.
-
-## Model Import
-
-### Import Pre-trained Models
-```bash
-# Use the fixed import script (recommended)
-import_models_fixed.bat
-
-# Test the import functionality
-python test_import_fixed.py
-```
-
-**Note:** The original `import_models.bat` has a colon character parsing error. Use `import_models_fixed.bat` instead.
-
-### Model Transfer Packages
-Place your model transfer packages (*.zip files) in the root directory. The import script will:
-1. Validate the package structure
-2. Import models to the `models/` directory
-3. Move processed packages to `processed_packages/`
-
-## Quick Start
-
-### Windows
-```bash
-# Run training with automatic initialization
-python scripts/enhanced_trainer.py
-
-# Or use the shell script
-bash train_models.sh
-```
-
-### Linux
-```bash
-# Make script executable
-chmod +x train_models_linux.sh
-
-# Run training with automatic initialization
+# 2. Train models and create deployment package
+chmod +x train_models_linux.sh  
 ./train_models_linux.sh
 ```
 
-## Manual Initialization
+### Windows Trading Environment
 
-If you need to initialize the ML runtime manually:
+```batch
+# 3. Import models (extract deployment package)
+import_models.bat
 
-```bash
-# Initialize all required directories and files
-python startup_init.py
-
-# Check if initialization is needed
-python startup_init.py --check
-
-# Verbose initialization
-python startup_init.py --verbose
+# 4. Start live trading
+deploy_trading.bat
 ```
 
-## Testing
+## 📋 System Components
 
-Run the comprehensive test suite to validate the system:
+The system consists of exactly **5 core components**:
 
-```bash
-# Run all tests
-python test_initialization_system.py
+### 1. **fetch_training_data.sh** (Linux)
+- Automatically downloads and preprocesses datasets
+- Reads symbols from centralized `training_config.yaml`
+- Supports Binance and YFinance data sources
+- Progress indicators and error handling
 
-# Run tests in quiet mode
-python test_initialization_system.py --quiet
+### 2. **train_models_linux.sh** (Linux) 
+- Trains GRU, LightGBM, and PPO models
+- Reads parameters from centralized configuration
+- Automated hyperparameter optimization
+- Creates deployment-ready ZIP archive
 
-# Generate status report only
-python test_initialization_system.py --report-only
+### 3. **Automated ZIP Archive Generation**
+- Integrated into training pipeline
+- Contains all trained models and deployment files
+- Cross-platform compatible format
+- Includes metadata and configuration
 
-# Debug specific issues
-python test_debug_initialization.py
+### 4. **import_models.bat** (Windows)
+- Extracts and configures imported models
+- Robust error handling and validation
+- Automatic directory structure creation
+- Progress indicators and dependency checking
+
+### 5. **deploy_trading.bat** (Windows)
+- Initializes and starts live trading system
+- Automatic model validation and loading
+- Real-time monitoring and logging
+- Telegram notifications support
+
+## ⚙️ Configuration
+
+All system behavior is controlled by the centralized `training_config.yaml` file:
+
+```yaml
+# Data acquisition settings
+data_acquisition:
+  symbols: ['BTCEUR', 'ETHEUR', 'ADAEUR']
+  interval: '30m'
+  lookback_days: 365
+
+# Training parameters  
+training:
+  models: ['gru', 'lightgbm', 'ppo']
+  epochs: 100
+  optuna_trials: 100
+
+# Trading settings
+trading:
+  initial_balance: 10000
+  max_position_size: 0.1
+  model_weights:
+    gru: 0.45
+    lightgbm: 0.45
+    ppo: 0.1
 ```
 
-## What Gets Created
+## 📁 Directory Structure
 
-The initialization system creates:
-- `mlruns/` - MLflow experiment tracking
-- `mlruns/0/` - Default experiment (ID 0)
-- `logs/` - Training and system logs
-- `models/` - Saved model files
-- `checkpoints/` - Model checkpoints
-  - `checkpoints/gru/` - GRU model checkpoints
-  - `checkpoints/lightgbm/` - LightGBM model checkpoints
-  - `checkpoints/ppo/` - PPO model checkpoints
+```
+trading-system/
+├── fetch_training_data.sh      # Component 1: Data acquisition
+├── train_models_linux.sh       # Component 2: Model training
+├── import_models.bat           # Component 4: Model import
+├── deploy_trading.bat          # Component 5: Trading deployment
+├── training_config.yaml        # Centralized configuration
+├── requirements.txt            # Python dependencies
+├── src/                        # Core trading logic
+├── scripts/                    # Training and trading scripts
+├── models/                     # Trained models (auto-created)
+├── data/                       # Market data (auto-created)
+└── logs/                       # System logs (auto-created)
+```
 
-## Configuration
+## 🔄 Cross-Platform Workflow
 
-Training configuration is located at:
-- `src/config/config_training.yaml`
+1. **Linux Training Computer**: Run data fetching and model training
+2. **File Transfer**: Copy generated ZIP archive to Windows computer  
+3. **Windows Trading Computer**: Import models and deploy trading system
 
-The system automatically detects and uses the appropriate configuration file.
+## 📊 Model Types
 
-## Troubleshooting
+- **GRU**: Recurrent neural networks for sequence prediction
+- **LightGBM**: Gradient boosting for structured data  
+- **PPO**: Reinforcement learning for trading decisions
 
-### ML Runtime Issues
-If you encounter "Could not find experiment with ID 0" errors:
-1. Run `python startup_init.py` to initialize the environment
-2. Check that `mlruns/0/meta.yaml` exists
-3. Run the test suite to validate the system
+## 🔧 Requirements
 
-### Model Import Issues
-If you encounter "was unexpected at this time" error:
-1. Use `import_models_fixed.bat` instead of `import_models.bat`
-2. Ensure your model transfer package has a valid manifest
-3. Run `python test_import_fixed.py` to verify the fix
+### Linux Training Environment
+- Python 3.8+
+- 8GB+ RAM (16GB recommended)
+- GPU optional but recommended
 
-## Cross-Platform Compatibility
+### Windows Trading Environment  
+- Python 3.8+
+- 4GB+ RAM
+- Stable internet connection
 
-This system works on both Windows and Linux, automatically handling path differences and file creation requirements.
+## 🚨 Error Handling
+
+- Automatic dependency checking
+- Robust retry mechanisms  
+- Comprehensive logging
+- Progress indicators
+- Graceful failure recovery
+
+## 📞 Support
+
+- Check `logs/` directory for detailed error information
+- All scripts include built-in help: `script_name --help`
+- Telegram notifications for trading events and errors
+
+---
+
+**Note**: This streamlined system eliminates redundant files and focuses on the 5 core components for maximum efficiency and user-friendliness.
