@@ -40,10 +40,27 @@ feature_generation:
       stochastic:
         d_period: 3
         k_period: 14
-  max_features: 50
-  model_types: []
-  selection_method: variance
-  symbols: []
-generated_at: /home/runner/work/bot/bot
-models_analyzed: 0
+    volume_features:
+      price_volume:
+      - vwap
+      - volume_price_trend
+      volume_ratio:
+        period: 20
+      volume_sma:
+        periods:
+        - 5
+        - 10
+        - 20
+  max_features: 200
+  model_types:
+  - lightgbm
+  - ppo
+  - gru
+  selection_method: mutual_info
+  symbols:
+  - ETHEUR
+  - ADAEUR
+  - BTCEUR
+generated_at: C:\Users\best test\Documents\GitHub\Bot_kilo
+models_analyzed: 3
 version: '1.0'
