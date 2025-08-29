@@ -101,6 +101,7 @@ export:
   
 # Trading Configuration (for deployment)
 trading:
+  test_mode: false  # Set to true for configuration validation only
   initial_balance: 10000
   max_position_size: 0.1
   transaction_fee: 0.001

@@ -234,6 +234,9 @@ class EnhancedUnifiedPaperTrader:
         self.cache_expiry = {}
         self.cache_duration = 60  # seconds
         
+        # Initialize CSV trades report with correct column structure
+        self._initialize_trades_csv()
+        
         self.logger.logger.info(f"Enhanced trader initialized with ${self.initial_balance:,.2f}")
     
     def _discover_available_models(self) -> Tuple[List[str], List[str]]:
@@ -249,7 +252,7 @@ class EnhancedUnifiedPaperTrader:
         model_patterns = {
             'gru': ['*.pth', '*.pt', 'model.pth'],
             'lightgbm': ['*.pkl', 'model.pkl'],
-            'ppo': ['*.zip', 'model.zip']
+            'ppo': ['*.zip', 'model.zip', 'model']  # PPO models can be saved without extension
         }
         
         # Search standard structure: models/{model_type}/{symbol}/
@@ -1350,20 +1353,41 @@ class EnhancedUnifiedPaperTrader:
         """Combine predictions from multiple models into a final signal."""
         try:
             if not predictions:
+                self.logger.logger.warning(f"No predictions available for {symbol}")
                 return 0
             
             # Get model weights from config
-            model_weights = self.model_weights
+            original_weights = self.model_weights.copy()
+            
+            # Calculate effective weights based on available models
+            available_models = [model_type for model_type, _ in predictions]
+            effective_weights = {}
+            total_original_weight = 0.0
+            
+            # Calculate total original weight for available models
+            for model_type in available_models:
+                original_weight = original_weights.get(model_type, 1.0)
+                total_original_weight += original_weight
+            
+            # Normalize weights to maintain proportions
+            for model_type in available_models:
+                original_weight = original_weights.get(model_type, 1.0)
+                effective_weights[model_type] = original_weight / total_original_weight if total_original_weight > 0 else 1.0 / len(available_models)
             
             # Calculate weighted average of predictions
             weighted_sum = 0.0
             total_weight = 0.0
             
             for model_type, prediction in predictions:
-                weight = model_weights.get(model_type, 1.0)
+                weight = effective_weights.get(model_type, 1.0)
                 weighted_sum += prediction * weight
                 total_weight += weight
-                self.logger.logger.debug(f"{symbol} {model_type}: pred={prediction:.6f}, weight={weight}")
+                self.logger.logger.debug(f"{symbol} {model_type}: pred={prediction:.6f}, weight={weight:.3f} (original: {original_weights.get(model_type, 1.0):.3f})")
+            
+            # Log effective ensemble weights if any models are missing
+            missing_models = set(original_weights.keys()) - set(available_models)
+            if missing_models:
+                self.logger.logger.info(f"Ensemble fallback for {symbol}: missing models {missing_models}, effective weights: {effective_weights}")
             
             if total_weight == 0:
                 return 0
@@ -2117,6 +2141,73 @@ MODEL STATUS:
             self.logger.logger.error(f"Periodic health check failed: {e}")
 
 
+    def _initialize_trades_csv(self):
+        """Initialize trades report CSV with correct column structure."""
+        import csv
+        import os
+        
+        # Ensure logs directory exists
+        logs_dir = Path('logs')
+        logs_dir.mkdir(exist_ok=True)
+        
+        # Define correct CSV headers as per README specification
+        self.trades_csv_path = logs_dir / 'trades_report.csv'
+        self.trades_csv_headers = [
+            'TradeID',      # Add explicit TradeID column to fix misalignment
+            'Timestamp',
+            'Symbol', 
+            'Action',
+            'Quantity',
+            'Price',
+            'Status',
+            'Notes',
+            'Model',
+            'Confidence',
+            'PnL'
+        ]
+        
+        # Create CSV file with headers if it doesn't exist
+        if not self.trades_csv_path.exists():
+            with open(self.trades_csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(self.trades_csv_headers)
+            self.logger.logger.info(f"Initialized trades report CSV: {self.trades_csv_path}")
+        
+        # Initialize trade counter for TradeID
+        self.trade_counter = 1
+    
+    def log_trade_to_csv(self, symbol: str, action: str, quantity: float = 0.0, 
+                        price: float = 0.0, status: str = 'SUCCESS', notes: str = '',
+                        model: str = 'N/A', confidence: float = 0.0, pnl: float = 0.0):
+        """Log trade to CSV with correct column alignment."""
+        import csv
+        from datetime import datetime
+        
+        try:
+            trade_data = [
+                self.trade_counter,                    # TradeID
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),  # Timestamp
+                symbol,                                # Symbol
+                action,                                # Action
+                f"{quantity:.4f}" if quantity != 0 else 'N/A',  # Quantity
+                f"{price:.2f}" if price != 0 else 'N/A',       # Price
+                status,                                # Status
+                notes,                                 # Notes
+                model,                                 # Model
+                f"{confidence:.2f}" if confidence != 0 else 'N/A',  # Confidence
+                f"{pnl:+.2f}" if pnl != 0 else '0.00'        # PnL
+            ]
+            
+            with open(self.trades_csv_path, 'a', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(trade_data)
+            
+            self.trade_counter += 1
+            
+        except Exception as e:
+            self.logger.logger.error(f"Failed to log trade to CSV: {e}")
+
+
 def parse_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description='Enhanced Unified Trading Script')
@@ -2155,9 +2246,14 @@ async def main():
             trader.show_available_models()
             return 0
         
-        if args.test_mode:
+        # Check if test mode is enabled in configuration or via command line
+        config_test_mode = self.config.get('trading', {}).get('test_mode', False)
+        if args.test_mode or config_test_mode:
             # Test mode: validate configuration and models only
-            trader.logger.logger.info("Running in test mode - validating configuration and models")
+            if config_test_mode:
+                trader.logger.logger.info("Running in test mode (configured in trading_config.yaml) - validating configuration and models")
+            else:
+                trader.logger.logger.info("Running in test mode (command line) - validating configuration and models")
             
             # Enable enterprise monitoring for test
             trader.enable_enterprise_monitoring()
@@ -2199,6 +2295,10 @@ async def main():
             trader.logger.logger.info(f"Total symbols with models: {len(trader.symbols)}")
             trader.logger.logger.info(f"Total models loaded: {total_models_found}")
             trader.logger.logger.info(f"Health status: {health_status['overall_status']}")
+            
+            # Create sample CSV entries to demonstrate correct column alignment
+            trader.log_trade_to_csv('BTCEUR', 'CYCLE_COMPLETE', notes='Test mode validation cycle completed', status='SUCCESS')
+            trader.logger.logger.info(f"Sample trade logged to CSV: {trader.trades_csv_path}")
             
             if total_models_found > 0:
                 trader.logger.logger.info("✓ Test mode completed successfully - models are available")

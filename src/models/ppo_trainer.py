@@ -826,9 +826,10 @@ class PPOTrainer:
                 with open(metadata_path, 'r') as f:
                     metadata = json.load(f)
                 
-                # Restore feature information
-                trainer.feature_names = metadata.get('feature_names', [])
-                trainer.observation_shape = tuple(metadata['observation_shape']) if metadata.get('observation_shape') else None
+                # Restore feature information with null safety
+                trainer.feature_names = metadata.get('feature_names', []) or []
+                observation_shape = metadata.get('observation_shape')
+                trainer.observation_shape = tuple(observation_shape) if observation_shape else None
                 trainer.action_space_info = metadata.get('action_space_info')
                 trainer.input_size = metadata.get('input_size')
                 trainer.feature_count = metadata.get('feature_count')
