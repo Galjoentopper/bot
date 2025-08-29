@@ -1,14 +1,14 @@
 """
-Setup script for Bot_kilo trading bot package.
+Setup script for Bot trading bot package.
 """
 
 from setuptools import setup, find_packages
 
 setup(
-    name="bot_kilo",
+    name="Bot",
     version="1.0.0",
     description="Cryptocurrency Trading Bot with ML and RL capabilities",
-    author="Bot Kilo Team",
+    author="Jesse",
     packages=find_packages(),
     python_requires=">=3.8",
     install_requires=[

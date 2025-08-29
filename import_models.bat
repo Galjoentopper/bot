@@ -22,25 +22,33 @@ set "ERROR_COLOR=31"
 REM Logging function simulation
 call :log_info "Starting Windows model import process..."
 
+REM Ensure all required folders exist before any operation
+if not exist "models" mkdir "models"
+if not exist "models\packages" mkdir "models\packages"
+if not exist "models\imported" mkdir "models\imported"
+if not exist "models\metadata" mkdir "models\metadata"
+if not exist "processed_packages" mkdir "processed_packages"
+if not exist "logs" mkdir "logs"
+
 REM Check system requirements
 call :check_dependencies
-if errorlevel 1 exit /b 1
+if not !errorlevel! == 0 exit /b 1
 
 REM Validate environment
 call :validate_environment
-if errorlevel 1 exit /b 1
+if not !errorlevel! == 0 exit /b 1
 
 REM Process model packages
 call :process_model_packages
-if errorlevel 1 exit /b 1
+if not !errorlevel! == 0 exit /b 1
 
 REM Validate imported models
 call :validate_imported_models
-if errorlevel 1 exit /b 1
+if not !errorlevel! == 0 exit /b 1
 
 REM Configure for Windows deployment
 call :configure_for_windows
-if errorlevel 1 exit /b 1
+if not !errorlevel! == 0 exit /b 1
 
 call :log_success "Model import completed successfully!"
 echo.
@@ -141,7 +149,8 @@ for %%f in (*.zip) do (
     call :log_info "Found package: %%f"
     
     call :process_single_package "%%f"
-    if not errorlevel 1 (
+    set "import_result=!errorlevel!"
+    if !import_result! == 0 (
         set /a successful_imports+=1
     )
 )
@@ -163,7 +172,7 @@ if !successful_imports! == 0 (
     exit /b 1
 )
 
-call :log_success "Processed %successful_imports% package(s) successfully"
+call :log_success "Processed !successful_imports! package(s) successfully"
 exit /b 0
 
 :process_single_package
@@ -176,9 +185,11 @@ if exist "%temp_dir%" rmdir /s /q "%temp_dir%"
 mkdir "%temp_dir%"
 
 REM Extract package
-call :log_info "Extracting package..."
-powershell -Command "try { Expand-Archive -Path '%package_file%' -DestinationPath '%temp_dir%' -Force; exit 0 } catch { exit 1 }"
-if errorlevel 1 (
+call :log_info "Extracting package (this may take several minutes for large packages)..."
+call :log_info "Temp directory: %temp_dir%"
+powershell -Command "try { $ProgressPreference = 'SilentlyContinue'; Write-Output 'Starting extraction...'; Expand-Archive -Path '%package_file%' -DestinationPath '%temp_dir%' -Force; Write-Output 'Extraction completed'; Get-ChildItem '%temp_dir%' | Select-Object Name -First 5; exit 0 } catch { Write-Output ('Extraction error: ' + $_.Exception.Message); exit 1 }"
+set "extract_result=!errorlevel!"
+if not !extract_result! == 0 (
     call :log_error "Failed to extract package: %package_file%"
     rmdir /s /q "%temp_dir%"
     exit /b 1
@@ -192,8 +203,37 @@ if exist "%temp_dir%\models" (
     call :import_bundle_package "%temp_dir%"
     set "import_result=!errorlevel!"
 ) else (
-    call :log_error "Unknown package format: %package_file%"
-    set "import_result=1"
+    REM Check if this is a training models package with files directly in root
+    call :log_info "Checking for training models package format..."
+    set "has_model_files=0"
+    for %%x in ("%temp_dir%\*.pkl" "%temp_dir%\*.pt" "%temp_dir%\*.joblib") do (
+        if exist "%%x" set "has_model_files=1"
+    )
+    for /d %%d in ("%temp_dir%\*") do (
+        if exist "%%d\*.pkl" set "has_model_files=1"
+        if exist "%%d\*.pt" set "has_model_files=1"
+        if exist "%%d\*.joblib" set "has_model_files=1"
+    )
+    
+    if !has_model_files! == 1 (
+        call :log_info "Found training models package format"
+        call :import_training_package "%temp_dir%"
+        set "import_result=!errorlevel!"
+    ) else (
+        call :log_error "Unknown package format: %package_file%"
+        call :log_info "Package contents:"
+        dir "%temp_dir%" /b /s
+        call :log_info "Temp directory path: %temp_dir%"
+        call :log_info "Checking if temp directory exists:"
+        if exist "%temp_dir%" (
+            call :log_info "Temp directory exists"
+            call :log_info "Detailed directory listing:"
+            dir "%temp_dir%" /a
+        ) else (
+            call :log_info "Temp directory does not exist"
+        )
+        set "import_result=1"
+    )
 )
 
 REM Cleanup and move processed package
@@ -201,8 +241,9 @@ rmdir /s /q "%temp_dir%"
 
 if !import_result! == 0 (
     call :log_success "Successfully imported: %package_file%"
+    if not exist "processed_packages" mkdir "processed_packages"
     move "%package_file%" "processed_packages\" >nul 2>&1
-    if errorlevel 1 (
+    if not !errorlevel! == 0 (
         call :log_warning "Could not move processed package to processed_packages folder"
     )
 ) else (
@@ -210,6 +251,20 @@ if !import_result! == 0 (
 )
 
 exit /b !import_result!
+
+:import_training_package
+set "source_dir=%~1"
+call :log_info "Importing training package format..."
+
+REM Copy all model files and directories to models folder
+xcopy "%source_dir%\*" "models\" /E /Y /I >nul 2>&1
+if errorlevel 1 (
+    call :log_error "Failed to copy training models"
+    exit /b 1
+)
+
+call :log_success "Training package imported successfully"
+exit /b 0
 
 :import_models_from_package
 set "source_dir=%~1"
@@ -265,7 +320,7 @@ set "model_count=0"
 
 REM Count imported model files
 for /r "models" %%f in (*.pkl *.pt *.joblib *.zip) do (
-    set /a model_count+=1
+    set /a model_count=!model_count!+1
 )
 
 if !model_count! == 0 (
@@ -274,7 +329,7 @@ if !model_count! == 0 (
     exit /b 1
 )
 
-call :log_success "Found %model_count% model files"
+call :log_success "Found !model_count! model files"
 
 REM Check for required model types
 set "has_gru=0"
@@ -309,42 +364,8 @@ exit /b 0
 :configure_for_windows
 call :log_info "Configuring models for Windows deployment..."
 
-REM Create Windows-specific configuration
-if exist "training_config.yaml" (
-    call :log_info "Creating Windows deployment configuration..."
-    
-    REM Create simplified trading config for Windows
-    (
-        echo # Windows Trading Configuration
-        echo # Generated automatically by import_models.bat
-        echo trading:
-        echo   initial_balance: 10000
-        echo   max_position_size: 0.1
-        echo   transaction_fee: 0.001
-        echo   slippage: 0.0005
-        echo   model_weights:
-        echo     gru: 0.45
-        echo     lightgbm: 0.45
-        echo     ppo: 0.1
-        echo models:
-        echo   lightgbm:
-        echo     enabled: true
-        echo   gru:
-        echo     enabled: true
-        echo   ppo:
-        echo     enabled: true
-        echo notifications:
-        echo   telegram:
-        echo     enabled: true
-        echo     bot_token: '7733436451:AAH6Sls8uL4fEgd6Ty7VEKSBIMauhaVkN4c'
-        echo     chat_id: '7988790407'
-    ) > "config_trading.yaml"
-    
-    call :log_info "Windows trading configuration created"
-)
-
-REM Set proper file permissions (if needed)
-call :log_info "Setting file permissions for Windows..."
+REM No additional configuration needed - using centralized training_config.yaml
+call :log_info "Using centralized training_config.yaml for all configuration"
 
 call :log_success "Windows configuration complete"
 exit /b 0

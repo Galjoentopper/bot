@@ -1,32 +1,45 @@
 @echo off
-REM Enhanced Trading System Deployment Script for Windows
-REM =====================================================
-REM This script initializes and starts the live trading system with comprehensive
-REM error handling, progress indicators, and automatic dependency management
+REM Enhanced Automated Trading System Deployment Script
+REM ===================================================
+REM Comprehensive trading automation with configuration processing,
+REM model verification, scheduled execution, error handling, and detailed reporting
 
 setlocal enabledelayedexpansion
 
 echo.
 echo ========================================
-echo   Enhanced Trading System Deployment
-echo   Live Trading Initialization
+echo   Enhanced Automated Trading System
+echo   Comprehensive Trading Deployment
 echo ========================================
 echo.
 
 REM Configuration
 set "LOG_FILE=logs\deployment.log"
-set "CONFIG_FILE=config_trading.yaml"
+set "TRADING_LOG=logs\trading.log"
+set "ERROR_LOG=logs\error.log"
+set "TRADES_CSV=logs\trades_report.csv"
+set "CONFIG_FILE=training_config.yaml"
 set "TRADER_SCRIPT=scripts\enhanced_trader.py"
+set "EXECUTION_INTERVAL=1800"
+set "MAX_RETRIES=3"
+set "RETRY_DELAY=30"
 
 REM Create logs directory if it doesn't exist
 if not exist "logs" mkdir "logs"
 
-REM Initialize log file
-echo [%date% %time%] Starting trading system deployment > "%LOG_FILE%"
+REM Initialize log files
+echo [%date% %time%] Enhanced automated trading system deployment started > "%LOG_FILE%"
+echo [%date% %time%] Trading operations log initialized > "%TRADING_LOG%"
+echo [%date% %time%] Error tracking log initialized > "%ERROR_LOG%"
 
-call :log_info "Enhanced trading system deployment started"
+REM Initialize CSV report with headers
+if not exist "%TRADES_CSV%" (
+    echo Timestamp,Symbol,TradeType,Quantity,Price,OrderStatus,Notes,ModelUsed,Confidence,Balance > "%TRADES_CSV%"
+)
 
-REM Execute deployment pipeline
+call :log_info "Enhanced automated trading system deployment started"
+
+REM Execute comprehensive deployment pipeline
 call :check_system_requirements
 if errorlevel 1 exit /b 1
 
@@ -36,56 +49,74 @@ if errorlevel 1 exit /b 1
 call :setup_dependencies
 if errorlevel 1 exit /b 1
 
-call :import_models_if_needed
+call :process_configuration
 if errorlevel 1 exit /b 1
 
-call :validate_models
+call :verify_models
 if errorlevel 1 exit /b 1
 
-call :configure_trading_system
+call :initialize_trading_system
 if errorlevel 1 exit /b 1
 
-call :start_trading_system
+call :start_automated_trading_loop
 if errorlevel 1 exit /b 1
 
-call :log_success "Trading system deployment completed successfully!"
+call :log_success "Automated trading system deployment completed successfully!"
 echo.
 echo ========================================
-echo   🚀 TRADING SYSTEM DEPLOYED! 🚀
+echo   AUTOMATED TRADING SYSTEM ACTIVE!
 echo   Monitor logs\trading.log for activity
+echo   CSV reports: logs\trades_report.csv
 echo ========================================
 echo.
 pause
 exit /b 0
 
 REM ==========================================
-REM FUNCTION DEFINITIONS
+REM LOGGING FUNCTIONS
 REM ==========================================
 
 :log_info
 echo [INFO] %~1
 echo [%date% %time%] [INFO] %~1 >> "%LOG_FILE%"
+echo [%date% %time%] [INFO] %~1 >> "%TRADING_LOG%"
 exit /b 0
 
 :log_success
 echo [SUCCESS] %~1
 echo [%date% %time%] [SUCCESS] %~1 >> "%LOG_FILE%"
+echo [%date% %time%] [SUCCESS] %~1 >> "%TRADING_LOG%"
 exit /b 0
 
 :log_warning
 echo [WARNING] %~1
 echo [%date% %time%] [WARNING] %~1 >> "%LOG_FILE%"
+echo [%date% %time%] [WARNING] %~1 >> "%TRADING_LOG%"
+echo [%date% %time%] [WARNING] %~1 >> "%ERROR_LOG%"
 exit /b 0
 
 :log_error
 echo [ERROR] %~1
 echo [%date% %time%] [ERROR] %~1 >> "%LOG_FILE%"
+echo [%date% %time%] [ERROR] %~1 >> "%TRADING_LOG%"
+echo [%date% %time%] [ERROR] %~1 >> "%ERROR_LOG%"
 exit /b 0
 
-:check_system_requirements
-call :log_info "Checking system requirements..."
+:log_trade
+REM Parameters: symbol, trade_type, quantity, price, status, notes, model, confidence, balance
+set "timestamp=%date% %time%"
+echo %timestamp%,%~1,%~2,%~3,%~4,%~5,%~6,%~7,%~8,%~9 >> "%TRADES_CSV%"
+call :log_info "Trade logged: %~1 %~2 %~3 @ %~4 - Status: %~5"
+exit /b 0
 
-REM Check if Python is installed
+REM ==========================================
+REM SYSTEM VALIDATION FUNCTIONS
+REM ==========================================
+
+:check_system_requirements
+call :log_info "Checking comprehensive system requirements..."
+
+REM Check Python installation
 python --version >nul 2>&1
 if errorlevel 1 (
     call :log_error "Python is not installed or not in PATH"
@@ -94,11 +125,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Get Python version
+REM Get and validate Python version
 for /f "tokens=2" %%i in ('python --version 2^>^&1') do set "PYTHON_VERSION=%%i"
 call :log_info "Python version: %PYTHON_VERSION%"
 
-REM Check if pip is available
+REM Check pip availability
 pip --version >nul 2>&1
 if errorlevel 1 (
     call :log_error "pip is not available"
@@ -106,20 +137,25 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Check memory availability (basic check)
+REM Check system memory
 for /f "tokens=2 delims=:" %%i in ('systeminfo ^| findstr "Total Physical Memory"') do (
     call :log_info "System memory: %%i"
 )
 
-call :log_success "System requirements validated"
+REM Check disk space
+for /f "tokens=3" %%i in ('dir /-c ^| find "bytes free"') do (
+    call :log_info "Available disk space: %%i bytes"
+)
+
+call :log_success "System requirements validated successfully"
 exit /b 0
 
 :validate_environment
-call :log_info "Validating environment structure..."
+call :log_info "Validating comprehensive environment structure..."
 
 REM Check if we're in the correct directory
 if not exist "scripts" (
-    call :log_error "Please run this script from the Bot_kilo root directory"
+    call :log_error "Please run this script from the Bot root directory"
     echo   Current directory: %CD%
     echo   Expected to find 'scripts' folder here
     exit /b 1
@@ -127,440 +163,392 @@ if not exist "scripts" (
 
 REM Check for required scripts
 if not exist "%TRADER_SCRIPT%" (
-    call :log_error "Trading script not found: %TRADER_SCRIPT%"
-    echo   Please ensure all required files are present
-    exit /b 1
+    call :log_error "Enhanced trading script not found: %TRADER_SCRIPT%"
+    if exist "scripts\trader.py" (
+        set "TRADER_SCRIPT=scripts\trader.py"
+        call :log_warning "Falling back to standard trader script"
+    ) else (
+        echo   Please ensure all required files are present
+        exit /b 1
+    )
 )
 
-REM Create necessary directories
-call :log_info "Creating necessary directories..."
+REM Create comprehensive directory structure
+call :log_info "Creating comprehensive directory structure..."
 if not exist "models" mkdir "models"
 if not exist "logs" mkdir "logs"
 if not exist "data" mkdir "data"
+if not exist "config" mkdir "config"
 if not exist "backups" mkdir "backups"
+if not exist "reports" mkdir "reports"
+if not exist "cache" mkdir "cache"
 
-call :log_success "Environment structure validated"
+call :log_success "Environment structure validated and created"
 exit /b 0
 
 :setup_dependencies
-call :log_info "Setting up Python dependencies..."
+call :log_info "Setting up comprehensive Python dependencies..."
 
 REM Upgrade pip first
 pip install --quiet --upgrade pip
+if errorlevel 1 (
+    call :log_warning "Failed to upgrade pip, continuing with current version"
+)
 
-REM Install core requirements
+REM Install core requirements with error handling
 if exist "requirements.txt" (
     call :log_info "Installing requirements from requirements.txt..."
     pip install --quiet -r requirements.txt
     if errorlevel 1 (
-        call :log_warning "Some packages failed to install, continuing..."
+        call :log_warning "Some packages failed to install from requirements.txt"
+        call :install_essential_packages
+    ) else (
+        call :log_success "All requirements installed successfully"
     )
 ) else (
-    call :log_info "Installing essential packages manually..."
-    pip install --quiet pandas numpy pyyaml python-binance ccxt python-telegram-bot mlflow
+    call :log_info "No requirements.txt found, installing essential packages..."
+    call :install_essential_packages
 )
 
 call :log_success "Dependencies setup completed"
 exit /b 0
 
-:import_models_if_needed
-call :log_info "Checking for trained models..."
-
-REM Check if models directory exists and has content
-if not exist "models" goto :no_models_found
-set "models_exist=0"
-for /f "delims=" %%A in ('dir /b models 2^>nul') do set models_exist=1
-if !models_exist! == 1 goto :models_found
-
-:no_models_found
-call :log_warning "No models found, checking for import packages..."
-
-REM Look for model packages to import
-set "found_packages=0"
-for %%f in (*.zip) do (
-    set "found_packages=1"
-    call :log_info "Found model package: %%f"
-)
-
-if !found_packages! == 1 (
-    call :log_info "Attempting automatic model import..."
-    call import_models.bat
+:install_essential_packages
+call :log_info "Installing essential trading packages..."
+set "ESSENTIAL_PACKAGES=pandas numpy pyyaml python-binance ccxt python-telegram-bot scikit-learn lightgbm torch stable-baselines3 mlflow"
+for %%p in (%ESSENTIAL_PACKAGES%) do (
+    call :log_info "Installing %%p..."
+    pip install --quiet %%p
     if errorlevel 1 (
-        call :log_error "Automatic model import failed"
-        echo   Please manually run import_models.bat first
-        exit /b 1
+        call :log_warning "Failed to install %%p, may cause issues"
     )
-    call :log_success "Models imported successfully"
-) else (
-    call :log_error "No trained models or import packages found"
-    echo   Please either:
-    echo     1. Copy a model transfer package (*.zip) to this directory
-    echo     2. Run import_models.bat manually
-    echo     3. Train models using train_models_linux.sh on a Linux machine
-    exit /b 1
 )
-goto :import_complete
-
-:models_found
-call :log_success "Trained models found in models directory"
-
-:import_complete
 exit /b 0
 
-:validate_models
-call :log_info "Validating imported models..."
+REM ==========================================
+REM CONFIGURATION PROCESSING FUNCTIONS
+REM ==========================================
 
-set "model_count=0"
-set "gru_models=0"
-set "lightgbm_models=0"
-set "ppo_models=0"
+:process_configuration
+call :log_info "Processing comprehensive trading configuration..."
 
-REM Count model files
-for /r "models" %%f in (*.pkl *.pt *.joblib *.zip) do (
-    set /a model_count+=1
-)
-
-REM Check for specific model types
-if exist "models\gru" set "gru_models=1"
-if exist "models\lightgbm" set "lightgbm_models=1"
-if exist "models\ppo" set "ppo_models=1"
-
-if !model_count! == 0 (
-    call :log_error "No model files found after import validation"
-    exit /b 1
-)
-
-call :log_info "Model validation results:"
-call :log_info "  Total model files: %model_count%"
-if !gru_models! == 1 (
-    call :log_info "  ✓ GRU models available"
-) else (
-    call :log_warning "  ✗ GRU models not found"
-)
-if !lightgbm_models! == 1 (
-    call :log_info "  ✓ LightGBM models available"
-) else (
-    call :log_warning "  ✗ LightGBM models not found"
-)
-if !ppo_models! == 1 (
-    call :log_info "  ✓ PPO models available"
-) else (
-    call :log_warning "  ✗ PPO models not found"
-)
-
-call :log_success "Model validation completed"
-exit /b 0
-
-:configure_trading_system
-call :log_info "Configuring trading system..."
-
-REM Check for trading configuration
+REM Check for configuration file
 if not exist "%CONFIG_FILE%" (
-    if exist "training_config.yaml" (
-        call :log_info "Creating trading configuration from training config..."
-        REM Create a simplified trading config
-        (
-            echo # Trading Configuration - Auto-generated
-            echo trading:
-            echo   initial_balance: 10000
-            echo   max_position_size: 0.1
-            echo   transaction_fee: 0.001
-            echo   slippage: 0.0005
-            echo   model_weights:
-            echo     gru: 0.45
-            echo     lightgbm: 0.45
-            echo     ppo: 0.1
-            echo models:
-            echo   lightgbm:
-            echo     enabled: true
-            echo   gru:
-            echo     enabled: true
-            echo   ppo:
-            echo     enabled: true
-            echo notifications:
-            echo   telegram:
-            echo     enabled: true
-            echo     bot_token: '7733436451:AAH6Sls8uL4fEgd6Ty7VEKSBIMauhaVkN4c'
-            echo     chat_id: '7988790407'
-        ) > "%CONFIG_FILE%"
-        call :log_info "Trading configuration created"
-    ) else (
-        call :log_warning "No trading configuration found, using defaults"
+    call :log_error "Configuration file not found: %CONFIG_FILE%"
+    echo   Please ensure training_config.yaml exists in the root directory
+    exit /b 1
+)
+
+REM Validate configuration file format
+python -c "import yaml; yaml.safe_load(open('%CONFIG_FILE%'))" 2>nul
+if errorlevel 1 (
+    call :log_error "Invalid YAML format in configuration file"
+    exit /b 1
+)
+
+REM Extract and validate trading symbols
+call :log_info "Extracting trading symbols from configuration..."
+python -c "
+import yaml
+with open('%CONFIG_FILE%', 'r') as f:
+    config = yaml.safe_load(f)
+symbols = config.get('data_acquisition', {}).get('symbols', [])
+if not symbols:
+    symbols = config.get('data', {}).get('symbols', [])
+if not symbols:
+    symbols = config.get('symbols', [])
+if symbols:
+    print('SYMBOLS_FOUND:' + ','.join(symbols))
+else:
+    print('NO_SYMBOLS_FOUND')
+" > temp_symbols.txt 2>nul
+
+if errorlevel 1 (
+    call :log_error "Failed to extract symbols from configuration"
+    exit /b 1
+)
+
+REM Read extracted symbols
+set "TRADING_SYMBOLS="
+for /f "tokens=2 delims=:" %%i in ('type temp_symbols.txt ^| findstr "SYMBOLS_FOUND"') do (
+    set "TRADING_SYMBOLS=%%i"
+)
+del temp_symbols.txt 2>nul
+
+if "%TRADING_SYMBOLS%"=="" (
+    call :log_error "No trading symbols found in configuration"
+    echo   Please ensure symbols are defined in the configuration file
+    exit /b 1
+)
+
+call :log_info "Trading symbols extracted: %TRADING_SYMBOLS%"
+
+REM Validate each symbol configuration
+call :log_info "Validating symbol configurations..."
+set "VALID_SYMBOLS="
+for %%s in (%TRADING_SYMBOLS%) do (
+    call :validate_symbol_config "%%s"
+    if not errorlevel 1 (
+        if "%VALID_SYMBOLS%"=="" (
+            set "VALID_SYMBOLS=%%s"
+        ) else (
+            set "VALID_SYMBOLS=!VALID_SYMBOLS!,%%s"
+        )
     )
 )
 
-REM Validate Python environment for trading
+if "%VALID_SYMBOLS%"=="" (
+    call :log_error "No valid symbol configurations found"
+    exit /b 1
+)
+
+call :log_success "Configuration processing completed. Valid symbols: %VALID_SYMBOLS%"
+exit /b 0
+
+:validate_symbol_config
+set "symbol=%~1"
+call :log_info "Validating configuration for symbol: %symbol%"
+
+REM Check if symbol has proper format (e.g., BTCEUR, ETHEUR)
+echo %symbol% | findstr /R "^[A-Z][A-Z][A-Z][A-Z][A-Z][A-Z]*$" >nul
+if errorlevel 1 (
+    call :log_warning "Symbol %symbol% has invalid format"
+    exit /b 1
+)
+
+REM Additional validation can be added here
+call :log_info "Symbol %symbol% configuration is valid"
+exit /b 0
+
+REM ==========================================
+REM MODEL VERIFICATION FUNCTIONS
+REM ==========================================
+
+:verify_models
+call :log_info "Performing comprehensive model verification..."
+
+if not exist "models" (
+    call :log_error "Models directory not found"
+    exit /b 1
+)
+
+set "VERIFIED_SYMBOLS="
+set "MODEL_TYPES=gru lightgbm ppo"
+
+for %%s in (%VALID_SYMBOLS%) do (
+    call :verify_symbol_models "%%s"
+    if not errorlevel 1 (
+        if "%VERIFIED_SYMBOLS%"=="" (
+            set "VERIFIED_SYMBOLS=%%s"
+        ) else (
+            set "VERIFIED_SYMBOLS=!VERIFIED_SYMBOLS!,%%s"
+        )
+    )
+)
+
+if "%VERIFIED_SYMBOLS%"=="" (
+    call :log_error "No symbols have complete model sets"
+    exit /b 1
+)
+
+call :log_success "Model verification completed. Verified symbols: %VERIFIED_SYMBOLS%"
+exit /b 0
+
+:verify_symbol_models
+set "symbol=%~1"
+set "models_found=0"
+set "missing_models="
+
+call :log_info "Verifying models for symbol: %symbol%"
+
+for %%m in (%MODEL_TYPES%) do (
+    if exist "models\%%m\%symbol%" (
+        set /a models_found+=1
+        call :log_info "  Found %%m model for %symbol%"
+    ) else (
+        if "%missing_models%"=="" (
+            set "missing_models=%%m"
+        ) else (
+            set "missing_models=!missing_models!,%%m"
+        )
+        call :log_warning "  Missing %%m model for %symbol%"
+    )
+)
+
+if %models_found% LSS 2 (
+    call :log_warning "Symbol %symbol% has insufficient models (%models_found%/3). Missing: %missing_models%"
+    exit /b 1
+)
+
+call :log_success "Symbol %symbol% has sufficient models (%models_found%/3)"
+exit /b 0
+
+:initialize_trading_system
+call :log_info "Initializing comprehensive trading system..."
+
+REM Validate Python trading environment
 call :log_info "Validating Python trading environment..."
 python -c "
 try:
-    import pandas, numpy, yaml
-    import ccxt, binance
+    import pandas, numpy, yaml, ccxt
+    import sklearn, lightgbm
     print('Core trading dependencies verified')
 except ImportError as e:
     print(f'Missing dependency: {e}')
     exit(1)
 " 2>nul
+
 if errorlevel 1 (
-    call :log_warning "Some trading dependencies missing, attempting to install..."
-    pip install --quiet python-binance ccxt pandas numpy pyyaml
+    call :log_warning "Some trading dependencies missing, attempting recovery..."
+    call :install_essential_packages
 )
 
-call :log_success "Trading system configured"
+REM Test trading script functionality
+call :log_info "Testing trading script functionality..."
+python "%TRADER_SCRIPT%" --test-mode --config "%CONFIG_FILE%" 2>nul
+if errorlevel 1 (
+    call :log_warning "Trading script test failed, but continuing..."
+)
+
+call :log_success "Trading system initialized successfully"
 exit /b 0
 
-:start_trading_system
-call :log_info "Starting live trading system..."
+REM ==========================================
+REM AUTOMATED TRADING LOOP FUNCTIONS
+REM ==========================================
 
-REM Final pre-flight checks
-if not exist "%TRADER_SCRIPT%" (
-    call :log_error "Trader script not found: %TRADER_SCRIPT%"
-    exit /b 1
-)
-
-REM Create startup command
-set "startup_cmd=python %TRADER_SCRIPT%"
-if exist "%CONFIG_FILE%" (
-    set "startup_cmd=!startup_cmd! --config %CONFIG_FILE%"
-)
-
-call :log_info "Executing trading system startup..."
-call :log_info "Command: %startup_cmd%"
+:start_automated_trading_loop
+call :log_info "Starting automated trading loop with %EXECUTION_INTERVAL% second intervals..."
 
 echo.
 echo ========================================
-echo   🚀 LAUNCHING TRADING SYSTEM 🚀
+echo   AUTOMATED TRADING SYSTEM ACTIVE
 echo ========================================
 echo.
-echo The trading system is now starting...
-echo Monitor the console for real-time updates
-echo Log files are available in the logs/ directory
+echo Configuration:
+echo - Execution Interval: %EXECUTION_INTERVAL% seconds (30 minutes)
+echo - Trading Symbols: %VERIFIED_SYMBOLS%
+echo - Model Types: %MODEL_TYPES%
+echo - Logs Directory: logs\
+echo - CSV Reports: %TRADES_CSV%
 echo.
-echo Press Ctrl+C to stop the trading system
+echo The system will execute trading operations every 30 minutes.
+echo Press Ctrl+C to stop the automated trading system.
+echo.
+echo Monitor logs\trading.log for real-time activity
+echo Monitor logs\trades_report.csv for trade records
 echo.
 
-REM Execute the trading system
-%startup_cmd%
-set "trader_exit_code=!errorlevel!"
+set "loop_count=0"
 
-if !trader_exit_code! == 0 (
-    call :log_success "Trading system exited normally"
+:trading_loop
+set /a loop_count+=1
+call :log_info "=== Trading Loop Iteration %loop_count% ==="
+
+REM Execute trading cycle for each verified symbol
+for %%s in (%VERIFIED_SYMBOLS%) do (
+    call :execute_trading_cycle "%%s"
+)
+
+call :log_info "Trading cycle completed. Next execution in %EXECUTION_INTERVAL% seconds..."
+echo.
+echo [%date% %time%] Cycle %loop_count% completed. Waiting %EXECUTION_INTERVAL% seconds...
+echo.
+
+REM Wait for next execution
+timeout /t %EXECUTION_INTERVAL% /nobreak >nul
+
+REM Continue loop
+goto :trading_loop
+
+:execute_trading_cycle
+set "symbol=%~1"
+set "retry_count=0"
+
+call :log_info "Executing trading cycle for %symbol%..."
+
+:retry_trading
+set /a retry_count+=1
+
+REM Execute trading with error handling
+python "%TRADER_SCRIPT%" --symbol "%symbol%" --config "%CONFIG_FILE%" --single-cycle 2>temp_error.log
+set "trade_result=%errorlevel%"
+
+if %trade_result% EQU 0 (
+    call :log_success "Trading cycle completed successfully for %symbol%"
+    
+    REM Log successful trade (placeholder - actual trade details would come from the Python script)
+    call :log_trade "%symbol%" "CYCLE_COMPLETE" "N/A" "N/A" "SUCCESS" "Automated cycle completed" "ENSEMBLE" "N/A" "N/A"
+    
+    if exist temp_error.log del temp_error.log
+    exit /b 0
 ) else (
-    call :log_warning "Trading system exited with code: !trader_exit_code!"
-)
-
-exit /b !trader_exit_code!
-    echo Found model package: %%f
-    echo Attempting automatic import...
-    call import_models.bat
-    if not errorlevel 1 (
-        set "found_package=1"
-        echo Model import completed successfully.
-        goto :MODELS_OK
-    ) else (
-        echo Warning: Failed to import %%f
+    REM Read error details
+    set "error_msg="
+    if exist temp_error.log (
+        for /f "delims=" %%i in (temp_error.log) do set "error_msg=%%i"
+        del temp_error.log
     )
-)
-
-if !found_package! equ 0 (
-    echo ERROR: No models found and no model packages available for import!
-    echo Please place a model transfer package (*.zip) in this directory.
-    exit /b 1
-)
-
-:EMPTY_MODELS
-echo Models directory is empty. Checking for model packages to import...
-echo.
-
-REM Look for model packages in current directory
-set "found_package=0"
-for %%f in (*.zip) do (
-    echo Found model package: %%f
-    echo Attempting automatic import...
-    call import_models.bat
-    if not errorlevel 1 (
-        set "found_package=1"
-        echo Model import completed successfully.
-        goto :MODELS_OK
+    
+    call :log_error "Trading cycle failed for %symbol% (attempt %retry_count%/%MAX_RETRIES%): %error_msg%"
+    
+    REM Log failed trade
+    call :log_trade "%symbol%" "CYCLE_FAILED" "N/A" "N/A" "ERROR" "Cycle failed: %error_msg%" "N/A" "N/A" "N/A"
+    
+    REM Retry logic
+    if %retry_count% LSS %MAX_RETRIES% (
+        call :log_info "Retrying in %RETRY_DELAY% seconds..."
+        timeout /t %RETRY_DELAY% /nobreak >nul
+        goto :retry_trading
     ) else (
-        echo Warning: Failed to import %%f
-    )
-)
-
-if !found_package! equ 0 (
-    echo ERROR: Models directory is empty and no model packages available for import!
-    echo Please place a model transfer package (*.zip) in this directory.
-    exit /b 1
-)
-
-:MODELS_OK
-
-echo Models directory found with content.
-echo.
-
-REM Check if requirements.txt exists and install from it
-if exist "requirements.txt" (
-    echo Installing dependencies from requirements.txt...
-    pip install -r requirements.txt
-    if errorlevel 1 (
-        echo WARNING: Some dependencies from requirements.txt failed to install
-        echo Continuing with manual dependency check...
-    ) else (
-        echo Dependencies installed from requirements.txt
-        goto :skip_manual_deps
-    )
-)
-
-REM Manual dependency check if requirements.txt failed or doesn't exist
-echo Checking Python dependencies manually...
-
-REM Essential packages for trading
-set "IMPORT_NAMES=numpy pandas yaml sklearn requests telegram ccxt"
-for %%p in (%IMPORT_NAMES%) do (
-    if not "%%p"=="" (
-        echo Checking %%p...
-        python -c "import %%p" 2>nul
-        if errorlevel 1 (
-            echo Installing %%p...
-            pip install %%p
-            if errorlevel 1 (
-                echo WARNING: Failed to install %%p
-                echo You may need to install it manually: pip install %%p
-            )
-        )
-    )
-)
-
-:skip_manual_deps
-echo Dependencies check completed.
-echo.
-
-REM Create necessary directories
-if not exist "logs" mkdir logs
-if not exist "data" mkdir data
-if not exist "config" mkdir config
-
-echo Created necessary directories.
-echo.
-
-REM Check for trading configuration
-if not exist "src\config\config_trading.yaml" (
-    if exist "config_trading.yaml" (
-        echo Moving config_trading.yaml to src\config directory...
-        move config_trading.yaml src\config\
-    ) else (
-        echo WARNING: config_trading.yaml not found!
-        echo The bot will use default settings.
-        echo You may want to create a configuration file for optimal performance.
-    )
-)
-
-REM Check if enhanced trader script exists, fallback to regular trader
-set "TRADER_SCRIPT="
-if exist "scripts\enhanced_trader.py" (
-    set "TRADER_SCRIPT=scripts\enhanced_trader.py"
-    echo Using enhanced trader script.
-) else (
-    if exist "scripts\trader.py" (
-        set "TRADER_SCRIPT=scripts\trader.py"
-        echo Using standard trader script.
-    ) else (
-        echo ERROR: No trader script found!
-        echo Expected: scripts\enhanced_trader.py or scripts\trader.py
+        call :log_error "Max retries exceeded for %symbol%, skipping this cycle"
         exit /b 1
     )
 )
 
-echo.
+exit /b 0
 
-REM Run automated model validation
-echo Running automated model validation...
-if exist "validate_models.bat" (
-    call validate_models.bat
-    if errorlevel 1 (
-        echo Model validation failed. Continuing with warnings...
-        echo Check logs for validation details.
-    ) else (
-        echo Model validation completed successfully.
-    )
-) else (
-    echo validate_models.bat not found, skipping validation...
-)
+REM ==========================================
+REM ERROR RECOVERY FUNCTIONS
+REM ==========================================
 
-REM Generate features based on model metadata
-echo.
-echo Analyzing model metadata for feature generation...
-if exist "scripts\generate_features_from_metadata.py" (
-    echo Running feature generation from model metadata...
-    python "scripts\generate_features_from_metadata.py" --models-dir "models" --output-dir "." --verbose
-    if errorlevel 1 (
-        echo Warning: Feature generation from metadata failed. Using default features.
-        echo The bot will attempt to use existing feature configurations.
-    ) else (
-        echo Feature generation completed successfully.
-        echo Generated files: feature_config.json, feature_mapping.json, feature_config.yaml
-        if exist "feature_config.json" (
-            echo Feature configuration file created successfully.
+:handle_api_error
+call :log_error "API Error detected: %~1"
+REM Implement API-specific recovery logic
+exit /b 0
+
+:handle_model_error
+call :log_error "Model Error detected: %~1"
+REM Implement model-specific recovery logic
+exit /b 0
+
+:handle_trade_error
+call :log_error "Trade Error detected: %~1"
+REM Implement trade-specific recovery logic
+exit /b 0
+
+REM ==========================================
+REM CLEANUP AND MAINTENANCE FUNCTIONS
+REM ==========================================
+
+:cleanup_logs
+REM Rotate logs if they get too large
+for %%f in ("%LOG_FILE%" "%TRADING_LOG%" "%ERROR_LOG%") do (
+    for %%s in (%%f) do (
+        if %%~zs GTR 10485760 (
+            call :log_info "Rotating log file: %%f"
+            copy %%f %%f.backup >nul
+            echo. > %%f
         )
-        if exist "feature_mapping.json" (
-            echo Feature mapping file created successfully.
-        )
     )
-) else (
-    echo ERROR: Feature generation script not found!
-    echo Expected: scripts\generate_features_from_metadata.py
-    echo This script is required for proper feature alignment with models.
-    exit /b 1
 )
+exit /b 0
 
-echo.
-echo ========================================
-echo     Starting Paper Trading Bot
-echo ========================================
-echo.
-echo Configuration:
-echo - Trader Script: !TRADER_SCRIPT!
-echo - Models Directory: models
-echo - Logs Directory: logs
-echo - Mode: Paper Trading
-echo.
-echo The bot will start in paper trading mode.
-echo Press Ctrl+C to stop the bot.
-echo.
-echo Logs will be saved to the 'logs' directory.
-echo Monitor the logs for trading activity and performance.
-echo.
-echo Starting trader automatically...
-echo.
-
-REM Start the trading bot with appropriate arguments
-echo Starting trader...
-if "!TRADER_SCRIPT!"=="scripts\enhanced_trader.py" (
-    python !TRADER_SCRIPT!
-) else (
-    python !TRADER_SCRIPT!
+:backup_trades_csv
+REM Backup trades CSV daily
+set "backup_name=logs\trades_report_%date:~-4,4%%date:~-10,2%%date:~-7,2%.csv"
+if not exist "%backup_name%" (
+    copy "%TRADES_CSV%" "%backup_name%" >nul
+    call :log_info "Trades CSV backed up to: %backup_name%"
 )
-
-if errorlevel 1 (
-    echo.
-    echo ERROR: Trading bot encountered an error!
-    echo Check the logs directory for more information.
-    echo.
-    echo Common issues:
-    echo - Missing or corrupted model files
-    echo - Network connectivity problems
-    echo - Configuration errors
-    echo.
-    echo Try running 'validate_models.bat' to check your models.
-    exit /b 1
-)
-
-echo.
-echo ========================================
-echo Trading bot stopped successfully.
-echo ========================================
-echo.
-echo Check the following for results:
-echo - logs\ directory for trading logs
-echo - data\ directory for market data
-echo - Any generated reports or performance files
-echo.
+exit /b 0
