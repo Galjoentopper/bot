@@ -93,53 +93,27 @@ echo [SUCCESS] Trading symbols found: !TRADING_SYMBOLS!
 REM Convert comma-separated symbols to space-separated for processing
 set "SYMBOLS_SPACED=!TRADING_SYMBOLS:,= !"
 
-REM Check if models exist for the symbols
+REM Check if models directory exists
 echo [INFO] Checking for trained models...
-set "MISSING_MODELS=0"
-set "MODEL_TYPES=gru lightgbm ppo"
-
-for %%s in (!SYMBOLS_SPACED!) do (
-    echo [INFO] Checking models for symbol: %%s
-    set "symbol_has_models=0"
+if not exist "models" (
+    echo [WARNING] Models directory does not exist
+    echo [INFO] The trading script will handle this and show available options
+    echo [INFO] You may want to train models first using enhanced_trainer.py
+) else (
+    echo [INFO] Models directory found - checking for symbol models...
+    set "FOUND_MODELS=0"
     
-    for %%m in (!MODEL_TYPES!) do (
-        REM Check multiple possible model locations
-        if exist "models\%%m\%%s\" (
-            for %%f in ("models\%%m\%%s\*") do (
-                if exist "%%f" (
-                    set "symbol_has_models=1"
-                    echo [INFO]   Found %%m model for %%s
-                    goto :next_model_%%s_%%m
-                )
-            )
+    for %%s in (!SYMBOLS_SPACED!) do (
+        if exist "models\*%%s*" (
+            echo [INFO] Found models for symbol: %%s
+            set "FOUND_MODELS=1"
         )
-        
-        REM Check flat structure
-        for %%e in (pkl pt joblib zip) do (
-            if exist "models\%%m_%%s.%%e" (
-                set "symbol_has_models=1"
-                echo [INFO]   Found %%m model for %%s (flat structure)
-                goto :next_model_%%s_%%m
-            )
-            if exist "models\best_wf_%%m_%%s.%%e" (
-                set "symbol_has_models=1"
-                echo [INFO]   Found %%m model for %%s (best walkforward)
-                goto :next_model_%%s_%%m
-            )
-        )
-        
-        :next_model_%%s_%%m
     )
     
-    if !symbol_has_models! == 0 (
-        echo [WARNING] No models found for symbol: %%s
-        set /a MISSING_MODELS=!MISSING_MODELS!+1
+    if !FOUND_MODELS! == 0 (
+        echo [WARNING] No models found for configured symbols
+        echo [INFO] The trading script will show available models and options
     )
-)
-
-if !MISSING_MODELS! GTR 0 (
-    echo [WARNING] Some symbols are missing models, but continuing...
-    echo [INFO] You may want to train models for missing symbols first
 )
 
 REM Create logs directory if it doesn't exist
@@ -153,15 +127,14 @@ echo ================================
 echo.
 echo Configuration: %CONFIG_FILE%
 echo Trading Symbols: !TRADING_SYMBOLS!
-echo Model Types: %MODEL_TYPES%
 echo.
 echo The trading bot will now start with the configured symbols.
 echo Check logs\trading.log for detailed activity.
 echo Press Ctrl+C to stop the trading bot.
 echo.
 
-REM Start the trading script
-python "%TRADER_SCRIPT%" --config "%CONFIG_FILE%"
+REM Start the trading script with explicit symbols
+python "%TRADER_SCRIPT%" --config "%CONFIG_FILE%" --symbols !SYMBOLS_SPACED!
 
 if errorlevel 1 (
     echo.
