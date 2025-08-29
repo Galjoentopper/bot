@@ -259,7 +259,7 @@ class EnhancedUnifiedPaperTrader:
                 for symbol_dir in model_type_dir.iterdir():
                     if symbol_dir.is_dir():
                         symbol = symbol_dir.name
-                        # Check if model files exist directly
+                        # Check if model files exist
                         found_model = False
                         for pattern in patterns:
                             if list(symbol_dir.glob(pattern)):
@@ -267,20 +267,6 @@ class EnhancedUnifiedPaperTrader:
                                 available_models.add(model_type)
                                 found_model = True
                                 break
-                        
-                        # Also check nested directories (e.g., models/lightgbm/BTCEUR/lightgbm/timestamp/model.pkl)
-                        if not found_model:
-                            for nested_dir in symbol_dir.iterdir():
-                                if nested_dir.is_dir():
-                                    for pattern in patterns:
-                                        if list(nested_dir.glob(pattern)) or list(nested_dir.glob(f"*/{pattern}")):
-                                            available_symbols.add(symbol)
-                                            available_models.add(model_type)
-                                            found_model = True
-                                            break
-                                    if found_model:
-                                        break
-                        
                         if found_model:
                             self.logger.logger.debug(f"Found {model_type} model for {symbol}")
         
@@ -364,25 +350,15 @@ class EnhancedUnifiedPaperTrader:
                 symbols_with_models = []
                 for symbol_dir in type_dir.iterdir():
                     if symbol_dir.is_dir():
-                        # Check if model files exist directly or in nested directories
+                        # Check if model files exist
                         model_files = []
                         patterns = {
                             'gru': ['*.pth', '*.pt', 'model.pth'],
                             'lightgbm': ['*.pkl', 'model.pkl'],
                             'ppo': ['*.zip', 'model.zip']
                         }
-                        
-                        # Check direct files
                         for pattern in patterns.get(model_type, ['*']):
                             model_files.extend(list(symbol_dir.glob(pattern)))
-                        
-                        # Check nested directories
-                        if not model_files:
-                            for nested_dir in symbol_dir.iterdir():
-                                if nested_dir.is_dir():
-                                    for pattern in patterns.get(model_type, ['*']):
-                                        model_files.extend(list(nested_dir.glob(pattern)))
-                                        model_files.extend(list(nested_dir.glob(f"*/{pattern}")))
                         
                         if model_files:
                             symbols_with_models.append(symbol_dir.name)

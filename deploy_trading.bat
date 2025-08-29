@@ -504,27 +504,42 @@ set "loop_count=0"
 
 :trading_loop
 set /a loop_count+=1
-call :log_info "=== Starting Unified Continuous Trading ===" 
+call :log_info "=== Trading Loop Iteration %loop_count% ==="
 
-REM Execute unified continuous trading (runs indefinitely)
-call :execute_unified_trading_cycle
+REM Execute trading cycle for each verified symbol
+for %%s in (%VERIFIED_SYMBOLS%) do (
+    call :execute_trading_cycle "%%s"
+)
 
-REM If we reach here, trading has stopped - log and exit
-call :log_info "Unified continuous trading has stopped"
-exit /b 0
+call :log_info "Trading cycle completed. Next execution in %EXECUTION_INTERVAL% seconds..."
+echo.
+echo [%date% %time%] Cycle %loop_count% completed. Waiting %EXECUTION_INTERVAL% seconds...
+echo.
 
-:execute_unified_trading_cycle
-call :log_info "Starting unified continuous trading for all symbols: %VERIFIED_SYMBOLS%"
+REM Wait for next execution
+timeout /t %EXECUTION_INTERVAL% /nobreak >nul
 
-REM Execute unified continuous trading (let it run indefinitely)
-python "%TRADER_SCRIPT%" --symbols %VERIFIED_SYMBOLS% --config "%CONFIG_FILE%" 2>temp_error.log
+REM Continue loop
+goto :trading_loop
+
+:execute_trading_cycle
+set "symbol=%~1"
+set "retry_count=0"
+
+call :log_info "Executing trading cycle for %symbol%..."
+
+:retry_trading
+set /a retry_count+=1
+
+REM Execute trading with error handling
+python "%TRADER_SCRIPT%" --symbol "%symbol%" --config "%CONFIG_FILE%" --single-cycle 2>temp_error.log
 set "trade_result=%errorlevel%"
 
 if %trade_result% EQU 0 (
-    call :log_success "Unified continuous trading session completed"
+    call :log_success "Trading cycle completed successfully for %symbol%"
     
-    REM Log trading session end
-    call :log_trade "ALL_SYMBOLS" "CONTINUOUS_SESSION_END" "N/A" "N/A" "SUCCESS" "Continuous trading session ended normally" "ENSEMBLE" "N/A" "N/A"
+    REM Log successful trade (placeholder - actual trade details would come from the Python script)
+    call :log_trade "%symbol%" "CYCLE_COMPLETE" "N/A" "N/A" "SUCCESS" "Automated cycle completed" "ENSEMBLE" "N/A" "N/A"
     
     if exist temp_error.log del temp_error.log
     exit /b 0
@@ -536,12 +551,20 @@ if %trade_result% EQU 0 (
         del temp_error.log
     )
     
-    call :log_error "Unified continuous trading failed: %error_msg%"
+    call :log_error "Trading cycle failed for %symbol% (attempt %retry_count%/%MAX_RETRIES%): %error_msg%"
     
-    REM Log failed trading session
-    call :log_trade "ALL_SYMBOLS" "CONTINUOUS_SESSION_FAILED" "N/A" "N/A" "ERROR" "Continuous trading failed: %error_msg%" "N/A" "N/A" "N/A"
+    REM Log failed trade
+    call :log_trade "%symbol%" "CYCLE_FAILED" "N/A" "N/A" "ERROR" "Cycle failed: %error_msg%" "N/A" "N/A" "N/A"
     
-    exit /b 1
+    REM Retry logic
+    if %retry_count% LSS %MAX_RETRIES% (
+        call :log_info "Retrying in %RETRY_DELAY% seconds..."
+        timeout /t %RETRY_DELAY% /nobreak >nul
+        goto :retry_trading
+    ) else (
+        call :log_error "Max retries exceeded for %symbol%, skipping this cycle"
+        exit /b 1
+    )
 )
 
 exit /b 0
