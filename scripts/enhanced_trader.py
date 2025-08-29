@@ -76,7 +76,7 @@ class ModelMetadata:
     validated: bool = False
 
 class EnhancedUnifiedPaperTrader:
-    """Enhanced paper trader with robust model loading capabilities."""
+    """Enterprise-ready paper trader with robust model loading and health monitoring."""
     
     def __init__(self, config_path: str = None, models_dir: str = 'models', 
                  symbols: List[str] = None, models: List[str] = None, 
@@ -1829,6 +1829,269 @@ class EnhancedUnifiedPaperTrader:
         except Exception as e:
             self.logger.logger.error(f"Error during metadata hygiene: {e}")
 
+    # ==========================================
+    # ENTERPRISE-READY FEATURES
+    # ==========================================
+    
+    def health_check(self) -> Dict[str, Any]:
+        """Perform comprehensive health check of the trading system."""
+        health_status = {
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'overall_status': 'healthy',
+            'components': {},
+            'metrics': {},
+            'warnings': [],
+            'errors': []
+        }
+        
+        try:
+            # Check model availability
+            total_models = 0
+            failed_models = 0
+            for symbol in self.symbols:
+                models = self._load_models_for_symbol(symbol)
+                total_models += len(self.model_types)
+                failed_models += len(self.model_types) - len(models)
+            
+            health_status['components']['models'] = {
+                'status': 'healthy' if failed_models == 0 else 'degraded',
+                'total_expected': total_models,
+                'available': total_models - failed_models,
+                'failed': failed_models
+            }
+            
+            # Check configuration
+            health_status['components']['configuration'] = {
+                'status': 'healthy',
+                'symbols_count': len(self.symbols),
+                'model_types_count': len(self.model_types)
+            }
+            
+            # Check directory structure
+            required_dirs = ['models', 'logs', 'data']
+            missing_dirs = [d for d in required_dirs if not Path(d).exists()]
+            health_status['components']['directories'] = {
+                'status': 'healthy' if not missing_dirs else 'warning',
+                'missing': missing_dirs
+            }
+            
+            # Performance metrics
+            health_status['metrics'] = {
+                'memory_usage_mb': self._get_memory_usage(),
+                'models_loaded': total_models - failed_models,
+                'uptime_seconds': time.time() - getattr(self, '_start_time', time.time())
+            }
+            
+            # Overall status determination
+            if failed_models > 0:
+                health_status['overall_status'] = 'degraded'
+                health_status['warnings'].append(f"{failed_models} models failed to load")
+            
+            if missing_dirs:
+                health_status['warnings'].append(f"Missing directories: {missing_dirs}")
+            
+            self.logger.logger.info(f"Health check completed: {health_status['overall_status']}")
+            return health_status
+            
+        except Exception as e:
+            health_status['overall_status'] = 'critical'
+            health_status['errors'].append(f"Health check failed: {str(e)}")
+            self.logger.logger.error(f"Health check failed: {e}")
+            return health_status
+    
+    def _get_memory_usage(self) -> float:
+        """Get current memory usage in MB."""
+        try:
+            import psutil
+            process = psutil.Process()
+            return process.memory_info().rss / 1024 / 1024
+        except ImportError:
+            return 0.0
+        except Exception:
+            return 0.0
+    
+    def auto_recovery(self) -> bool:
+        """Attempt automatic recovery from common issues."""
+        self.logger.logger.info("Starting automatic recovery procedures...")
+        recovery_success = True
+        
+        try:
+            # Clear any stale model instances
+            self.models.clear()
+            self.preprocessors.clear()
+            
+            # Attempt to reload models
+            for symbol in self.symbols:
+                try:
+                    models = self._load_models_for_symbol(symbol)
+                    if models:
+                        self.models[symbol] = models
+                        self.logger.logger.info(f"Recovery: Reloaded models for {symbol}")
+                    else:
+                        self.logger.logger.warning(f"Recovery: Failed to reload models for {symbol}")
+                        recovery_success = False
+                except Exception as e:
+                    self.logger.logger.error(f"Recovery: Error reloading models for {symbol}: {e}")
+                    recovery_success = False
+            
+            # Clear any cached data that might be stale
+            if hasattr(self, '_market_data_cache'):
+                self._market_data_cache.clear()
+            
+            # Reset error counters
+            if hasattr(self, '_error_count'):
+                self._error_count = 0
+            
+            self.logger.logger.info(f"Auto-recovery completed: {'success' if recovery_success else 'partial'}")
+            return recovery_success
+            
+        except Exception as e:
+            self.logger.logger.error(f"Auto-recovery failed: {e}")
+            return False
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get comprehensive performance metrics."""
+        metrics = {
+            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'system': {
+                'memory_usage_mb': self._get_memory_usage(),
+                'uptime_seconds': time.time() - getattr(self, '_start_time', time.time())
+            },
+            'models': {},
+            'trading': {
+                'symbols_active': len(self.symbols),
+                'model_types_active': len(self.model_types)
+            }
+        }
+        
+        # Model-specific metrics
+        for symbol in self.symbols:
+            metrics['models'][symbol] = {
+                'models_loaded': len(self.models.get(symbol, {})),
+                'models_expected': len(self.model_types),
+                'status': 'healthy' if symbol in self.models and len(self.models[symbol]) == len(self.model_types) else 'degraded'
+            }
+        
+        return metrics
+    
+    def create_deployment_report(self) -> str:
+        """Create a comprehensive deployment status report."""
+        health = self.health_check()
+        metrics = self.get_performance_metrics()
+        
+        report = f"""
+=== ENTERPRISE TRADING SYSTEM DEPLOYMENT REPORT ===
+Generated: {health['timestamp']}
+
+OVERALL STATUS: {health['overall_status'].upper()}
+
+CONFIGURATION:
+- Trading Symbols: {', '.join(self.symbols)}
+- Model Types: {', '.join(self.model_types)}
+- Models Directory: {self.models_dir}
+- Configuration: {getattr(self, 'config_path', 'auto-detected')}
+
+COMPONENT STATUS:
+"""
+        
+        for component, status in health['components'].items():
+            report += f"- {component.title()}: {status['status'].upper()}\n"
+        
+        report += f"""
+PERFORMANCE METRICS:
+- Memory Usage: {metrics['system']['memory_usage_mb']:.1f} MB
+- Uptime: {metrics['system']['uptime_seconds']:.0f} seconds
+- Active Symbols: {metrics['trading']['symbols_active']}
+- Active Model Types: {metrics['trading']['model_types_active']}
+
+MODEL STATUS:
+"""
+        
+        for symbol, status in metrics['models'].items():
+            report += f"- {symbol}: {status['models_loaded']}/{status['models_expected']} models ({status['status']})\n"
+        
+        if health['warnings']:
+            report += f"\nWARNINGS:\n"
+            for warning in health['warnings']:
+                report += f"- {warning}\n"
+        
+        if health['errors']:
+            report += f"\nERRORS:\n"
+            for error in health['errors']:
+                report += f"- {error}\n"
+        
+        report += "\n=== END REPORT ===\n"
+        
+        return report
+    
+    def save_deployment_report(self, filename: str = None) -> str:
+        """Save deployment report to file."""
+        if filename is None:
+            timestamp = time.strftime('%Y%m%d_%H%M%S')
+            filename = f"logs/deployment_report_{timestamp}.txt"
+        
+        report = self.create_deployment_report()
+        
+        # Ensure logs directory exists
+        Path('logs').mkdir(exist_ok=True)
+        
+        with open(filename, 'w') as f:
+            f.write(report)
+        
+        self.logger.logger.info(f"Deployment report saved to: {filename}")
+        return filename
+    
+    def enable_enterprise_monitoring(self):
+        """Enable enterprise-level monitoring and alerting."""
+        self._start_time = time.time()
+        self._monitoring_enabled = True
+        self._error_count = 0
+        self._last_health_check = time.time()
+        
+        self.logger.logger.info("Enterprise monitoring enabled")
+        
+        # Schedule periodic health checks
+        try:
+            import schedule
+            schedule.every(15).minutes.do(self._periodic_health_check)
+            self.logger.logger.info("Scheduled periodic health checks every 15 minutes")
+        except ImportError:
+            self.logger.logger.warning("Schedule module not available - periodic checks disabled")
+    
+    def _periodic_health_check(self):
+        """Perform periodic health check and recovery if needed."""
+        try:
+            health = self.health_check()
+            
+            if health['overall_status'] == 'critical':
+                self.logger.logger.error("Critical system status detected - attempting recovery")
+                recovery_success = self.auto_recovery()
+                
+                if recovery_success:
+                    self.logger.logger.info("Recovery successful")
+                else:
+                    self.logger.logger.error("Recovery failed - manual intervention required")
+                    # Send alert if telegram is configured
+                    if hasattr(self, 'telegram_notifier') and self.telegram_notifier.enabled:
+                        asyncio.create_task(self.telegram_notifier.send_message(
+                            "🚨 Trading System Critical Alert\n"
+                            "Automatic recovery failed. Manual intervention required."
+                        ))
+            
+            elif health['overall_status'] == 'degraded':
+                self.logger.logger.warning("System running in degraded mode")
+                if hasattr(self, 'telegram_notifier') and self.telegram_notifier.enabled:
+                    asyncio.create_task(self.telegram_notifier.send_message(
+                        "⚠️ Trading System Warning\n"
+                        f"System status: {health['overall_status']}\n"
+                        f"Warnings: {len(health['warnings'])}"
+                    ))
+            
+            self._last_health_check = time.time()
+            
+        except Exception as e:
+            self.logger.logger.error(f"Periodic health check failed: {e}")
+
 
 def parse_arguments():
     """Parse command-line arguments."""
@@ -1872,11 +2135,19 @@ async def main():
             # Test mode: validate configuration and models only
             trader.logger.logger.info("Running in test mode - validating configuration and models")
             
+            # Enable enterprise monitoring for test
+            trader.enable_enterprise_monitoring()
+            
             # Report discovered models
             trader.logger.logger.info("=== MODEL DISCOVERY REPORT ===")
             trader.logger.logger.info(f"Models directory: {trader.models_dir}")
             trader.logger.logger.info(f"Available symbols: {trader.symbols}")
             trader.logger.logger.info(f"Available model types: {trader.model_types}")
+            
+            # Perform health check
+            health_status = trader.health_check()
+            trader.logger.logger.info("=== HEALTH CHECK RESULTS ===")
+            trader.logger.logger.info(f"Overall status: {health_status['overall_status']}")
             
             # Test model loading for each symbol
             total_models_found = 0
@@ -1896,9 +2167,14 @@ async def main():
                 else:
                     trader.logger.logger.warning(f"✗ No models found for {symbol}")
             
+            # Generate and save deployment report
+            report_filename = trader.save_deployment_report()
+            trader.logger.logger.info(f"Deployment report saved to: {report_filename}")
+            
             trader.logger.logger.info(f"\n=== SUMMARY ===")
             trader.logger.logger.info(f"Total symbols with models: {len(trader.symbols)}")
             trader.logger.logger.info(f"Total models loaded: {total_models_found}")
+            trader.logger.logger.info(f"Health status: {health_status['overall_status']}")
             
             if total_models_found > 0:
                 trader.logger.logger.info("✓ Test mode completed successfully - models are available")
