@@ -105,6 +105,7 @@ trading:
   max_position_size: 0.1
   transaction_fee: 0.001
   slippage: 0.0005
+  interval: '30m'  # Ensures trader uses 30-minute candles for optimal freshness
   
   # Model weights for ensemble
   model_weights:

@@ -48,7 +48,6 @@ from src.config.config_loader import ConfigLoader
 
 # Import our new model packaging utilities
 from src.utils.model_packaging import ModelPackager
-from src.utils.model_transfer import ModelTransferManager
 from src.utils.training_checkpoint import TrainingCheckpoint, TrainingProgress, CheckpointMetadata
 
 # Import hyperparameter optimization modules
@@ -139,7 +138,7 @@ def package_and_export_models(output_dir: str, symbols: List[str], models: List[
                              export_dir: Optional[str] = None) -> Dict[str, Any]:
     """
     Package trained models for easy transfer and deployment.
-    This implementation is compatible with the current ModelPackager and ModelTransfer utilities.
+    This implementation is compatible with the current ModelPackager utility.
     """
     logger.info("Starting model packaging and export...")
 
