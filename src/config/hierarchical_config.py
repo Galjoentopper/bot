@@ -14,7 +14,7 @@ and provides flexibility for both automated optimization and manual tuning.
 
 import yaml
 import json
-from typing import Dict, List, Optional, Any, Union, Callable
+from typing import Dict, List, Optional, Any, Union, Callable, Tuple
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from enum import Enum
