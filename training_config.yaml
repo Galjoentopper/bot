@@ -3,7 +3,7 @@
 
 # Data Acquisition Configuration
 data_acquisition:
-  symbols: ['BTCEUR', 'ETHEUR', 'ADAEUR']
+  symbols: ['BTCEUR', 'ETHEUR', 'ADAEUR', 'DOTEUR', 'LINKEUR']
   interval: '30m'
   lookback_days: 365
   data_sources:
