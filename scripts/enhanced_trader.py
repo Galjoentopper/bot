@@ -181,10 +181,7 @@ class EnhancedUnifiedPaperTrader:
         )
         
         # Trading configuration - get symbols from parameters or data section or fallback to root symbols
-        if not hasattr(self, 'symbols') or not self.symbols:
-            data_symbols = self.config.get('data', {}).get('symbols', [])
-            root_symbols = self.config.get('symbols', [])
-            self.symbols = data_symbols or root_symbols or ['BTCEUR', 'ETHEUR', 'ADAEUR']
+        # self.symbols is already set and filtered earlier in the constructor; do not overwrite here.
         self.interval = self.config.get('interval', '30m')
         self.initial_balance = float(self.config.get('initial_balance', 10000))
         self.max_position_size = float(self.config.get('max_position_size', 0.1))
