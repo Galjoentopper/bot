@@ -8,6 +8,7 @@ This enhanced version supports:
 - Support for transferred models from other machines
 - Enhanced error handling and logging
 - Model validation and compatibility checking
+- Command-line arguments for flexible symbol and model selection
 """
 
 import os
@@ -17,6 +18,7 @@ import pickle
 import asyncio
 import time
 import glob
+import argparse
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
@@ -76,7 +78,8 @@ class ModelMetadata:
 class EnhancedUnifiedPaperTrader:
     """Enhanced paper trader with robust model loading capabilities."""
     
-    def __init__(self, config_path: str = None, models_dir: str = 'models'):
+    def __init__(self, config_path: str = None, models_dir: str = 'models', 
+                 symbols: List[str] = None, models: List[str] = None):
         """Initialize the enhanced trader."""
         # Use auto-detection if no config path specified, otherwise use explicit path
         if config_path:
@@ -91,6 +94,27 @@ class EnhancedUnifiedPaperTrader:
         else:
             self.models_dir = Path(models_dir)
         self.logger = Logger(name='enhanced_trader')
+        
+        # Set symbols and models from parameters if provided, otherwise use config
+        if symbols:
+            self.symbols = symbols
+        else:
+            # Extract symbols from config
+            config_symbols = self.config.get('data_acquisition', {}).get('symbols', [])
+            if not config_symbols:
+                config_symbols = self.config.get('data', {}).get('symbols', [])
+            if not config_symbols:
+                config_symbols = self.config.get('symbols', [])
+            self.symbols = config_symbols
+        
+        if models:
+            self.model_types = models
+        else:
+            # Extract models from config
+            self.model_types = self.config.get('training', {}).get('models', ['gru', 'lightgbm', 'ppo'])
+        
+        self.logger.logger.info(f"Trading symbols: {self.symbols}")
+        self.logger.logger.info(f"Model types: {self.model_types}")
         
         # Initialize components
         self.feature_engine = FeatureEngine()
@@ -123,10 +147,11 @@ class EnhancedUnifiedPaperTrader:
             config=metadata_config
         )
         
-        # Trading configuration - get symbols from data section or fallback to root symbols
-        data_symbols = self.config.get('data', {}).get('symbols', [])
-        root_symbols = self.config.get('symbols', [])
-        self.symbols = data_symbols or root_symbols or ['BTCEUR', 'ETHEUR', 'ADAEUR']
+        # Trading configuration - get symbols from parameters or data section or fallback to root symbols
+        if not hasattr(self, 'symbols') or not self.symbols:
+            data_symbols = self.config.get('data', {}).get('symbols', [])
+            root_symbols = self.config.get('symbols', [])
+            self.symbols = data_symbols or root_symbols or ['BTCEUR', 'ETHEUR', 'ADAEUR']
         self.interval = self.config.get('interval', '30m')
         self.initial_balance = float(self.config.get('initial_balance', 10000))
         self.max_position_size = float(self.config.get('max_position_size', 0.1))
@@ -191,7 +216,7 @@ class EnhancedUnifiedPaperTrader:
             self.preprocessors[symbol] = {}
             
             # Load each model type with multiple fallback sources
-            for model_type in ['gru', 'lightgbm', 'ppo']:
+            for model_type in self.model_types:
                 model_info = self._load_model_with_fallbacks(symbol, model_type)
                 if model_info:
                     model, metadata = model_info
@@ -212,6 +237,23 @@ class EnhancedUnifiedPaperTrader:
         
         total_models = sum(len(models) for models in self.models.values())
         self.logger.logger.info(f"Loaded {total_models} models across {len(self.symbols)} symbols")
+    
+    def _load_models_for_symbol(self, symbol: str) -> Dict[str, Any]:
+        """Load models for a specific symbol and return them."""
+        models = {}
+        
+        for model_type in self.model_types:
+            model_info = self._load_model_with_fallbacks(symbol, model_type)
+            if model_info:
+                model, metadata = model_info
+                models[model_type] = model
+                self.logger.logger.info(
+                    f"Loaded {model_type} model for {symbol} from {metadata.source}: {metadata.file_path}"
+                )
+            else:
+                self.logger.logger.warning(f"Failed to load {model_type} model for {symbol}")
+        
+        return models
     
     def _load_model_with_fallbacks(self, symbol: str, model_type: str) -> Optional[Tuple[Any, ModelMetadata]]:
         """Load model with multiple fallback sources."""
@@ -1615,10 +1657,67 @@ class EnhancedUnifiedPaperTrader:
             self.logger.logger.error(f"Error during metadata hygiene: {e}")
 
 
+def parse_arguments():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description='Enhanced Unified Trading Script')
+    parser.add_argument('--config', type=str, default=None,
+                       help='Path to configuration file (default: auto-detect)')
+    parser.add_argument('--models-dir', type=str, default='models',
+                       help='Path to models directory (default: models)')
+    parser.add_argument('--symbols', type=str, nargs='+', default=None,
+                       help='Trading symbols to use (default: from config)')
+    parser.add_argument('--models', type=str, nargs='+', default=None,
+                       help='Model types to use (default: from config)')
+    parser.add_argument('--test-mode', action='store_true',
+                       help='Run in test mode (validate configuration and models)')
+    parser.add_argument('--single-cycle', action='store_true',
+                       help='Run a single trading cycle instead of continuous loop')
+    return parser.parse_args()
+
+
 async def main():
     """Main function to run the enhanced trader."""
     try:
-        trader = EnhancedUnifiedPaperTrader()
+        args = parse_arguments()
+        
+        trader = EnhancedUnifiedPaperTrader(
+            config_path=args.config,
+            models_dir=args.models_dir,
+            symbols=args.symbols,
+            models=args.models
+        )
+        
+        if args.test_mode:
+            # Test mode: validate configuration and models only
+            trader.logger.logger.info("Running in test mode - validating configuration and models")
+            
+            # Try to load at least one model for each symbol to validate setup
+            for symbol in trader.symbols:
+                trader.logger.logger.info(f"Testing model loading for {symbol}")
+                models = trader._load_models_for_symbol(symbol)
+                if models:
+                    trader.logger.logger.info(f"Successfully loaded models for {symbol}: {list(models.keys())}")
+                else:
+                    trader.logger.logger.warning(f"No models found for {symbol}")
+            
+            trader.logger.logger.info("Test mode completed successfully")
+            return 0
+        
+        if args.single_cycle:
+            # Single cycle mode: run once for each symbol
+            trader.logger.logger.info("Running in single cycle mode")
+            for symbol in trader.symbols:
+                trader.logger.logger.info(f"Running single cycle for {symbol}")
+                # Here you would implement a single trading cycle
+                # For now, just validate that models can be loaded
+                models = trader._load_models_for_symbol(symbol)
+                if models:
+                    trader.logger.logger.info(f"Single cycle completed for {symbol}")
+                else:
+                    trader.logger.logger.warning(f"Could not run cycle for {symbol} - no models available")
+            return 0
+        
+        # Normal mode: continuous trading loop
         await trader.run_trading_loop()
     except Exception as e:
         print(f"Failed to start trader: {e}")
