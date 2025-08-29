@@ -52,6 +52,9 @@ class Logger:
         return self.logger.getChild(suffix)
 
 
+# Global flag to track if logging has been initialized
+_logging_initialized = False
+
 def setup_logging(
     config: Optional[Dict[str, Any]] = None,
     log_level: str = "INFO",
@@ -72,6 +75,12 @@ def setup_logging(
     Returns:
         Configured logger
     """
+    global _logging_initialized
+    
+    # If already initialized, just return the existing logger
+    if _logging_initialized:
+        return logging.getLogger('crypto_trading_bot')
+    
     # Parse configuration
     if config:
         logging_config = config.get('logging', {})
@@ -127,6 +136,9 @@ def setup_logging(
     # Create main application logger
     app_logger = logging.getLogger('crypto_trading_bot')
     app_logger.info(f"Logging initialized - Level: {log_level}, File: {log_file}")
+    
+    # Mark as initialized
+    _logging_initialized = True
     
     return app_logger
 
