@@ -417,6 +417,12 @@ for %%e in (pkl pt joblib zip) do (
     if exist "models\!check_symbol!_%check_model_type%.%%e" exit /b 0
 )
 
+REM 2.1. Check for PPO model files without extension (e.g., "model")
+if "%check_model_type%"=="ppo" (
+    if exist "models\ppo\!check_symbol!\model" exit /b 0
+    if exist "models\!check_symbol!\ppo\model" exit /b 0
+)
+
 REM 3. Search in subdirectories for any model files
 if exist "models\%check_model_type%" (
     for /r "models\%check_model_type%" %%f in (*!check_symbol!*) do (

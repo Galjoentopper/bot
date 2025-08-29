@@ -2247,7 +2247,7 @@ async def main():
             return 0
         
         # Check if test mode is enabled in configuration or via command line
-        config_test_mode = self.config.get('trading', {}).get('test_mode', False)
+        config_test_mode = trader.config.get('trading', {}).get('test_mode', False)
         if args.test_mode or config_test_mode:
             # Test mode: validate configuration and models only
             if config_test_mode:
