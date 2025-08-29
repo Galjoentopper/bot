@@ -353,8 +353,5 @@ mkdir -p logs
 
 # Run main function
 main "$@"
-    echo -e "${RED}✗ Training failed${NC}"
-    exit 1
-fi
 
 echo -e "${GREEN}Training pipeline completed successfully!${NC}"
