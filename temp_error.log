@@ -1,5 +1,5 @@
-2025-08-29 23:27:38.919159: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
-2025-08-29 23:27:41.050737: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-08-30 12:36:12.919494: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-08-30 12:36:14.666481: I tensorflow/core/util/port.cc:153] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
 Traceback (most recent call last):
   File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
@@ -7,11 +7,10 @@ Traceback (most recent call last):
   File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\base_events.py", line 654, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\best test\Documents\GitHub\bot\scripts\enhanced_trader.py", line 2259, in main
+  File "C:\Users\best test\Documents\GitHub\bot\scripts\enhanced_trader.py", line 2377, in main
     await trader.run_trading_loop()
-  File "C:\Users\best test\Documents\GitHub\bot\scripts\enhanced_trader.py", line 1840, in run_trading_loop
-    await asyncio.sleep(self.config.get('trading_interval', 300))  # 5 minutes default
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\best test\Documents\GitHub\bot\scripts\enhanced_trader.py", line 1999, in run_trading_loop
+    await asyncio.sleep(sleep_seconds)
   File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\tasks.py", line 649, in sleep
     return await future
            ^^^^^^^^^^^^
@@ -20,7 +19,7 @@ asyncio.exceptions.CancelledError
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "C:\Users\best test\Documents\GitHub\bot\scripts\enhanced_trader.py", line 2267, in <module>
+  File "C:\Users\best test\Documents\GitHub\bot\scripts\enhanced_trader.py", line 2394, in <module>
     asyncio.run(main())
   File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\asyncio\runners.py", line 190, in run
     return runner.run(main)

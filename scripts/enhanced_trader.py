@@ -77,15 +77,35 @@ class ModelMetadata:
 class EnhancedUnifiedPaperTrader:
     """Enterprise-ready paper trader with robust model loading and health monitoring."""
     
-    def __init__(self, config_path: Optional[str] = None, models_dir: str = 'models', 
-                 symbols: Optional[List[str]] = None, models: Optional[List[str]] = None, 
-                 show_available_mode: bool = False, warm_start: bool = False):
-        """Initialize the enhanced trader."""
-        # Use auto-detection if no config path specified, otherwise use explicit path
-        if config_path:
-            self.config = ConfigLoader(str(config_path)).config
+    def __init__(self, config_path: Optional[str] = None, models_dir: str = 'models',
+                 symbols: Optional[List[str]] = None, models: Optional[List[str]] = None,
+                 show_available_mode: bool = False, warm_start: bool = False,
+                 config: Optional[Dict[str, Any]] = None):
+        """Initialize the enhanced trader.
+
+        Parameters:
+          config_path: Optional path to a config file (YAML/JSON). Ignored if 'config' dict provided.
+          models_dir: Base directory for models if not overridden by config.
+          symbols: Optional explicit list of symbols to trade (filtered to those with available models).
+          models: Optional explicit list of model types to use.
+          show_available_mode: If True, only show models and exit early on missing resources.
+          warm_start: If True, skip expensive reload steps in run loop startup.
+          config: Optional already-loaded configuration dictionary (takes precedence over config_path).
+        """
+        # Configuration resolution precedence: explicit dict > config_path > auto-detect
+        if config is not None:
+            if not isinstance(config, dict):
+                raise TypeError("config must be a dict when provided")
+            self.config = config
         else:
-            self.config = ConfigLoader().config
+            if config_path is not None and isinstance(config_path, (str, Path)):
+                self.config = ConfigLoader(str(config_path)).config
+            else:
+                # Allow passing a dict mistakenly via config_path; handle gracefully
+                if isinstance(config_path, dict):
+                    self.config = config_path  # backward compatibility with earlier misuse
+                else:
+                    self.config = ConfigLoader().config
         
         # Use models_dir from config if available, otherwise use parameter
         config_models_dir = self.config.get('model_management', {}).get('models_dir')
@@ -410,38 +430,7 @@ class EnhancedUnifiedPaperTrader:
             if alt_dir.exists():
                 files = list(alt_dir.glob('*'))
                 if files:
-                    self.logger.logger.info(f"{location}/: {len(files)} files found")
-    
-    def load_all_models(self):
-        """Load all models with enhanced fallback mechanisms."""
-        self.logger.logger.info("Loading models with enhanced fallback mechanisms...")
-        load_summary: Dict[str, Dict[str, str]] = {}
-        for symbol in self.symbols:
-            self.models[symbol] = {}
-            self.model_metadata[symbol] = {}
-            self.preprocessors[symbol] = {}
-            load_summary[symbol] = {}
-            
-            # Load each model type with multiple fallback sources
-            for model_type in self.model_types:
-                model_info = self._load_model_with_fallbacks(symbol, model_type)
-                if model_info:
-                    model, metadata = model_info
-                    self.models[symbol][model_type] = model
-                    self.model_metadata[symbol][model_type] = metadata
-                    self.logger.logger.info(
-                        f"Loaded {model_type} model for {symbol} from {metadata.source}: {metadata.file_path}"
-                    )
-                    
-                    # Load model-specific preprocessor
-                    preprocessor = self._load_model_specific_preprocessor(symbol, model_type)
-                    self.preprocessors[symbol][model_type] = preprocessor
-                else:
-                    self.logger.logger.warning(f"Failed to load {model_type} model for {symbol}")
-                    load_summary[symbol][model_type] = 'missing'
-            
-            # Load feature metadata
-            self._load_feature_metadata(symbol)
+                    self.logger.logger.info(f"Additional files in {location}: {len(files)}")
         
         total_models = sum(len(models) for models in self.models.values())
         self.logger.logger.info(f"Loaded {total_models} models across {len(self.symbols)} symbols")
@@ -473,6 +462,43 @@ class EnhancedUnifiedPaperTrader:
                 self.logger.logger.warning(f"Failed to load {model_type} model for {symbol}")
         
         return models
+
+    def load_all_models(self) -> None:
+        """Load all requested models for all symbols with summary logging."""
+        self.models = {}
+        self.model_metadata = {}
+        for symbol in self.symbols:
+            self.models[symbol] = {}
+            self.model_metadata[symbol] = {}
+            for model_type in self.model_types:
+                try:
+                    model_info = self._load_model_with_fallbacks(symbol, model_type)
+                    if model_info:
+                        model, metadata = model_info
+                        self.models[symbol][model_type] = model
+                        self.model_metadata[symbol][model_type] = metadata
+                        if symbol not in self.preprocessors:
+                            self.preprocessors[symbol] = {}
+                        preproc = self._load_model_specific_preprocessor(symbol, model_type)
+                        if preproc:
+                            self.preprocessors[symbol][model_type] = preproc
+                    else:
+                        self.logger.logger.warning(f"Missing {model_type} model for {symbol}")
+                except Exception as e:
+                    self.logger.logger.warning(f"Error loading {model_type} for {symbol}: {e}")
+            try:
+                self._load_feature_metadata(symbol)
+            except Exception:
+                pass
+        total_models = sum(len(ms) for ms in self.models.values())
+        self.logger.logger.info(f"Loaded {total_models} model objects across {len(self.symbols)} symbols")
+        for symbol in self.symbols:
+            loaded_types = sorted(self.models.get(symbol, {}).keys())
+            missing_types = [mt for mt in self.model_types if mt not in loaded_types]
+            if missing_types:
+                self.logger.logger.info(f"Model summary {symbol}: loaded={loaded_types} missing={missing_types}")
+            else:
+                self.logger.logger.info(f"Model summary {symbol}: all {loaded_types} loaded")
     
     def _load_model_with_fallbacks(self, symbol: str, model_type: str) -> Optional[Tuple[Any, ModelMetadata]]:
         """Load model with multiple fallback sources."""
@@ -1534,6 +1560,9 @@ class EnhancedUnifiedPaperTrader:
                         trades_executed += 1
                         self.logger.logger.info(f"BUY {symbol}: amt={trade_amount:.6f} @ {price:.4f} cost={total_cost:.2f} bal={self.balance:.2f}")
                         
+                        # Record trade to CSV
+                        self._record_trade_to_csv(symbol, 'BUY', trade_amount, price, 'SUCCESS', 'Automated trade execution', 'ENSEMBLE', 0.0, self.balance)
+                        
                         # Send individual trade notification
                         self._send_trade_notification(symbol, 'BUY', trade_amount, price, total_cost)
                     else:
@@ -1562,6 +1591,9 @@ class EnhancedUnifiedPaperTrader:
                     self.trade_history.append(trade)
                     trades_executed += 1
                     self.logger.logger.info(f"SELL {symbol}: amt={trade_amount:.6f} @ {price:.4f} proceeds={net_proceeds:.2f} bal={self.balance:.2f}")
+                    
+                    # Record trade to CSV
+                    self._record_trade_to_csv(symbol, 'SELL', trade_amount, price, 'SUCCESS', 'Automated trade execution', 'ENSEMBLE', 0.0, self.balance)
                     
                     # Send individual trade notification
                     self._send_trade_notification(symbol, 'SELL', trade_amount, price, net_proceeds)
@@ -1603,15 +1635,20 @@ class EnhancedUnifiedPaperTrader:
         # Calculate seconds until next candle boundary
         time_to_boundary = sec - (now % sec)
         
-        # For 30-minute candles specifically, add a small buffer (30 seconds)
+        # For 30-minute candles specifically, add a configurable buffer
         # to ensure the candle is fully published on Binance
         if sec == 1800:  # 30 minutes = 1800 seconds
-            buffer_seconds = 30
+            buffer_seconds = self.config.get('candle_buffer_seconds', 15)
             time_to_boundary = min(time_to_boundary + buffer_seconds, sec)
             
-            self.logger.logger.debug(
-                f"30m candle timing: {time_to_boundary}s until next fetch "
-                f"(includes {buffer_seconds}s buffer for fresh data)"
+            # Calculate actual time for user info
+            next_candle_time = now + time_to_boundary
+            import datetime
+            next_time_str = datetime.datetime.fromtimestamp(next_candle_time).strftime('%H:%M:%S')
+            
+            self.logger.logger.info(
+                f"Next 30m candle trade: {time_to_boundary}s (at {next_time_str}) "
+                f"includes {buffer_seconds}s buffer for fresh data"
             )
         
         return max(1, time_to_boundary)
@@ -1633,6 +1670,37 @@ class EnhancedUnifiedPaperTrader:
             )
         except Exception:
             pass
+
+    def _record_trade_to_csv(self, symbol: str, trade_type: str, quantity: float, price: float, 
+                            status: str, notes: str, model_used: str, confidence: float, balance: float) -> None:
+        """Record trade to CSV file for tracking and reporting."""
+        try:
+            import uuid
+            from datetime import datetime
+            
+            # Ensure logs directory exists
+            os.makedirs('logs', exist_ok=True)
+            
+            # Generate trade ID
+            trade_id = str(uuid.uuid4())[:8]
+            
+            # Format timestamp
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            # CSV file path
+            csv_path = 'logs/trades_report.csv'
+            
+            # Create CSV row
+            row = f"{timestamp},{trade_id},{symbol},{trade_type},{quantity:.6f},{price:.4f},{status},{notes},{model_used},{confidence:.2f},{balance:.2f}\n"
+            
+            # Append to CSV file
+            with open(csv_path, 'a', encoding='utf-8') as f:
+                f.write(row)
+                
+            self.logger.logger.debug(f"Trade recorded to CSV: {symbol} {trade_type} {quantity:.6f} @ {price:.4f}")
+            
+        except Exception as e:
+            self.logger.logger.warning(f"Failed to record trade to CSV: {e}")
 
     def run_trading_loop_legacy(self, align_to_candles: bool = True) -> None:
         """Legacy synchronous trading loop: fetch -> signal -> trade -> sleep."""
@@ -1887,6 +1955,16 @@ class EnhancedUnifiedPaperTrader:
         
         self.logger.logger.info(f"Loaded {len(self.models)} models")
         
+        # Log trading configuration
+        trading_mode = self.config.get('trading_mode', 'candle_aligned')
+        if trading_mode == 'candle_aligned':
+            self.logger.logger.info(f"Trading mode: Candle-aligned (trades after new 30m candles)")
+            buffer_seconds = self.config.get('candle_buffer_seconds', 15)
+            self.logger.logger.info(f"Candle buffer: {buffer_seconds} seconds after new candle publication")
+        else:
+            trading_interval = self.config.get('trading_interval', 300)
+            self.logger.logger.info(f"Trading mode: Fixed interval ({trading_interval} seconds / {trading_interval/60:.1f} minutes)")
+        
         # Send startup notification
         self._send_startup_notification()
         
@@ -1907,8 +1985,18 @@ class EnhancedUnifiedPaperTrader:
                     # Execute trades
                     self.execute_trades(signals, market_data)
                     
-                    # Wait before next iteration
-                    await asyncio.sleep(self.config.get('trading_interval', 300))  # 5 minutes default
+                    # Wait before next iteration based on trading mode
+                    trading_mode = self.config.get('trading_mode', 'candle_aligned')
+                    if trading_mode == 'candle_aligned':
+                        # Wait until next candle boundary + buffer
+                        sleep_seconds = self._time_to_next_candle()
+                        self.logger.logger.info(f"Waiting {sleep_seconds} seconds until next 30m candle")
+                    else:
+                        # Use fixed interval
+                        sleep_seconds = self.config.get('trading_interval', 300)
+                        self.logger.logger.info(f"Waiting {sleep_seconds} seconds (fixed interval)")
+                    
+                    await asyncio.sleep(sleep_seconds)
                     
                 except KeyboardInterrupt:
                     self.logger.logger.info("Received interrupt signal, shutting down...")
@@ -2278,11 +2366,9 @@ async def main():
         config['trainer']['interval'] = args.interval
 
     # Initialize and run enhanced trader
+    trader = None  # predeclare for finally block
     try:
-        trader = EnhancedUnifiedPaperTrader(config, args.models_dir)
-        
-        # Send startup notification
-        trader._send_startup_notification()
+        trader = EnhancedUnifiedPaperTrader(config_path=None, models_dir=args.models_dir, config=config)
         
         # Enable enterprise monitoring if available
         trader.enable_enterprise_monitoring()
@@ -2296,8 +2382,12 @@ async def main():
         print(f"Enhanced trading failed: {e}")
         raise
     finally:
-        if 'trader' in locals():
-            trader._send_shutdown_notification()
+        if trader is not None:
+            try:
+                if hasattr(trader, '_send_shutdown_notification'):
+                    trader._send_shutdown_notification()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

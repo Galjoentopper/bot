@@ -106,6 +106,9 @@ trading:
   transaction_fee: 0.001
   slippage: 0.0005
   interval: '30m'  # Ensures trader uses 30-minute candles for optimal freshness
+  trading_mode: 'candle_aligned'  # 'candle_aligned' or 'fixed_interval'
+  trading_interval: 300  # Only used if trading_mode is 'fixed_interval'
+  candle_buffer_seconds: 15  # Wait time after new candle is published (5-30 seconds recommended)
   
   # Model weights for ensemble
   model_weights:
