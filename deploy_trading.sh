@@ -232,23 +232,41 @@ verify_symbol_models() {
 find_model_for_symbol_and_type() {
     local symbol="$1"
     local model_type="$2"
-    # 1. Standard directory structure
+    
+    # 1. Check if model directory exists for this symbol
     if [ -d "models/$model_type/$symbol" ]; then
-        if ls models/$model_type/$symbol/*.{pkl,pt,pth,zip,joblib} 1>/dev/null 2>&1; then return 0; fi
+        # Check for model files directly in symbol directory
+        for ext in pkl pt pth zip joblib; do
+            if ls "models/$model_type/$symbol"/*.$ext 1>/dev/null 2>&1; then return 0; fi
+        done
+        
+        # Check in timestamp subdirectories (your structure)
         for d in models/$model_type/$symbol/*/; do
-            if ls "$d"/*.{pkl,pt,pth,zip,joblib} 1>/dev/null 2>&1; then return 0; fi
-            for e in "$d"/*/; do
-                if ls "$e"/*.{pkl,pt,pth,zip,joblib} 1>/dev/null 2>&1; then return 0; fi
-            done
+            if [ -d "$d" ]; then
+                for ext in pkl pt pth zip joblib; do
+                    if ls "$d"/*.$ext 1>/dev/null 2>&1; then return 0; fi
+                done
+                
+                # Check deeper nested directories (model_type/symbol/timestamp/model_type/timestamp/)
+                for e in "$d"*/; do
+                    if [ -d "$e" ]; then
+                        for ext in pkl pt pth zip joblib; do
+                            if ls "$e"/*.$ext 1>/dev/null 2>&1; then return 0; fi
+                        done
+                    fi
+                done
+            fi
         done
     fi
-    # 2. Flat structure
+    
+    # 2. Flat structure patterns
     for ext in pkl pt joblib zip; do
         if [ -f "models/${model_type}_${symbol}.$ext" ] || [ -f "models/$model_type/${model_type}_${symbol}.$ext" ] || [ -f "models/best_wf_${model_type}_${symbol}.$ext" ] || [ -f "models/$model_type/best_wf_${model_type}_${symbol}.$ext" ] || [ -f "models/${symbol}_${model_type}.$ext" ]; then return 0; fi
     done
-    # 3. Search in subdirectories
+    
+    # 3. Recursive search in model type directory
     if [ -d "models/$model_type" ]; then
-        if find "models/$model_type" -type f -name "*${symbol}*" | grep -q .; then return 0; fi
+        if find "models/$model_type" -type f -name "*${symbol}*" -name "*.pkl" -o -name "*.pt" -o -name "*.joblib" -o -name "*.zip" | grep -q .; then return 0; fi
     fi
     # 4. Fallback directories
     for d in imported_models packaged_models legacy_models; do
