@@ -282,24 +282,72 @@ import_bundle_package() {
     local source_dir="$1"
     log_info "Importing bundle package format..."
     
-    # Check for Python import script
+    # Check for Python import script first
     if [ -f "$source_dir/import_models.py" ]; then
         pushd "$source_dir" > /dev/null
+        log_info "Running Python import script..."
         if $PYTHON_CMD import_models.py; then
             popd > /dev/null
             
             # Copy results to main directory
             if [ -d "$source_dir/models" ]; then
                 cp -r "$source_dir/models/"* "models/" 2>/dev/null
+                log_success "Python import script completed successfully"
+                return 0
             fi
-            return 0
         else
             popd > /dev/null
-            log_error "Bundle import script failed"
-            return 1
+            log_warning "Python import script failed, trying manual extraction..."
         fi
+    fi
+    
+    # Fallback: Manual extraction of nested ZIP files
+    log_info "Attempting manual extraction of nested model ZIPs..."
+    
+    # Create proper directory structure
+    mkdir -p models/{gru,lightgbm,ppo}/{BTCEUR,ETHEUR,ADAEUR,DOTEUR,LINKEUR}
+    
+    # Extract each model type to correct location
+    local extraction_success=0
+    
+    # Extract GRU models
+    for gru_zip in "$source_dir"/gru_*_v*.zip; do
+        if [ -f "$gru_zip" ]; then
+            local symbol=$(basename "$gru_zip" | sed 's/gru_\(.*\)_v.*/\1/')
+            log_info "Extracting GRU model for $symbol..."
+            if unzip -q "$gru_zip" -d "models/gru/$symbol/"; then
+                extraction_success=1
+            fi
+        fi
+    done
+    
+    # Extract LightGBM models
+    for lgb_zip in "$source_dir"/lightgbm_*_v*.zip; do
+        if [ -f "$lgb_zip" ]; then
+            local symbol=$(basename "$lgb_zip" | sed 's/lightgbm_\(.*\)_v.*/\1/')
+            log_info "Extracting LightGBM model for $symbol..."
+            if unzip -q "$lgb_zip" -d "models/lightgbm/$symbol/"; then
+                extraction_success=1
+            fi
+        fi
+    done
+    
+    # Extract PPO models
+    for ppo_zip in "$source_dir"/ppo_*_v*.zip; do
+        if [ -f "$ppo_zip" ]; then
+            local symbol=$(basename "$ppo_zip" | sed 's/ppo_\(.*\)_v.*/\1/')
+            log_info "Extracting PPO model for $symbol..."
+            if unzip -q "$ppo_zip" -d "models/ppo/$symbol/"; then
+                extraction_success=1
+            fi
+        fi
+    done
+    
+    if [ $extraction_success -eq 1 ]; then
+        log_success "Manual extraction completed successfully"
+        return 0
     else
-        log_error "Bundle package missing import script"
+        log_error "Bundle import failed - no models extracted"
         return 1
     fi
 }
