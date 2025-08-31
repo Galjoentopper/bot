@@ -137,23 +137,35 @@ trading:
   take_profit: 0.04
   max_drawdown: 0.1
 
-  # Drift monitoring configuration - DISABLED for development/testing bot
+  # Drift monitoring configuration - ENABLED for production server with trained models
   # 
-  # WHEN TO ENABLE: Only for production systems with static, deployed models
-  # that don't retrain frequently. Useful for detecting data distribution
-  # changes that could affect model performance over time.
-  #
-  # WHEN TO DISABLE: Development/testing bots that retrain frequently,
-  # or systems where models are regularly updated. The frequent retraining
-  # makes drift monitoring unnecessary and generates false alerts.
-  #
-  # This bot retrains models frequently and doesn't deploy static models,
-  # making drift monitoring unnecessary and generating 940+ false alerts
+  # This server has trained models present for all symbols, making drift monitoring
+  # valuable for detecting data distribution changes that could affect model performance.
+  # Configured with appropriate sensitivity and rate limiting to provide useful alerts
+  # without overwhelming the system.
   drift_monitoring:
-    enabled: false
-    sensitivity: 'low'  # low, medium, high
-    alert_frequency_limit: 60  # Max alerts per minute
+    enabled: true
+    sensitivity: 'medium'  # Balanced sensitivity for production use
+    alert_frequency_limit: 10  # Max 10 alerts per minute per model-symbol combination
     require_multiple_confirmations: true
+    
+    # Detection thresholds (tuned for production stability)
+    thresholds:
+      statistical:
+        mean_shift: 3.0        # Z-score threshold for mean changes
+        variance_ratio: 2.5    # Variance ratio threshold
+        critical: 5.0          # Critical alert threshold
+      distribution:
+        ks_test: 0.01          # Kolmogorov-Smirnov p-value
+        js_divergence: 0.3     # Jensen-Shannon divergence
+        critical: 0.5          # Critical alert threshold
+      
+    # Alert severity levels
+    severity_actions:
+      low: 'log_only'          # Just log the alert
+      medium: 'telegram_alert' # Send Telegram notification
+      high: 'immediate_alert'  # Send immediate alert
+      critical: 'model_warning' # Flag model for review
 
 # Logging Configuration
 logging:

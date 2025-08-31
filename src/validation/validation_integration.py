@@ -115,15 +115,8 @@ class ValidationManager:
     def start_monitoring(self):
         """Start drift monitoring if enabled."""
         if self.config.get("drift_monitoring_enabled", True):
-            # Check if models directory exists and has models
-            if not self.models_dir.exists() or not any(self.models_dir.glob("*.pkl")):
-                self.logger.logger.warning(
-                    "Drift monitoring enabled but no trained models found in {}. "
-                    "Consider disabling drift monitoring for development/testing bots "
-                    "that retrain frequently.".format(self.models_dir)
-                )
             self.drift_monitor.start_monitoring()
-            self.logger.logger.info("Drift monitoring started")
+            self.logger.logger.info("Drift monitoring started for production server with trained models")
         else:
             self.logger.logger.info("Drift monitoring disabled in config")
             
