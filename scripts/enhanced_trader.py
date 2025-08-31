@@ -199,10 +199,15 @@ class EnhancedUnifiedPaperTrader:
 
         # Validation system
         validation_config_dir = self.config.get('validation', {}).get('config_dir', './validation')
+        # Pass trading configuration to validation manager for drift monitoring settings
+        external_validation_config = {
+            'drift_monitoring': self.config.get('trading', {}).get('drift_monitoring', {})
+        }
         self.validation_manager = create_validation_manager(
             config_dir=validation_config_dir,
             models_dir=str(self.models_dir),
-            auto_start=True
+            auto_start=True,
+            external_config=external_validation_config
         )
 
         # Metadata management

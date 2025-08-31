@@ -17,7 +17,7 @@ from ..utils.logger import Logger
 class ValidationManager:
     """Manages schema validation and drift monitoring for the trading system."""
     
-    def __init__(self, config_dir: str = "./validation", models_dir: str = "./models"):
+    def __init__(self, config_dir: str = "./validation", models_dir: str = "./models", external_config: Dict = None):
         self.config_dir = Path(config_dir)
         self.models_dir = Path(models_dir)
         self.config_dir.mkdir(parents=True, exist_ok=True)
@@ -26,6 +26,16 @@ class ValidationManager:
         
         # Load configuration first
         self.config = self._load_config()
+        
+        # Override with external config if provided (e.g., from training_config.yaml)
+        if external_config:
+            # Merge external drift monitoring configuration
+            if 'drift_monitoring' in external_config:
+                drift_config = external_config['drift_monitoring']
+                # Map from training config naming to validation config naming
+                self.config['drift_monitoring_enabled'] = drift_config.get('enabled', True)
+                if not drift_config.get('enabled', True):
+                    self.logger.logger.info("Drift monitoring disabled via external configuration")
         
         # Initialize components
         self.schema_validator = SchemaValidator(str(self.config_dir), str(self.models_dir))
@@ -472,9 +482,9 @@ class ValidationManager:
 
 # Convenience function for easy integration
 def create_validation_manager(config_dir: str = "./validation", models_dir: str = "./models", 
-                            auto_start: bool = True) -> ValidationManager:
+                            auto_start: bool = True, external_config: Dict = None) -> ValidationManager:
     """Create and optionally start a validation manager."""
-    manager = ValidationManager(config_dir, models_dir)
+    manager = ValidationManager(config_dir, models_dir, external_config)
     
     if auto_start and manager.config.get("auto_start_monitoring", True):
         manager.start_monitoring()

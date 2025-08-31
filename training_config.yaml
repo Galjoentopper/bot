@@ -137,9 +137,11 @@ trading:
   take_profit: 0.04
   max_drawdown: 0.1
 
-  # Drift monitoring configuration (relaxed settings)
+  # Drift monitoring configuration - DISABLED for development/testing bot
+  # This bot retrains models frequently and doesn't deploy static models,
+  # making drift monitoring unnecessary and generating false alerts
   drift_monitoring:
-    enabled: true
+    enabled: false
     sensitivity: 'low'  # low, medium, high
     alert_frequency_limit: 60  # Max alerts per minute
     require_multiple_confirmations: true
