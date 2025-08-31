@@ -93,12 +93,12 @@ def validate_fixes():
             drift_code = f.read()
         
         # Check for relaxed thresholds
-        if 'critical": 12.0' in drift_code:
+        if "'critical': 12.0" in drift_code:
             print("   ✓ Relaxed statistical drift thresholds (12.0 vs 4.0)")
         else:
             print("   ❌ Statistical thresholds not properly relaxed")
-        
-        if 'critical": 1.0' in drift_code:
+
+        if "'critical': 1.0" in drift_code:
             print("   ✓ Relaxed distribution drift thresholds (1.0 vs 0.3)")
         else:
             print("   ❌ Distribution thresholds not properly relaxed")

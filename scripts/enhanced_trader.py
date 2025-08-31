@@ -1656,7 +1656,10 @@ class EnhancedUnifiedPaperTrader:
                         }
                         self.trade_history.append(trade)
                         trades_executed += 1
-                        self.logger.logger.info(f"SELL {symbol}: amt={trade_amount:.6f} @ {price:.4f} proceeds={net_proceeds:.2f} bal={self.balance:.2f} reason={sell_reason}")
+                        self.logger.logger.info(
+                            f"SELL {symbol}: amt={trade_amount:.6f} @ {price:.4f} "
+                            f"proceeds={net_proceeds:.2f} bal={self.balance:.2f} reason={sell_reason}"
+                        )
                         
                         # Record trade to CSV
                         self._record_trade_to_csv(symbol, 'SELL', trade_amount, price, 'SUCCESS', sell_reason, 'ENSEMBLE', 0.0, self.balance)
@@ -1732,7 +1735,11 @@ class EnhancedUnifiedPaperTrader:
                     total_positions_value += amt * price
             total_equity = self.balance + total_positions_value
             self.logger.logger.info(
-                f"Portfolio: Balance={self.balance:.2f}, PositionsValue={total_positions_value:.2f}, Equity={total_equity:.2f}, Trades={len(getattr(self, 'trade_history', []))}, Rejected={self.rejected_trades_count}"
+                f"Portfolio: Balance={self.balance:.2f}, "
+                f"PositionsValue={total_positions_value:.2f}, "
+                f"Equity={total_equity:.2f}, "
+                f"Trades={len(getattr(self, 'trade_history', []))}, "
+                f"Rejected={self.rejected_trades_count}"
             )
         except Exception:
             pass
