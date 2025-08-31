@@ -1480,16 +1480,52 @@ class EnhancedUnifiedPaperTrader:
             # Get dynamic threshold for this symbol
             threshold = self._get_dynamic_threshold(symbol, df)
             
-            # Convert to signal
+            # Get current position for this symbol
+            current_position = float(self.positions.get(symbol, 0.0))
+            current_price = float(self.last_prices.get(symbol, 0.0))
+            position_value = current_position * current_price if current_price > 0 else 0.0
+            
+            # Enhanced signal generation with position-aware logic
+            signal = 0  # Default to hold
+            
+            # Buy conditions: positive prediction above threshold AND not over-concentrated
             if final_prediction > threshold:
-                signal = 1  # Buy
-            elif final_prediction < -threshold:
-                signal = -1  # Sell
-            else:
-                signal = 0  # Hold
+                # Check if we're not already over-concentrated in this symbol
+                total_portfolio_value = self.balance + sum(
+                    float(self.positions.get(s, 0.0)) * float(self.last_prices.get(s, 0.0))
+                    for s in self.symbols if self.last_prices.get(s, 0.0) > 0
+                )
+                if total_portfolio_value > 0:
+                    position_pct = position_value / total_portfolio_value
+                    # Don't buy if already holding more than 30% in this symbol
+                    if position_pct < 0.3:
+                        signal = 1  # Buy
+                        
+            # Sell conditions: Multiple scenarios for selling
+            elif current_position > 0:  # Only consider selling if we have a position
+                # Scenario 1: Strong negative prediction (traditional logic)
+                if final_prediction < -threshold:
+                    signal = -1  # Sell due to negative prediction
+                    
+                # Scenario 2: Position is over-concentrated (risk management)
+                elif position_value > 0:
+                    total_portfolio_value = self.balance + sum(
+                        float(self.positions.get(s, 0.0)) * float(self.last_prices.get(s, 0.0))
+                        for s in self.symbols if self.last_prices.get(s, 0.0) > 0
+                    )
+                    if total_portfolio_value > 0:
+                        position_pct = position_value / total_portfolio_value
+                        # Sell if position is more than 40% of portfolio
+                        if position_pct > 0.4:
+                            signal = -1  # Sell due to over-concentration
+                            
+                # Scenario 3: Weak positive prediction (profit taking)
+                elif 0 < final_prediction < threshold * 0.5:
+                    # Take some profit if prediction is weakly positive
+                    signal = -1  # Partial sell for profit taking
             
             self.logger.logger.debug(
-                f"{symbol}: Combined prediction={final_prediction:.6f}, threshold={threshold:.6f}, signal={signal}"
+                f"{symbol}: prediction={final_prediction:.6f}, threshold={threshold:.6f}, position={current_position:.6f}, pos_value={position_value:.2f}, signal={signal}"
             )
             
             return signal
@@ -1570,33 +1606,66 @@ class EnhancedUnifiedPaperTrader:
                         self.logger.logger.debug(f"Buy rejected for {symbol}: insufficient balance {self.balance:.2f} < {total_cost:.2f}")
 
                 elif signal == -1:
-                    # Sell current position if any
+                    # Sell position with intelligent sizing
                     if current_amount <= 0:
                         continue
-                    trade_amount = current_amount  # simple: close position
-                    proceeds = trade_amount * price
-                    net_proceeds = proceeds * (1.0 - fee_rate - slippage)
-                    self.balance += net_proceeds
-                    self.positions[symbol] = current_amount - trade_amount
-                    trade = {
-                        'symbol': symbol,
-                        'side': 'sell',
-                        'amount': trade_amount,
-                        'price': price,
-                        'fee_rate': fee_rate,
-                        'slippage': slippage,
-                        'proceeds': net_proceeds,
-                        'timestamp': int(time.time())
-                    }
-                    self.trade_history.append(trade)
-                    trades_executed += 1
-                    self.logger.logger.info(f"SELL {symbol}: amt={trade_amount:.6f} @ {price:.4f} proceeds={net_proceeds:.2f} bal={self.balance:.2f}")
                     
-                    # Record trade to CSV
-                    self._record_trade_to_csv(symbol, 'SELL', trade_amount, price, 'SUCCESS', 'Automated trade execution', 'ENSEMBLE', 0.0, self.balance)
+                    # Determine sell amount based on the sell reason
+                    current_price = float(self.last_prices.get(symbol, 0.0))
+                    position_value = current_amount * current_price if current_price > 0 else 0.0
                     
-                    # Send individual trade notification
-                    self._send_trade_notification(symbol, 'SELL', trade_amount, price, net_proceeds)
+                    # Calculate total portfolio value for position percentage
+                    total_portfolio_value = self.balance + sum(
+                        float(self.positions.get(s, 0.0)) * float(self.last_prices.get(s, 0.0))
+                        for s in self.symbols if self.last_prices.get(s, 0.0) > 0
+                    )
+                    
+                    position_pct = position_value / total_portfolio_value if total_portfolio_value > 0 else 0
+                    
+                    # Determine sell percentage based on conditions
+                    if position_pct > 0.4:
+                        # Over-concentrated: sell 50% to rebalance
+                        sell_pct = 0.5
+                        sell_reason = "Risk management - over-concentration"
+                    elif 0 < signals.get(symbol, 0) and signals.get(symbol, 0) < self._get_dynamic_threshold(symbol, self.price_history.get(symbol)) * 0.5:
+                        # Weak positive prediction: take 25% profit
+                        sell_pct = 0.25
+                        sell_reason = "Profit taking - weak signal"
+                    else:
+                        # Strong negative prediction: sell 75%
+                        sell_pct = 0.75
+                        sell_reason = "Negative prediction"
+                    
+                    trade_amount = current_amount * sell_pct
+                    trade_amount = max(0.0, float(trade_amount))
+                    
+                    if trade_amount > 0:
+                        proceeds = trade_amount * price
+                        net_proceeds = proceeds * (1.0 - fee_rate - slippage)
+                        self.balance += net_proceeds
+                        self.positions[symbol] = current_amount - trade_amount
+                        trade = {
+                            'symbol': symbol,
+                            'side': 'sell',
+                            'amount': trade_amount,
+                            'price': price,
+                            'fee_rate': fee_rate,
+                            'slippage': slippage,
+                            'proceeds': net_proceeds,
+                            'timestamp': int(time.time())
+                        }
+                        self.trade_history.append(trade)
+                        trades_executed += 1
+                        self.logger.logger.info(
+                            f"SELL {symbol}: amt={trade_amount:.6f} @ {price:.4f} "
+                            f"proceeds={net_proceeds:.2f} bal={self.balance:.2f} reason={sell_reason}"
+                        )
+                        
+                        # Record trade to CSV
+                        self._record_trade_to_csv(symbol, 'SELL', trade_amount, price, 'SUCCESS', sell_reason, 'ENSEMBLE', 0.0, self.balance)
+                        
+                        # Send individual trade notification
+                        self._send_trade_notification(symbol, 'SELL', trade_amount, price, net_proceeds)
                 else:
                     # Hold
                     continue
@@ -1666,7 +1735,11 @@ class EnhancedUnifiedPaperTrader:
                     total_positions_value += amt * price
             total_equity = self.balance + total_positions_value
             self.logger.logger.info(
-                f"Portfolio: Balance={self.balance:.2f}, PositionsValue={total_positions_value:.2f}, Equity={total_equity:.2f}, Trades={len(getattr(self, 'trade_history', []))}, Rejected={self.rejected_trades_count}"
+                f"Portfolio: Balance={self.balance:.2f}, "
+                f"PositionsValue={total_positions_value:.2f}, "
+                f"Equity={total_equity:.2f}, "
+                f"Trades={len(getattr(self, 'trade_history', []))}, "
+                f"Rejected={self.rejected_trades_count}"
             )
         except Exception:
             pass

@@ -1,3 +1,4 @@
+---
 # Centralized Training Configuration
 # This single file controls all aspects of the automated trading system pipeline
 
@@ -12,27 +13,27 @@ data_acquisition:
   output_directory: './data'
   cache_duration: 3600  # 1 hour
 
-# Training Configuration  
+# Training Configuration
 training:
   # Model types to train
   models: ['gru', 'lightgbm', 'ppo']
-  
+
   # Cross-validation settings
   validation_split: 0.2
   test_split: 0.1
   cv_splits: 5
   embargo_period: 24  # hours
-  
+
   # Training parameters
   max_workers: 8
   batch_size: 512
   epochs: 100
   early_stopping_patience: 10
-  
+
   # Optimization
   optuna_trials: 100
   optuna_timeout: 7200  # 2 hours
-  
+
   # Resource allocation
   memory_limit: '16GB'
   gpu_enabled: true
@@ -51,7 +52,7 @@ model_parameters:
     bagging_freq: 5
     n_estimators: 1000
     early_stopping_rounds: 50
-  
+
   gru:
     hidden_size: 128
     num_layers: 3
@@ -59,7 +60,7 @@ model_parameters:
     learning_rate: 0.001
     sequence_length: 60
     epochs: 100
-  
+
   ppo:
     learning_rate: 0.0003
     n_steps: 2048
@@ -98,7 +99,7 @@ export:
   include_preprocessors: true
   include_feature_configs: true
   archive_name_template: 'trading_models_{timestamp}.zip'
-  
+
 # Trading Configuration (for deployment)
 trading:
   initial_balance: 10000
@@ -108,18 +109,40 @@ trading:
   interval: '30m'  # Ensures trader uses 30-minute candles for optimal freshness
   trading_mode: 'candle_aligned'  # 'candle_aligned' or 'fixed_interval'
   trading_interval: 300  # Only used if trading_mode is 'fixed_interval'
-  candle_buffer_seconds: 15  # Wait time after new candle is published (5-30 seconds recommended)
-  
+  # Wait time after new candle is published (5-30 seconds recommended)
+  candle_buffer_seconds: 15
+
+  # Enhanced thresholds for buy/sell signals (reduced sensitivity)
+  thresholds:
+    default: 0.0005  # Increased from 0.0001 (5x increase)
+    per_symbol:
+      BTCEUR: 0.0004
+      ETHEUR: 0.0004
+      ADAEUR: 0.0006
+      DOTEUR: 0.0006
+      LINKEUR: 0.0005
+    use_cost_floor: true
+    cost_floor_multiplier: 2.0  # Increased from 1.2
+    vol_reference: 0.02
+    vol_bounds: [0.3, 3.0]  # Wider bounds
+
   # Model weights for ensemble
   model_weights:
     gru: 0.45
     lightgbm: 0.45
     ppo: 0.1
-  
+
   # Risk management
   stop_loss: 0.02
   take_profit: 0.04
   max_drawdown: 0.1
+
+  # Drift monitoring configuration (relaxed settings)
+  drift_monitoring:
+    enabled: true
+    sensitivity: 'low'  # low, medium, high
+    alert_frequency_limit: 60  # Max alerts per minute
+    require_multiple_confirmations: true
 
 # Logging Configuration
 logging:
@@ -141,7 +164,7 @@ cross_platform:
   linux_training_dir: '/tmp/trading_models'
   windows_deployment_dir: 'C:\\trading_models'
   transfer_package_name: 'models_transfer.zip'
-  
+
 # Error Handling
 error_handling:
   max_retries: 3
