@@ -192,7 +192,7 @@ class ProfitOptimizer:
                 logger.debug(f"{symbol} trailing stop updated to {position.trailing_stop:.4f}")
             
             # Check for stop loss trigger
-            if current_price <= position.trailing_stop:
+            if position.trailing_stop is not None and current_price <= position.trailing_stop:
                 unrealized_pnl_pct = position.unrealized_pnl / position.total_cost
                 signals[symbol] = TradeSignal(
                     symbol=symbol,
