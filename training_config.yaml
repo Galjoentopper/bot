@@ -138,8 +138,17 @@ trading:
   max_drawdown: 0.1
 
   # Drift monitoring configuration - DISABLED for development/testing bot
+  # 
+  # WHEN TO ENABLE: Only for production systems with static, deployed models
+  # that don't retrain frequently. Useful for detecting data distribution
+  # changes that could affect model performance over time.
+  #
+  # WHEN TO DISABLE: Development/testing bots that retrain frequently,
+  # or systems where models are regularly updated. The frequent retraining
+  # makes drift monitoring unnecessary and generates false alerts.
+  #
   # This bot retrains models frequently and doesn't deploy static models,
-  # making drift monitoring unnecessary and generating false alerts
+  # making drift monitoring unnecessary and generating 940+ false alerts
   drift_monitoring:
     enabled: false
     sensitivity: 'low'  # low, medium, high
