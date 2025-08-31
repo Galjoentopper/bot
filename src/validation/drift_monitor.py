@@ -44,6 +44,10 @@ class FeatureDriftMonitor:
         self.alerts = deque(maxlen=10000)  # Keep last 10k alerts
         self.alert_callbacks = []
         
+        # Rate limiting for alerts to prevent log flooding
+        self.alert_rate_limit = 10  # Max alerts per minute per model-symbol combination
+        self.alert_timestamps = defaultdict(list)  # Track alert times
+        
         # Monitoring thread
         self.monitoring_active = False
         self.monitoring_thread = None
@@ -57,30 +61,30 @@ class FeatureDriftMonitor:
             'correlation': self._detect_correlation_drift
         }
         
-        # Thresholds for different drift types
+        # Thresholds for different drift types (relaxed to reduce false alarms)
         self.drift_thresholds = {
             'statistical': {
-                'mean_shift': 2.0,      # Z-score threshold
-                'variance_ratio': 2.0,   # Variance ratio threshold
-                'low': 1.5,
-                'medium': 2.0,
-                'high': 3.0,
-                'critical': 4.0
+                'mean_shift': 5.0,      # Z-score threshold (increased from 2.0)
+                'variance_ratio': 5.0,   # Variance ratio threshold (increased from 2.0)
+                'low': 3.0,             # Increased from 1.5
+                'medium': 5.0,          # Increased from 2.0
+                'high': 8.0,            # Increased from 3.0
+                'critical': 12.0        # Increased from 4.0
             },
             'distribution': {
-                'ks_test': 0.05,        # Kolmogorov-Smirnov p-value
-                'js_divergence': 0.1,   # Jensen-Shannon divergence
-                'low': 0.05,
-                'medium': 0.1,
-                'high': 0.2,
-                'critical': 0.3
+                'ks_test': 0.001,       # Kolmogorov-Smirnov p-value (more strict)
+                'js_divergence': 0.5,   # Jensen-Shannon divergence (increased from 0.1)
+                'low': 0.2,             # Increased from 0.05
+                'medium': 0.5,          # Increased from 0.1
+                'high': 0.8,            # Increased from 0.2
+                'critical': 1.0         # Increased from 0.3
             },
             'correlation': {
-                'correlation_change': 0.3,  # Correlation coefficient change
-                'low': 0.1,
-                'medium': 0.2,
-                'high': 0.3,
-                'critical': 0.5
+                'correlation_change': 0.7,  # Correlation coefficient change (increased from 0.3)
+                'low': 0.3,             # Increased from 0.1
+                'medium': 0.5,          # Increased from 0.2
+                'high': 0.7,            # Increased from 0.3
+                'critical': 0.9         # Increased from 0.5
             }
         }
         
@@ -387,7 +391,25 @@ class FeatureDriftMonitor:
         return result
         
     def _create_alert(self, model_type: str, symbol: str, drift_type: str, drift_result: Dict):
-        """Create and process drift alert."""
+        """Create and process drift alert with rate limiting."""
+        # Rate limiting check
+        alert_key = f"{model_type}_{symbol}_{drift_type}"
+        current_time = time.time()
+        
+        # Clean old timestamps (older than 1 minute)
+        self.alert_timestamps[alert_key] = [
+            ts for ts in self.alert_timestamps[alert_key] 
+            if current_time - ts < 60
+        ]
+        
+        # Check if we've exceeded rate limit
+        if len(self.alert_timestamps[alert_key]) >= self.alert_rate_limit:
+            # Skip this alert due to rate limiting
+            return
+            
+        # Add current timestamp
+        self.alert_timestamps[alert_key].append(current_time)
+        
         alert = DriftAlert(
             timestamp=datetime.now(),
             model_type=model_type,
@@ -401,10 +423,11 @@ class FeatureDriftMonitor:
         # Add to alerts queue
         self.alerts.append(alert)
         
-        # Log alert
-        self.logger.logger.warning(
-            f"DRIFT ALERT: {alert.message} (Severity: {alert.severity})"
-        )
+        # Only log critical and high severity alerts to reduce noise
+        if alert.severity in ['critical', 'high']:
+            self.logger.logger.warning(
+                f"DRIFT ALERT: {alert.message} (Severity: {alert.severity})"
+            )
         
         # Call alert callbacks
         for callback in self.alert_callbacks:
