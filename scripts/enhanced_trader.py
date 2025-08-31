@@ -1285,7 +1285,6 @@ class EnhancedUnifiedPaperTrader:
             return 0.5  # Default confidence
     
     def _generate_signals_fallback(self, market_data: dict) -> dict:
-    def _generate_signals_fallback(self, market_data: dict) -> dict:
         """Fallback signal generation method (original logic)."""
         signals = {}
         self.logger.logger.info(f"Using fallback signal generation for {len(market_data)} symbols")
@@ -1338,10 +1337,6 @@ class EnhancedUnifiedPaperTrader:
                 self.logger.logger.error(f"Fallback signal generation failed for {symbol}: {e}")
                 signals[symbol] = 0
         
-        return signals
-                self.logger.logger.info(f"Completed {symbol} (error) - signal: {safe_signal}")
-        
-        self.logger.logger.info(f"Signal generation completed for all symbols: {signals}")
         return signals
     
     def _get_gru_prediction(self, symbol: str, features: pd.DataFrame) -> Optional[float]:
@@ -1957,45 +1952,6 @@ class EnhancedUnifiedPaperTrader:
             
         except Exception as e:
             self.logger.logger.error(f"Failed to update portfolio analytics: {e}")
-                    
-                    if trade_amount > 0:
-                        proceeds = trade_amount * price
-                        net_proceeds = proceeds * (1.0 - fee_rate - slippage)
-                        self.balance += net_proceeds
-                        self.positions[symbol] = current_amount - trade_amount
-                        trade = {
-                            'symbol': symbol,
-                            'side': 'sell',
-                            'amount': trade_amount,
-                            'price': price,
-                            'fee_rate': fee_rate,
-                            'slippage': slippage,
-                            'proceeds': net_proceeds,
-                            'timestamp': int(time.time())
-                        }
-                        self.trade_history.append(trade)
-                        trades_executed += 1
-                        self.logger.logger.info(
-                            f"SELL {symbol}: amt={trade_amount:.6f} @ {price:.4f} "
-                            f"proceeds={net_proceeds:.2f} bal={self.balance:.2f} reason={sell_reason}"
-                        )
-                        
-                        # Record trade to CSV
-                        self._record_trade_to_csv(symbol, 'SELL', trade_amount, price, 'SUCCESS', sell_reason, 'ENSEMBLE', 0.0, self.balance)
-                        
-                        # Send individual trade notification
-                        self._send_trade_notification(symbol, 'SELL', trade_amount, price, net_proceeds)
-                else:
-                    # Hold
-                    continue
-
-            # Send portfolio summary if trades were executed
-            if trades_executed > 0:
-                self._send_portfolio_update_notification(trades_executed)
-
-        except Exception as e:
-            self.logger.logger.error(f"execute_trades failed: {e}")
-            self._send_error_notification("Trade Execution Error", str(e))
 
     def _interval_to_seconds(self, interval: Optional[str] = None) -> int:
         """Convert interval string like '1m','5m','15m','30m','1h','4h','1d' to seconds."""
@@ -2423,12 +2379,6 @@ class EnhancedUnifiedPaperTrader:
             self._send_error_notification("Critical Trading Error", str(e))
         finally:
             self.logger.logger.info("Enhanced trading loop terminated")
-                    
-        except Exception as e:
-            self.logger.logger.error(f"Fatal error in trading loop: {e}")
-            self._send_error_notification("Fatal Trading Error", str(e))
-        finally:
-            self.logger.logger.info("Enhanced Unified Paper Trader stopped.")
             # Send shutdown notification
             self._send_shutdown_notification()
 
