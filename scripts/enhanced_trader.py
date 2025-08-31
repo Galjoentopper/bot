@@ -54,6 +54,11 @@ from src.utils.model_packaging import ModelPackager
 from src.validation.validation_integration import create_validation_manager
 from src.validation.metadata_manager import MetadataManager
 
+# Profit optimization modules
+from src.trading.profit_optimizer import ProfitOptimizer
+from src.trading.enhanced_signal_generator import EnhancedSignalGenerator, ModelPrediction
+from src.trading.performance_analytics import PerformanceAnalyzer
+
 # Enable debug logging temporarily
 import os
 import logging
@@ -261,9 +266,23 @@ class EnhancedUnifiedPaperTrader:
         self.performance_history = []
         self.rejected_trades_count = 0
 
+        # Initialize profit optimization modules
+        profit_config = self.config.get('profit_optimization', {})
+        self.profit_optimizer = ProfitOptimizer(profit_config)
+        self.enhanced_signal_generator = EnhancedSignalGenerator(self.config, self.profit_optimizer)
+        
+        # Initialize performance analytics
+        analytics_config = self.config.get('performance_analytics', {})
+        self.performance_analyzer = PerformanceAnalyzer(analytics_config, self.initial_balance)
+        
+        # Enhanced tracking for profit optimization
+        self.price_history = {}  # Store price history for analysis
+        self.last_portfolio_update = 0
+        self.portfolio_update_interval = 300  # 5 minutes
+
         # Warm start flag (skip heavy startup work when True)
         self.warm_start = warm_start
-        self.logger.logger.info(f"Enhanced trader initialized with ${self.initial_balance:,.2f} (warm_start={self.warm_start})")
+        self.logger.logger.info(f"Enhanced trader initialized with profit optimization - €{self.initial_balance:,.2f} (warm_start={self.warm_start})")
     
     def _discover_available_models(self) -> Tuple[List[str], List[str]]:
         """Discover available symbols and model types from the models directory structure."""
@@ -1110,75 +1129,216 @@ class EnhancedUnifiedPaperTrader:
         return True
     
     def generate_signals(self, market_data: dict) -> dict:
-        """Generate trading signals using loaded models."""
-        signals = {}
-        self.logger.logger.info(f"Generating signals for {len(market_data)} symbols")
+        """Generate trading signals using enhanced profit optimization."""
+        try:
+            self.logger.logger.info(f"Generating enhanced signals for {len(market_data)} symbols")
+            
+            # Update price history for analysis
+            self._update_price_history(market_data)
+            
+            # Get model predictions
+            model_predictions = self._get_model_predictions(market_data)
+            
+            # Update current prices
+            current_prices = {}
+            for symbol, df in market_data.items():
+                if not df.empty and 'close' in df.columns:
+                    current_prices[symbol] = float(df['close'].iloc[-1])
+            
+            # Generate enhanced signals using profit optimization
+            enhanced_signals = self.enhanced_signal_generator.generate_enhanced_signals(
+                model_predictions=model_predictions,
+                market_data=market_data,
+                current_positions=self.positions.copy(),
+                current_prices=current_prices,
+                current_balance=self.balance
+            )
+            
+            # Convert TradeSignal objects to simple signals for compatibility
+            signals = {}
+            for symbol, trade_signal in enhanced_signals.items():
+                if trade_signal.action == 'BUY':
+                    signals[symbol] = 1
+                elif trade_signal.action == 'SELL':
+                    signals[symbol] = -1
+                else:
+                    signals[symbol] = 0
+                    
+                # Store detailed signal for execution
+                if not hasattr(self, 'detailed_signals'):
+                    self.detailed_signals = {}
+                self.detailed_signals[symbol] = trade_signal
+            
+            # Ensure all symbols have signals
+            for symbol in market_data.keys():
+                if symbol not in signals:
+                    signals[symbol] = 0
+            
+            self.logger.logger.info(f"Enhanced signal generation completed: {signals}")
+            return signals
+            
+        except Exception as e:
+            self.logger.logger.error(f"Enhanced signal generation failed: {e}")
+            # Fallback to original signal generation
+            return self._generate_signals_fallback(market_data)
+    
+    def _update_price_history(self, market_data: dict) -> None:
+        """Update price history for market analysis."""
+        try:
+            for symbol, df in market_data.items():
+                if not df.empty and 'close' in df.columns:
+                    if symbol not in self.price_history:
+                        self.price_history[symbol] = df[['open', 'high', 'low', 'close', 'volume']].copy()
+                    else:
+                        # Keep last 200 periods for analysis
+                        combined = pd.concat([self.price_history[symbol], df[['open', 'high', 'low', 'close', 'volume']]])
+                        self.price_history[symbol] = combined.tail(200)
+        except Exception as e:
+            self.logger.logger.error(f"Failed to update price history: {e}")
+    
+    def _get_model_predictions(self, market_data: dict) -> Dict[str, List[ModelPrediction]]:
+        """Get predictions from all models with enhanced metadata."""
+        model_predictions = {}
         
         for symbol, df in market_data.items():
             try:
-                self.logger.logger.info(f"Processing signal generation for {symbol}...")
+                predictions = []
+                
+                if symbol not in self.models or not self.models[symbol]:
+                    continue
+                
+                # Prepare features for supervised models
+                feature_names = [col for col in df.columns if col not in ['open', 'high', 'low', 'close', 'volume']]
+                features_for_supervised = df.reindex(columns=feature_names, fill_value=0).copy()
+                features_for_supervised = features_for_supervised.ffill().bfill().fillna(0)
+                
+                # GRU prediction
+                if 'gru' in self.models[symbol]:
+                    gru_pred = self._get_gru_prediction(symbol, features_for_supervised)
+                    if gru_pred is not None:
+                        confidence = self._calculate_prediction_confidence('gru', symbol, features_for_supervised)
+                        predictions.append(ModelPrediction(
+                            model_type='gru',
+                            prediction=gru_pred,
+                            confidence=confidence,
+                            features_used=len(features_for_supervised.columns)
+                        ))
+                
+                # LightGBM prediction
+                if 'lightgbm' in self.models[symbol]:
+                    lgbm_pred = self._get_lightgbm_prediction(symbol, features_for_supervised)
+                    if lgbm_pred is not None:
+                        confidence = self._calculate_prediction_confidence('lightgbm', symbol, features_for_supervised)
+                        predictions.append(ModelPrediction(
+                            model_type='lightgbm',
+                            prediction=lgbm_pred,
+                            confidence=confidence,
+                            features_used=len(features_for_supervised.columns)
+                        ))
+                
+                # PPO prediction
+                if 'ppo' in self.models[symbol]:
+                    ppo_pred = self._get_ppo_prediction(symbol, df)
+                    if ppo_pred is not None:
+                        confidence = self._calculate_prediction_confidence('ppo', symbol, df)
+                        predictions.append(ModelPrediction(
+                            model_type='ppo',
+                            prediction=ppo_pred,
+                            confidence=confidence,
+                            features_used=13  # PPO uses 13 features
+                        ))
+                
+                if predictions:
+                    model_predictions[symbol] = predictions
+                    
+            except Exception as e:
+                self.logger.logger.error(f"Failed to get model predictions for {symbol}: {e}")
+        
+        return model_predictions
+    
+    def _calculate_prediction_confidence(self, model_type: str, symbol: str, features: pd.DataFrame) -> float:
+        """Calculate prediction confidence based on model and data quality."""
+        try:
+            base_confidence = 0.7  # Base confidence
+            
+            # Adjust based on data quality
+            if len(features) < 50:
+                base_confidence *= 0.8  # Reduce confidence for limited data
+            
+            # Adjust based on feature completeness
+            nan_ratio = features.isna().sum().sum() / (len(features) * len(features.columns))
+            if nan_ratio > 0.1:
+                base_confidence *= (1 - nan_ratio)
+            
+            # Model-specific adjustments
+            if model_type == 'gru':
+                base_confidence *= 0.9  # Slightly lower confidence for neural networks
+            elif model_type == 'lightgbm':
+                base_confidence *= 0.95  # High confidence for tree-based models
+            elif model_type == 'ppo':
+                base_confidence *= 0.85  # Lower confidence for RL models
+            
+            return np.clip(base_confidence, 0.1, 0.95)
+            
+        except Exception as e:
+            self.logger.logger.error(f"Failed to calculate prediction confidence: {e}")
+            return 0.5  # Default confidence
+    
+    def _generate_signals_fallback(self, market_data: dict) -> dict:
+    def _generate_signals_fallback(self, market_data: dict) -> dict:
+        """Fallback signal generation method (original logic)."""
+        signals = {}
+        self.logger.logger.info(f"Using fallback signal generation for {len(market_data)} symbols")
+        
+        for symbol, df in market_data.items():
+            try:
                 signal = 0  # Default: hold
                 
                 if symbol not in self.models or not self.models[symbol]:
-                    self.logger.logger.warning(f"No models available for {symbol}")
                     signals[symbol] = signal
-                    self.logger.logger.info(f"Completed {symbol} (no models) - signal: {signal}")
                     continue
                 
-                self.logger.logger.info(f"Preparing features for {symbol}...")
                 # Use all generated features except OHLCV columns for supervised models
                 feature_names = [col for col in df.columns if col not in ['open', 'high', 'low', 'close', 'volume']]
-                
                 features_for_supervised = df.reindex(columns=feature_names, fill_value=0).copy()
                 features_for_supervised = features_for_supervised.ffill().bfill().fillna(0)
                 
                 if features_for_supervised.empty:
-                    self.logger.logger.warning(f"No valid features for {symbol}")
                     signals[symbol] = signal
-                    self.logger.logger.info(f"Completed {symbol} (no features) - signal: {signal}")
                     continue
                 
-                self.logger.logger.info(f"Starting model predictions for {symbol}...")
                 # Generate predictions from available models
                 predictions = []
                 
                 # GRU prediction
                 if 'gru' in self.models[symbol]:
-                    self.logger.logger.info(f"Getting GRU prediction for {symbol}...")
                     gru_pred = self._get_gru_prediction(symbol, features_for_supervised)
-                    self.logger.logger.info(f"GRU prediction for {symbol}: {gru_pred}")
                     if gru_pred is not None:
                         predictions.append(('gru', gru_pred))
                 
                 # LightGBM prediction
                 if 'lightgbm' in self.models[symbol]:
-                    self.logger.logger.info(f"Getting LightGBM prediction for {symbol}...")
                     lgbm_pred = self._get_lightgbm_prediction(symbol, features_for_supervised)
-                    self.logger.logger.info(f"LightGBM prediction for {symbol}: {lgbm_pred}")
                     if lgbm_pred is not None:
                         predictions.append(('lightgbm', lgbm_pred))
                 
                 # PPO prediction uses raw market data + portfolio features
                 if 'ppo' in self.models[symbol]:
-                    self.logger.logger.info(f"Getting PPO prediction for {symbol}...")
                     ppo_pred = self._get_ppo_prediction(symbol, df)
-                    self.logger.logger.info(f"PPO prediction for {symbol}: {ppo_pred}")
                     if ppo_pred is not None:
                         predictions.append(('ppo', ppo_pred))
                 
                 # Combine predictions
-                self.logger.logger.info(f"Combining predictions for {symbol}: {predictions}")
                 if predictions:
                     signal = self._combine_predictions(symbol, predictions, df)
                 
                 signals[symbol] = signal
-                self.logger.logger.info(f"Completed signal generation for {symbol}: {signal}")
                 
             except Exception as e:
-                self.logger.logger.error(f"Signal generation failed for {symbol}: {e}")
+                self.logger.logger.error(f"Fallback signal generation failed for {symbol}: {e}")
                 signals[symbol] = 0
-                # signal may not be set if exception occurred before assignment
-                safe_signal = locals().get('signal', 0.0)
+        
+        return signals
                 self.logger.logger.info(f"Completed {symbol} (error) - signal: {safe_signal}")
         
         self.logger.logger.info(f"Signal generation completed for all symbols: {signals}")
@@ -1535,11 +1695,7 @@ class EnhancedUnifiedPaperTrader:
             return 0
 
     def execute_trades(self, signals: dict, market_data: dict) -> None:
-        """Execute trades based on generated signals using a simple position model.
-        - positions[symbol] is a float amount of base asset held
-        - balance is quote currency
-        - last_prices tracked per symbol
-        """
+        """Execute trades using enhanced profit optimization strategies."""
         trades_executed = 0
         try:
             if not hasattr(self, 'trade_history'):
@@ -1559,85 +1715,248 @@ class EnhancedUnifiedPaperTrader:
                 except Exception:
                     continue
 
+            # Use detailed signals if available
+            detailed_signals = getattr(self, 'detailed_signals', {})
+
             for symbol, signal in signals.items():
-                price = float(self.last_prices.get(symbol, 0.0))
-                if price <= 0 or not np.isfinite(price):
-                    self.logger.logger.debug(f"Skip trade for {symbol}: invalid price {price}")
+                try:
+                    price = float(self.last_prices.get(symbol, 0.0))
+                    if price <= 0 or not np.isfinite(price):
+                        self.logger.logger.debug(f"Skip trade for {symbol}: invalid price {price}")
+                        continue
+
+                    current_amount = float(self.positions.get(symbol, 0.0))
+                    detailed_signal = detailed_signals.get(symbol)
+
+                    if signal == 1:  # BUY
+                        # Use detailed signal for position sizing if available
+                        if detailed_signal:
+                            target_notional = detailed_signal.quantity_pct * float(self.balance)
+                            reasoning = detailed_signal.reasoning
+                            confidence = detailed_signal.confidence
+                        else:
+                            target_notional = float(self.max_position_size) * float(self.balance)
+                            reasoning = "Automated trade execution"
+                            confidence = 0.5
+
+                        if target_notional < min_notional:
+                            self.logger.logger.debug(f"Buy skipped for {symbol}: notional {target_notional:.2f} < min {min_notional:.2f}")
+                            continue
+
+                        trade_amount = target_notional / price
+                        trade_amount = max(0.0, float(trade_amount))
+                        
+                        if trade_amount <= 0:
+                            continue
+                            
+                        cost = trade_amount * price
+                        total_cost = cost * (1.0 + fee_rate + slippage)
+                        
+                        if self.balance >= total_cost:
+                            # Execute buy trade
+                            self.balance -= total_cost
+                            self.positions[symbol] = current_amount + trade_amount
+                            
+                            # Record trade for performance analysis
+                            trade_data = {
+                                'symbol': symbol,
+                                'action': 'BUY',
+                                'quantity': trade_amount,
+                                'price': price,
+                                'fee': total_cost - cost,
+                                'cost': total_cost,
+                                'reasoning': reasoning,
+                                'confidence': confidence,
+                                'timestamp': time.time()
+                            }
+                            
+                            self.trade_history.append(trade_data)
+                            self.performance_analyzer.record_trade(trade_data)
+                            
+                            # Record to profit optimizer
+                            self.profit_optimizer.record_trade(
+                                symbol, 'BUY', trade_amount, price, 
+                                total_cost - cost, reasoning
+                            )
+                            
+                            trades_executed += 1
+                            self.logger.logger.info(f"BUY {symbol}: amt={trade_amount:.6f} @ €{price:.4f} "
+                                                  f"cost=€{total_cost:.2f} bal=€{self.balance:.2f} ({reasoning})")
+                            
+                            # Record trade to CSV
+                            self._record_trade_to_csv(symbol, 'BUY', trade_amount, price, 'SUCCESS', 
+                                                    reasoning, 'ENHANCED', confidence, self.balance)
+                            
+                            # Send individual trade notification
+                            self._send_trade_notification(symbol, 'BUY', trade_amount, price, total_cost)
+                        else:
+                            self.rejected_trades_count += 1
+                            self.logger.logger.debug(f"Buy rejected for {symbol}: insufficient balance €{self.balance:.2f} < €{total_cost:.2f}")
+
+                    elif signal == -1:  # SELL
+                        if current_amount <= 0:
+                            continue
+                        
+                        # Use detailed signal for sell logic if available
+                        if detailed_signal:
+                            sell_pct = detailed_signal.quantity_pct
+                            sell_reason = detailed_signal.reasoning
+                            confidence = detailed_signal.confidence
+                        else:
+                            # Fallback logic
+                            current_price = float(self.last_prices.get(symbol, 0.0))
+                            position_value = current_amount * current_price if current_price > 0 else 0.0
+                            
+                            # Calculate total portfolio value for position percentage
+                            total_portfolio_value = self.balance + sum(
+                                float(self.positions.get(s, 0.0)) * float(self.last_prices.get(s, 0.0))
+                                for s in self.symbols if self.last_prices.get(s, 0.0) > 0
+                            )
+                            
+                            position_pct = position_value / total_portfolio_value if total_portfolio_value > 0 else 0
+                            
+                            # Determine sell percentage based on conditions
+                            if position_pct > 0.4:
+                                sell_pct = 0.5
+                                sell_reason = "Risk management - over-concentration"
+                            else:
+                                sell_pct = 0.75
+                                sell_reason = "Model prediction - sell signal"
+                            confidence = 0.5
+
+                        trade_amount = current_amount * sell_pct
+                        trade_amount = max(0.0, float(trade_amount))
+                        
+                        if trade_amount > 0:
+                            proceeds = trade_amount * price
+                            fee_amount = proceeds * (fee_rate + slippage)
+                            net_proceeds = proceeds - fee_amount
+                            
+                            # Calculate P&L
+                            avg_cost = getattr(self.profit_optimizer.positions.get(symbol), 'avg_cost', price)
+                            realized_pnl = (price - avg_cost) * trade_amount - fee_amount
+                            
+                            # Execute sell trade
+                            self.balance += net_proceeds
+                            self.positions[symbol] = current_amount - trade_amount
+                            
+                            # Record trade for performance analysis
+                            trade_data = {
+                                'symbol': symbol,
+                                'action': 'SELL',
+                                'quantity': trade_amount,
+                                'price': price,
+                                'fee': fee_amount,
+                                'proceeds': net_proceeds,
+                                'realized_pnl': realized_pnl,
+                                'reasoning': sell_reason,
+                                'confidence': confidence,
+                                'timestamp': time.time()
+                            }
+                            
+                            self.trade_history.append(trade_data)
+                            self.performance_analyzer.record_trade(trade_data)
+                            
+                            # Record to profit optimizer
+                            self.profit_optimizer.record_trade(
+                                symbol, 'SELL', trade_amount, price, 
+                                fee_amount, sell_reason
+                            )
+                            
+                            trades_executed += 1
+                            self.logger.logger.info(
+                                f"SELL {symbol}: amt={trade_amount:.6f} @ €{price:.4f} "
+                                f"proceeds=€{net_proceeds:.2f} bal=€{self.balance:.2f} "
+                                f"P&L=€{realized_pnl:.2f} ({sell_reason})"
+                            )
+                            
+                            # Record trade to CSV
+                            self._record_trade_to_csv(symbol, 'SELL', trade_amount, price, 'SUCCESS', 
+                                                    sell_reason, 'ENHANCED', confidence, self.balance)
+                            
+                            # Send individual trade notification
+                            self._send_trade_notification(symbol, 'SELL', trade_amount, price, net_proceeds)
+                    
+                except Exception as e:
+                    self.logger.logger.error(f"Trade execution failed for {symbol}: {e}")
                     continue
 
-                current_amount = float(self.positions.get(symbol, 0.0))
+            # Update portfolio snapshot and performance metrics
+            if trades_executed > 0 or self._should_update_portfolio():
+                self._update_portfolio_analytics()
+                
+                # Send portfolio summary if trades were executed
+                if trades_executed > 0:
+                    self._send_portfolio_update_notification(trades_executed)
 
-                if signal == 1:
-                    # Buy up to max_position_size of available balance
-                    target_notional = float(self.max_position_size) * float(self.balance)
-                    if target_notional < min_notional:
-                        self.logger.logger.debug(f"Buy skipped for {symbol}: notional {target_notional:.2f} < min {min_notional:.2f}")
-                        continue
-                    raw_amount = target_notional / price
-                    trade_amount = max(0.0, float(raw_amount))
-                    if trade_amount <= 0:
-                        continue
-                    cost = trade_amount * price
-                    total_cost = cost * (1.0 + fee_rate + slippage)
-                    if self.balance >= total_cost:
-                        self.balance -= total_cost
-                        self.positions[symbol] = current_amount + trade_amount
-                        trade = {
-                            'symbol': symbol,
-                            'side': 'buy',
-                            'amount': trade_amount,
-                            'price': price,
-                            'fee_rate': fee_rate,
-                            'slippage': slippage,
-                            'cost': total_cost,
-                            'timestamp': int(time.time())
-                        }
-                        self.trade_history.append(trade)
-                        trades_executed += 1
-                        self.logger.logger.info(f"BUY {symbol}: amt={trade_amount:.6f} @ {price:.4f} cost={total_cost:.2f} bal={self.balance:.2f}")
-                        
-                        # Record trade to CSV
-                        self._record_trade_to_csv(symbol, 'BUY', trade_amount, price, 'SUCCESS', 'Automated trade execution', 'ENSEMBLE', 0.0, self.balance)
-                        
-                        # Send individual trade notification
-                        self._send_trade_notification(symbol, 'BUY', trade_amount, price, total_cost)
-                    else:
-                        self.rejected_trades_count += 1
-                        self.logger.logger.debug(f"Buy rejected for {symbol}: insufficient balance {self.balance:.2f} < {total_cost:.2f}")
-
-                elif signal == -1:
-                    # Sell position with intelligent sizing
-                    if current_amount <= 0:
-                        continue
-                    
-                    # Determine sell amount based on the sell reason
-                    current_price = float(self.last_prices.get(symbol, 0.0))
-                    position_value = current_amount * current_price if current_price > 0 else 0.0
-                    
-                    # Calculate total portfolio value for position percentage
-                    total_portfolio_value = self.balance + sum(
-                        float(self.positions.get(s, 0.0)) * float(self.last_prices.get(s, 0.0))
-                        for s in self.symbols if self.last_prices.get(s, 0.0) > 0
-                    )
-                    
-                    position_pct = position_value / total_portfolio_value if total_portfolio_value > 0 else 0
-                    
-                    # Determine sell percentage based on conditions
-                    if position_pct > 0.4:
-                        # Over-concentrated: sell 50% to rebalance
-                        sell_pct = 0.5
-                        sell_reason = "Risk management - over-concentration"
-                    elif 0 < signals.get(symbol, 0) and signals.get(symbol, 0) < self._get_dynamic_threshold(symbol, self.price_history.get(symbol)) * 0.5:
-                        # Weak positive prediction: take 25% profit
-                        sell_pct = 0.25
-                        sell_reason = "Profit taking - weak signal"
-                    else:
-                        # Strong negative prediction: sell 75%
-                        sell_pct = 0.75
-                        sell_reason = "Negative prediction"
-                    
-                    trade_amount = current_amount * sell_pct
-                    trade_amount = max(0.0, float(trade_amount))
+        except Exception as e:
+            self.logger.logger.error(f"execute_trades failed: {e}")
+            self._send_error_notification("Trade Execution Error", str(e))
+    
+    def _should_update_portfolio(self) -> bool:
+        """Check if portfolio should be updated (time-based)."""
+        current_time = time.time()
+        return (current_time - self.last_portfolio_update) > self.portfolio_update_interval
+    
+    def _update_portfolio_analytics(self) -> None:
+        """Update portfolio analytics and performance metrics."""
+        try:
+            current_time = time.time()
+            
+            # Calculate current portfolio value
+            position_values = {}
+            total_position_value = 0.0
+            
+            for symbol, quantity in self.positions.items():
+                if quantity > 0 and symbol in self.last_prices:
+                    value = quantity * self.last_prices[symbol]
+                    position_values[symbol] = value
+                    total_position_value += value
+            
+            total_portfolio_value = self.balance + total_position_value
+            
+            # Create portfolio snapshot
+            portfolio_snapshot = {
+                'timestamp': time.time(),
+                'portfolio_value': total_portfolio_value,
+                'cash_balance': self.balance,
+                'position_value': total_position_value,
+                'cash_pct': self.balance / total_portfolio_value if total_portfolio_value > 0 else 1.0,
+                'positions': {
+                    symbol: {
+                        'quantity': self.positions[symbol],
+                        'price': self.last_prices.get(symbol, 0.0),
+                        'value': position_values.get(symbol, 0.0),
+                        'pct_portfolio': position_values.get(symbol, 0.0) / total_portfolio_value if total_portfolio_value > 0 else 0.0
+                    }
+                    for symbol in self.symbols if self.positions.get(symbol, 0) > 0
+                }
+            }
+            
+            # Record portfolio snapshot
+            self.performance_analyzer.record_portfolio_snapshot(portfolio_snapshot)
+            
+            # Calculate comprehensive metrics
+            metrics = self.performance_analyzer.calculate_comprehensive_metrics(
+                self.positions, self.last_prices, self.balance
+            )
+            
+            # Update profit optimizer performance metrics
+            profit_metrics = self.profit_optimizer.update_performance_metrics(
+                self.positions, self.last_prices, self.balance
+            )
+            
+            # Log key metrics
+            self.logger.logger.info(
+                f"Portfolio Update: Value=€{total_portfolio_value:.2f} "
+                f"P&L=€{metrics.total_pnl:.2f} ({metrics.total_return:.2%}) "
+                f"Sharpe={metrics.sharpe_ratio:.2f} Drawdown={metrics.current_drawdown:.1%}"
+            )
+            
+            self.last_portfolio_update = current_time
+            
+        except Exception as e:
+            self.logger.logger.error(f"Failed to update portfolio analytics: {e}")
                     
                     if trade_amount > 0:
                         proceeds = trade_amount * price
@@ -2006,8 +2325,8 @@ class EnhancedUnifiedPaperTrader:
             return False
 
     async def run_trading_loop(self):
-        """Main trading loop with warm-start optimization (task 1)."""
-        self.logger.logger.info("Starting Enhanced Unified Paper Trader...")
+        """Main trading loop with enhanced profit optimization and performance reporting."""
+        self.logger.logger.info("Starting Enhanced Unified Paper Trader with Profit Optimization...")
 
         if self.warm_start:
             self.logger.logger.info("Warm start enabled: skipping metadata hygiene")
@@ -2038,12 +2357,20 @@ class EnhancedUnifiedPaperTrader:
             trading_interval = self.config.get('trading_interval', 300)
             self.logger.logger.info(f"Trading mode: Fixed interval ({trading_interval} seconds / {trading_interval/60:.1f} minutes)")
         
+        # Initialize performance reporting
+        last_performance_report = 0
+        performance_report_interval = 3600  # 1 hour
+        
         # Send startup notification
         self._send_startup_notification()
         
         try:
+            iteration_count = 0
             while True:
                 try:
+                    iteration_count += 1
+                    current_time = time.time()
+                    
                     # Get market data
                     market_data = await self.get_market_data()
                     
@@ -2057,6 +2384,15 @@ class EnhancedUnifiedPaperTrader:
                     
                     # Execute trades
                     self.execute_trades(signals, market_data)
+                    
+                    # Generate periodic performance reports
+                    if (current_time - last_performance_report) > performance_report_interval:
+                        await self._generate_performance_report()
+                        last_performance_report = current_time
+                    
+                    # Log simplified portfolio status every 10 iterations
+                    if iteration_count % 10 == 0:
+                        self._log_portfolio_status()
                     
                     # Wait before next iteration based on trading mode
                     trading_mode = self.config.get('trading_mode', 'candle_aligned')
@@ -2078,6 +2414,15 @@ class EnhancedUnifiedPaperTrader:
                     self.logger.logger.error(f"Error in trading loop: {e}")
                     self._send_error_notification("Trading Loop Error", str(e))
                     await asyncio.sleep(60)  # Wait before retrying
+            
+            # Generate final performance report on shutdown
+            await self._generate_performance_report()
+                    
+        except Exception as e:
+            self.logger.logger.error(f"Critical error in trading loop: {e}")
+            self._send_error_notification("Critical Trading Error", str(e))
+        finally:
+            self.logger.logger.info("Enhanced trading loop terminated")
                     
         except Exception as e:
             self.logger.logger.error(f"Fatal error in trading loop: {e}")
@@ -2265,6 +2610,87 @@ class EnhancedUnifiedPaperTrader:
             }
         
         return metrics
+    
+    async def _generate_performance_report(self) -> None:
+        """Generate comprehensive performance report."""
+        try:
+            # Calculate current metrics
+            metrics = self.performance_analyzer.calculate_comprehensive_metrics(
+                self.positions, self.last_prices, self.balance
+            )
+            
+            # Generate full report
+            report = self.performance_analyzer.generate_performance_report(metrics)
+            
+            # Log key metrics
+            self.logger.logger.info(
+                f"=== PERFORMANCE REPORT ===\n"
+                f"Portfolio Value: €{metrics.portfolio_value:,.2f}\n"
+                f"Total Return: {metrics.total_return:.2%}\n"
+                f"Annualized Return: {metrics.annualized_return:.2%}\n"
+                f"Sharpe Ratio: {metrics.sharpe_ratio:.2f}\n"
+                f"Max Drawdown: {metrics.max_drawdown:.1%}\n"
+                f"Win Rate: {metrics.win_rate:.1%}\n"
+                f"Total Trades: {metrics.total_trades}\n"
+                f"P&L: €{metrics.total_pnl:+,.2f}"
+            )
+            
+            # Send performance notification
+            await self._send_performance_notification(metrics, report)
+            
+        except Exception as e:
+            self.logger.logger.error(f"Failed to generate performance report: {e}")
+    
+    async def _send_performance_notification(self, metrics, report: Dict[str, Any]) -> None:
+        """Send performance notification via Telegram."""
+        try:
+            if self.telegram_notifier and self.telegram_notifier.enabled:
+                # Determine emoji based on performance
+                if metrics.total_return > 0.05:  # >5%
+                    emoji = "🚀"
+                elif metrics.total_return > 0:
+                    emoji = "📈"
+                elif metrics.total_return > -0.05:  # >-5%
+                    emoji = "📊"
+                else:
+                    emoji = "📉"
+                
+                grade = report.get('performance_summary', {}).get('performance_grade', 'N/A')
+                risk_assessment = report.get('performance_summary', {}).get('risk_assessment', {})
+                
+                message = f"""
+{emoji} <b>PERFORMANCE REPORT</b>
+
+<b>Portfolio Value:</b> €{metrics.portfolio_value:,.2f}
+<b>Total Return:</b> {metrics.total_return:+.2%}
+<b>Annualized Return:</b> {metrics.annualized_return:+.2%}
+
+<b>Risk Metrics:</b>
+• Sharpe Ratio: {metrics.sharpe_ratio:.2f}
+• Max Drawdown: {metrics.max_drawdown:.1%}
+• Current Drawdown: {metrics.current_drawdown:.1%}
+
+<b>Trading Performance:</b>
+• Win Rate: {metrics.win_rate:.1%}
+• Total Trades: {metrics.total_trades}
+• Winning Trades: {metrics.winning_trades}
+• Losing Trades: {metrics.losing_trades}
+
+<b>P&L Breakdown:</b>
+• Total P&L: €{metrics.total_pnl:+,.2f}
+• Realized P&L: €{metrics.realized_pnl:+,.2f}
+• Unrealized P&L: €{metrics.unrealized_pnl:+,.2f}
+
+<b>Performance Grade:</b> {grade}
+<b>Risk Level:</b> {risk_assessment.get('volatility', 'N/A')}
+
+<i>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>
+"""
+                
+                self._send_telegram_safe(message.strip())
+                
+        except Exception as e:
+            self.logger.logger.error(f"Failed to send performance notification: {e}")
     
     def create_deployment_report(self) -> str:
         """Create a comprehensive deployment status report."""
