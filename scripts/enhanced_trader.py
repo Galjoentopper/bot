@@ -1627,7 +1627,7 @@ class EnhancedUnifiedPaperTrader:
                         # Over-concentrated: sell 50% to rebalance
                         sell_pct = 0.5
                         sell_reason = "Risk management - over-concentration"
-                    elif 0 < signals.get(symbol, 0) and signals.get(symbol, 0) < self._get_dynamic_threshold(symbol, None) * 0.5:
+                    elif 0 < signals.get(symbol, 0) and signals.get(symbol, 0) < self._get_dynamic_threshold(symbol, self.price_history.get(symbol)) * 0.5:
                         # Weak positive prediction: take 25% profit
                         sell_pct = 0.25
                         sell_reason = "Profit taking - weak signal"
