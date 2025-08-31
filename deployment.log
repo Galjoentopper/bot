@@ -1,0 +1,62 @@
+[Sat Aug 30 04:06:00 PM UTC 2025] Enhanced automated trading system deployment started
+[Sat Aug 30 04:06:00 PM UTC 2025] [INFO] Enhanced automated trading system deployment started
+[Sat Aug 30 04:06:00 PM UTC 2025] [INFO] Checking comprehensive system requirements...
+[Sat Aug 30 04:06:00 PM UTC 2025] [INFO] Python version: 3.10.12
+[Sat Aug 30 04:06:00 PM UTC 2025] [INFO] System memory: 7.6Gi
+[Sat Aug 30 04:06:00 PM UTC 2025] [INFO] Available disk space: 40G
+[Sat Aug 30 04:06:00 PM UTC 2025] [SUCCESS] System requirements validated successfully
+[Sat Aug 30 04:06:00 PM UTC 2025] [INFO] Validating comprehensive environment structure...
+[Sat Aug 30 04:06:00 PM UTC 2025] [SUCCESS] Environment structure validated and created
+[Sat Aug 30 04:06:00 PM UTC 2025] [INFO] Setting up comprehensive Python dependencies...
+[Sat Aug 30 04:06:02 PM UTC 2025] [INFO] Installing requirements from requirements.txt...
+[Sat Aug 30 04:06:13 PM UTC 2025] [SUCCESS] All requirements installed successfully
+[Sat Aug 30 04:06:13 PM UTC 2025] [SUCCESS] Dependencies setup completed
+[Sat Aug 30 04:06:13 PM UTC 2025] [INFO] Processing comprehensive trading configuration...
+[Sat Aug 30 04:06:13 PM UTC 2025] [INFO] Extracting trading symbols from configuration...
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Trading symbols extracted: BTCEUR,ETHEUR,ADAEUR,DOTEUR,LINKEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Validating configuration for symbol: BTCEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Symbol BTCEUR configuration is valid
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Validating configuration for symbol: ETHEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Symbol ETHEUR configuration is valid
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Validating configuration for symbol: ADAEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Symbol ADAEUR configuration is valid
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Validating configuration for symbol: DOTEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Symbol DOTEUR configuration is valid
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Validating configuration for symbol: LINKEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Symbol LINKEUR configuration is valid
+[Sat Aug 30 04:06:14 PM UTC 2025] [SUCCESS] Configuration processing completed. Valid symbols: BTCEUR,ETHEUR,ADAEUR,DOTEUR,LINKEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Performing comprehensive model verification...
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Verifying models for symbol: BTCEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found gru model for BTCEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found lightgbm model for BTCEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found ppo model for BTCEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [SUCCESS] Symbol BTCEUR has 3 model(s) available
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Verifying models for symbol: ETHEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found gru model for ETHEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found lightgbm model for ETHEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found ppo model for ETHEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [SUCCESS] Symbol ETHEUR has 3 model(s) available
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Verifying models for symbol: ADAEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found gru model for ADAEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found lightgbm model for ADAEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found ppo model for ADAEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [SUCCESS] Symbol ADAEUR has 3 model(s) available
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Verifying models for symbol: DOTEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found gru model for DOTEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found lightgbm model for DOTEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found ppo model for DOTEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [SUCCESS] Symbol DOTEUR has 3 model(s) available
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Verifying models for symbol: LINKEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found gru model for LINKEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found lightgbm model for LINKEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO]   Found ppo model for LINKEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [SUCCESS] Symbol LINKEUR has 3 model(s) available
+[Sat Aug 30 04:06:14 PM UTC 2025] [SUCCESS] Model verification completed. Verified symbols: BTCEUR,ETHEUR,ADAEUR,DOTEUR,LINKEUR
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Initializing comprehensive trading system...
+[Sat Aug 30 04:06:14 PM UTC 2025] [INFO] Validating Python trading environment...
+[Sat Aug 30 04:06:17 PM UTC 2025] [INFO] Testing trading script functionality...
+[Sat Aug 30 04:06:26 PM UTC 2025] [WARNING] Trading script test failed, but continuing...
+[Sat Aug 30 04:06:26 PM UTC 2025] [SUCCESS] Trading system initialized successfully
+[Sat Aug 30 04:06:26 PM UTC 2025] [INFO] Starting automated trading loop with 1800 second intervals...
+[Sat Aug 30 04:06:26 PM UTC 2025] [INFO] === Starting Unified Continuous Trading ===
+[Sat Aug 30 04:06:26 PM UTC 2025] [INFO] Starting unified continuous trading for all symbols: BTCEUR,ETHEUR,ADAEUR,DOTEUR,LINKEUR
