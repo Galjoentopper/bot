@@ -2197,8 +2197,7 @@ class EnhancedUnifiedPaperTrader:
         """Record trade to CSV file for tracking and reporting."""
         try:
             import uuid
-            from datetime import datetime
-            
+
             # Ensure logs directory exists
             os.makedirs('logs', exist_ok=True)
             
