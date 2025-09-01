@@ -2161,8 +2161,7 @@ class EnhancedUnifiedPaperTrader:
             
             # Calculate actual time for user info
             next_candle_time = now + time_to_boundary
-            import datetime
-            next_time_str = datetime.datetime.fromtimestamp(next_candle_time).strftime('%H:%M:%S')
+            next_time_str = datetime.fromtimestamp(next_candle_time).strftime('%H:%M:%S')
             
             self.logger.logger.info(
                 f"Next 30m candle trade: {time_to_boundary}s (at {next_time_str}) "
