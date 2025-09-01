@@ -109,7 +109,15 @@ async def notify():
         bot_token=os.getenv('TELEGRAM_BOT_TOKEN'),
         chat_id=os.getenv('TELEGRAM_CHAT_ID')
     )
-    await notifier.send_message('SYSTEM_STARTUP', 'Trading system deployed and running on new Hetzner server', 'INFO')
+    message = '''🚀 <b>SYSTEM_STARTUP</b>
+
+Trading system deployed and running on new Hetzner server
+✅ 66 model files loaded
+✅ Tmux session active
+✅ Health monitoring enabled
+
+<i>Status: INFO</i>'''
+    await notifier.send_message(message)
 
 asyncio.run(notify())
 "
