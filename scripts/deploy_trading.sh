@@ -1,12 +1,18 @@
 #!/bin/bash
 # Enhanced Trading Deployment Script with Tmux
 
-# Load environment
-source /etc/trading_bot/.env
+# Detect script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOG_DIR="$SCRIPT_DIR/logs"
 
-# Configuration
-LOG_DIR="/var/log/trading_bot"
-SCRIPT_DIR="/opt/trading_bot"
+# Load environment
+if [ -f "/etc/trading_bot/.env" ]; then
+    source /etc/trading_bot/.env
+elif [ -f "$SCRIPT_DIR/.env" ]; then
+    source "$SCRIPT_DIR/.env"
+else
+    echo "Warning: No .env file found"
+fi
 
 # Logging functions
 log_info() {
@@ -87,7 +93,7 @@ verify_models
 
 # Start tmux session
 log_info "Starting tmux trading session..."
-if "$SCRIPT_DIR/tmux_manager.sh" start; then
+if "$SCRIPT_DIR/scripts/tmux_manager.sh" start; then
     log_success "Trading session started successfully"
 
     # Send startup notification
@@ -118,6 +124,6 @@ echo "✅ Environment validated"
 echo "✅ Models verified"
 echo "✅ Tmux session started"
 echo ""
-echo "Monitor with: $SCRIPT_DIR/tmux_manager.sh status"
-echo "View logs: $SCRIPT_DIR/tmux_manager.sh logs"
-echo "Attach session: $SCRIPT_DIR/tmux_manager.sh attach"
+echo "Monitor with: $SCRIPT_DIR/scripts/tmux_manager.sh status"
+echo "View logs: $SCRIPT_DIR/scripts/tmux_manager.sh logs"
+echo "Attach session: $SCRIPT_DIR/scripts/tmux_manager.sh attach"

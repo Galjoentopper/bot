@@ -7,11 +7,11 @@ Wants=network.target
 Type=forking
 User=trader
 Group=trader
-WorkingDirectory=/opt/trading_bot
+WorkingDirectory=/opt/trading_bot/bot
 EnvironmentFile=/etc/trading_bot/.env
-ExecStartPre=/bin/bash -c "cd /opt/trading_bot && git pull"
-ExecStart=/bin/bash -c "cd /opt/trading_bot && ./scripts/tmux_manager.sh start"
-ExecStop=/bin/bash -c "cd /opt/trading_bot && ./scripts/tmux_manager.sh stop"
+ExecStartPre=/bin/bash -c "cd /opt/trading_bot/bot && git pull"
+ExecStart=/bin/bash -c "cd /opt/trading_bot/bot && ./scripts/tmux_manager.sh start"
+ExecStop=/bin/bash -c "cd /opt/trading_bot/bot && ./scripts/tmux_manager.sh stop"
 Restart=always
 RestartSec=10
 
@@ -19,7 +19,7 @@ RestartSec=10
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
-ReadWritePaths=/opt/trading_bot /var/log/trading_bot
+ReadWritePaths=/opt/trading_bot/bot /var/log/trading_bot
 ProtectHome=yes
 
 # Resource limits
