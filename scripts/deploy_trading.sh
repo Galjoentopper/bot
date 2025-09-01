@@ -8,8 +8,10 @@ LOG_DIR="$SCRIPT_DIR/logs"
 # Load environment
 if [ -f "/etc/trading_bot/.env" ]; then
     source /etc/trading_bot/.env
+    export $(grep -v '^#' /etc/trading_bot/.env | xargs)
 elif [ -f "$SCRIPT_DIR/.env" ]; then
     source "$SCRIPT_DIR/.env"
+    export $(grep -v '^#' "$SCRIPT_DIR/.env" | xargs)
 else
     echo "Warning: No .env file found"
 fi
