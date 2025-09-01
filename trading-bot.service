@@ -10,8 +10,8 @@ Group=trader
 WorkingDirectory=/opt/trading_bot
 EnvironmentFile=/etc/trading_bot/.env
 ExecStartPre=/bin/bash -c "cd /opt/trading_bot && git pull"
-ExecStart=/opt/trading_bot/tmux_manager.sh start
-ExecStop=/opt/trading_bot/tmux_manager.sh stop
+ExecStart=/bin/bash -c "cd /opt/trading_bot && ./scripts/tmux_manager.sh start"
+ExecStop=/bin/bash -c "cd /opt/trading_bot && ./scripts/tmux_manager.sh stop"
 Restart=always
 RestartSec=10
 

@@ -2,11 +2,17 @@
 # Tmux Trading Session Manager
 
 SESSION_NAME="trading_session"
-SCRIPT_DIR="/opt/trading_bot"
-LOG_DIR="/var/log/trading_bot"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOG_DIR="$SCRIPT_DIR/logs"
 
 # Load environment
-source /etc/trading_bot/.env
+if [ -f "/etc/trading_bot/.env" ]; then
+    source /etc/trading_bot/.env
+elif [ -f "$SCRIPT_DIR/.env" ]; then
+    source "$SCRIPT_DIR/.env"
+else
+    echo "Warning: No .env file found"
+fi
 
 # Check if session exists
 session_exists() {

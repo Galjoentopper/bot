@@ -1,8 +1,15 @@
 #!/bin/bash
 # Health Check Script
 
-LOG_DIR="/var/log/trading_bot"
-SCRIPT_DIR="/opt/trading_bot"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOG_DIR="$SCRIPT_DIR/logs"
+
+# Also check system log directory if it exists
+if [ -d "/var/log/trading_bot" ]; then
+    SYSTEM_LOG_DIR="/var/log/trading_bot"
+else
+    SYSTEM_LOG_DIR="$LOG_DIR"
+fi
 
 echo "=== Trading Bot Health Check ==="
 echo "Time: $(date)"
@@ -28,10 +35,10 @@ else
 fi
 
 # Check log files
-LOG_COUNT=$(find "$LOG_DIR" -name "trading_*.log" -type f | wc -l)
+LOG_COUNT=$(find "$SYSTEM_LOG_DIR" -name "trading_*.log" -type f 2>/dev/null | wc -l)
 if [ "$LOG_COUNT" -gt 0 ]; then
     echo "✅ Log Files: $LOG_COUNT files present"
-    LATEST_LOG=$(find "$LOG_DIR" -name "trading_*.log" -type f -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+    LATEST_LOG=$(find "$SYSTEM_LOG_DIR" -name "trading_*.log" -type f -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
     if [ -n "$LATEST_LOG" ]; then
         LOG_SIZE=$(stat -c%s "$LATEST_LOG" 2>/dev/null || echo "0")
         echo "   Latest: $(basename "$LATEST_LOG") (${LOG_SIZE} bytes)"
@@ -45,7 +52,7 @@ echo ""
 echo "=== System Resources ==="
 echo "CPU Usage: $(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1"%"}')"
 echo "Memory: $(free -h | grep Mem | awk '{print $3 "/" $2 " (" $4 " free)"}')"
-echo "Disk: $(df -h /opt/trading_bot | tail -1 | awk '{print $3 "/" $2 " (" $5 " used)"}')"
+echo "Disk: $(df -h "$SCRIPT_DIR" | tail -1 | awk '{print $3 "/" $2 " (" $5 " used)"}')"
 
 # Network connectivity
 echo ""
