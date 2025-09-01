@@ -1,0 +1,130 @@
+{
+  "report_timestamp": "2025-09-01T05:30:32.284222",
+  "report_period": "2025-08-31 to 2025-09-01",
+  "performance_summary": {
+    "current_metrics": {
+      "timestamp": "2025-09-01T05:30:32.261005",
+      "total_return": -0.012366285340114191,
+      "annualized_return": -7.257124176409311,
+      "volatility": 0.15092473918738836,
+      "sharpe_ratio": -48.21690741750445,
+      "sortino_ratio": -56.67962443985149,
+      "max_drawdown": 0.01463128502160395,
+      "current_drawdown": 0.013713744096635424,
+      "win_rate": 0.027777777777777776,
+      "profit_factor": 0.007031399014872602,
+      "average_win": 0.3898509404932389,
+      "average_loss": 1.5841226299697684,
+      "total_trades": 36,
+      "winning_trades": 1,
+      "losing_trades": 35,
+      "portfolio_value": 9876.337146598858,
+      "cash_balance": 5704.875680748669,
+      "total_pnl": -1395.8718348191674,
+      "realized_pnl": -1272.208981418025,
+      "unrealized_pnl": -123.66285340114246
+    },
+    "performance_grade": "F",
+    "risk_assessment": {
+      "volatility": "LOW",
+      "drawdown": "LOW",
+      "concentration": "MEDIUM"
+    },
+    "improvement_suggestions": [
+      "Consider increasing position sizes or improving signal quality to boost returns",
+      "Focus on risk-adjusted returns by improving signal-to-noise ratio",
+      "Review entry criteria to improve win rate",
+      "Optimize profit-taking and loss-cutting strategies",
+      "Consider deploying excess cash to increase market exposure"
+    ],
+    "benchmark_comparison": {
+      "benchmark_return": 0.08,
+      "excess_return": -7.337124176409311,
+      "information_ratio": -48.614456555724296,
+      "outperformance": "False"
+    }
+  },
+  "symbol_analysis": {
+    "DOTEUR": {
+      "trades": 19,
+      "total_pnl": 0.0,
+      "total_volume": 4302.556168619229,
+      "wins": 0,
+      "losses": 0,
+      "win_rate": 0.0,
+      "avg_pnl_per_trade": 0.0
+    },
+    "BTCEUR": {
+      "trades": 25,
+      "total_pnl": 0.0,
+      "total_volume": 7214.288587933431,
+      "wins": 0,
+      "losses": 0,
+      "win_rate": 0.0,
+      "avg_pnl_per_trade": 0.0
+    },
+    "ETHEUR": {
+      "trades": 21,
+      "total_pnl": 0.0,
+      "total_volume": 1801.0431360200685,
+      "wins": 0,
+      "losses": 0,
+      "win_rate": 0.0,
+      "avg_pnl_per_trade": 0.0
+    },
+    "ADAEUR": {
+      "trades": 16,
+      "total_pnl": 0.0,
+      "total_volume": 663.805565256301,
+      "wins": 0,
+      "losses": 0,
+      "win_rate": 0.0,
+      "avg_pnl_per_trade": 0.0
+    },
+    "LINKEUR": {
+      "trades": 17,
+      "total_pnl": 0.0,
+      "total_volume": 2220.622424938004,
+      "wins": 0,
+      "losses": 0,
+      "win_rate": 0.0,
+      "avg_pnl_per_trade": 0.0
+    }
+  },
+  "time_analysis": {
+    "daily_stats": {
+      "mean_return": 1.1107289874568678,
+      "volatility": NaN,
+      "best_day": 1.1107289874568678,
+      "worst_day": 1.1107289874568678
+    },
+    "weekly_stats": {
+      "mean_return": 1.1107289874568678,
+      "volatility": NaN,
+      "best_week": 1.1107289874568678,
+      "worst_week": 1.1107289874568678
+    }
+  },
+  "risk_analysis": {
+    "value_at_risk_95": -0.0022967718818281747,
+    "value_at_risk_99": -0.0031526843032201944,
+    "expected_shortfall_95": -0.002918279632312948,
+    "expected_shortfall_99": -0.0034510175207385085,
+    "volatility_percentile": 66.66666666666666,
+    "risk_adjusted_return": -48.08439103809784
+  },
+  "recommendations": [
+    {
+      "category": "Performance",
+      "priority": "HIGH",
+      "recommendation": "Improve Sharpe ratio from -48.22 to >1.0",
+      "action": "Review signal quality and position sizing"
+    },
+    {
+      "category": "Strategy",
+      "priority": "MEDIUM",
+      "recommendation": "Improve win rate from 2.8% to >45.0%",
+      "action": "Review entry criteria and market timing"
+    }
+  ]
+}
