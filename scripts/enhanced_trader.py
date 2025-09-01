@@ -276,6 +276,9 @@ class EnhancedUnifiedPaperTrader:
         self.profit_optimizer = ProfitOptimizer(profit_config)
         self.enhanced_signal_generator = EnhancedSignalGenerator(self.config, self.profit_optimizer)
         
+        # Store reference for performance tracking
+        self.signal_generator = self.enhanced_signal_generator
+        
         # Initialize performance analytics
         analytics_config = self.config.get('performance_analytics', {})
         self.performance_analyzer = PerformanceAnalyzer(analytics_config, self.initial_balance)
@@ -1144,6 +1147,9 @@ class EnhancedUnifiedPaperTrader:
             # Get model predictions
             model_predictions = self._get_model_predictions(market_data)
             
+            # Store predictions for performance tracking
+            self._last_model_predictions = model_predictions
+            
             # Update current prices
             current_prices = {}
             for symbol, df in market_data.items():
@@ -1729,15 +1735,60 @@ class EnhancedUnifiedPaperTrader:
                     detailed_signal = detailed_signals.get(symbol)
 
                     if signal == 1:  # BUY
+                        # Check trade limits and volatility filter
+                        if not self.profit_optimizer.check_trade_limits():
+                            self.logger.logger.debug(f"Buy skipped for {symbol}: trade limits exceeded")
+                            continue
+                            
+                        if self.profit_optimizer.should_filter_by_volatility(symbol, market_data.get(symbol)):
+                            self.logger.logger.debug(f"Buy skipped for {symbol}: high volatility filter")
+                            continue
+                        
                         # Use detailed signal for position sizing if available
                         if detailed_signal:
-                            target_notional = detailed_signal.quantity_pct * float(self.balance)
+                            base_position_pct = detailed_signal.quantity_pct
                             reasoning = detailed_signal.reasoning
                             confidence = detailed_signal.confidence
                         else:
-                            target_notional = float(self.max_position_size) * float(self.balance)
+                            base_position_pct = float(self.max_position_size)
                             reasoning = "Automated trade execution"
                             confidence = 0.5
+                        
+                        # Apply Kelly criterion position sizing if enabled
+                        if hasattr(self.profit_optimizer, 'position_sizing_method') and self.profit_optimizer.position_sizing_method == 'kelly_criterion':
+                            # Get historical performance for Kelly calculation
+                            symbol_trades = [t for t in self.trade_history if t['symbol'] == symbol]
+                            if len(symbol_trades) >= 10:  # Need sufficient history
+                                wins = [t for t in symbol_trades if t.get('realized_pnl', 0) > 0]
+                                losses = [t for t in symbol_trades if t.get('realized_pnl', 0) < 0]
+                                
+                                if wins and losses:
+                                    win_rate = len(wins) / len(symbol_trades)
+                                    avg_win = sum(t['realized_pnl'] for t in wins) / len(wins)
+                                    avg_loss = abs(sum(t['realized_pnl'] for t in losses) / len(losses))
+                                    
+                                    # Calculate volatility from market data
+                                    volatility = None
+                                    if symbol in market_data and len(market_data[symbol]) > 20:
+                                        returns = market_data[symbol]['close'].pct_change().dropna()
+                                        volatility = returns.tail(20).std() if len(returns) >= 20 else None
+                                    
+                                    kelly_pct = self.profit_optimizer.calculate_kelly_position_size(
+                                        symbol, win_rate, avg_win, avg_loss, float(self.balance), volatility
+                                    )
+                                    base_position_pct = min(base_position_pct, kelly_pct)
+                                    reasoning += f" (Kelly: {kelly_pct:.3f})"
+                        
+                        # Apply volatility adjustment
+                        if hasattr(self.profit_optimizer, 'volatility_scaling') and self.profit_optimizer.volatility_scaling:
+                            adjusted_pct = self.profit_optimizer.calculate_volatility_adjusted_size(
+                                symbol, base_position_pct, market_data.get(symbol, pd.DataFrame())
+                            )
+                            if adjusted_pct != base_position_pct:
+                                reasoning += f" (Vol-adj: {adjusted_pct:.3f})"
+                                base_position_pct = adjusted_pct
+                        
+                        target_notional = base_position_pct * float(self.balance)
 
                         if target_notional < min_notional:
                             self.logger.logger.debug(f"Buy skipped for {symbol}: notional {target_notional:.2f} < min {min_notional:.2f}")
@@ -1789,6 +1840,16 @@ class EnhancedUnifiedPaperTrader:
                             
                             # Send individual trade notification
                             self._send_trade_notification(symbol, 'BUY', trade_amount, price, total_cost)
+                            
+                            # Update model performance tracking for adaptive weights
+                            if hasattr(self, 'signal_generator') and hasattr(self.signal_generator, 'update_model_performance'):
+                                # Get the model predictions that led to this trade
+                                model_predictions = getattr(self, '_last_model_predictions', {}).get(symbol, [])
+                                for pred in model_predictions:
+                                    # Track the prediction for future performance evaluation
+                                    self.signal_generator.update_model_performance(
+                                        pred.model_type, pred.prediction, None, True  # None for actual_return (will be updated on sell)
+                                    )
                         else:
                             self.rejected_trades_count += 1
                             self.logger.logger.debug(f"Buy rejected for {symbol}: insufficient balance €{self.balance:.2f} < €{total_cost:.2f}")
@@ -1876,6 +1937,114 @@ class EnhancedUnifiedPaperTrader:
                             
                             # Send individual trade notification
                             self._send_trade_notification(symbol, 'SELL', trade_amount, price, net_proceeds)
+                            
+                            # Update model performance tracking with actual returns
+                            if hasattr(self, 'signal_generator') and hasattr(self.signal_generator, 'update_model_performance'):
+                                # Calculate actual return percentage
+                                actual_return_pct = realized_pnl / (avg_cost * trade_amount) if (avg_cost * trade_amount) > 0 else 0.0
+                                # Get the model predictions that led to the original buy
+                                model_predictions = getattr(self, '_last_model_predictions', {}).get(symbol, [])
+                                for pred in model_predictions:
+                                    # Update with actual return and mark as profitable trade
+                                    is_profitable = realized_pnl > 0
+                                    self.signal_generator.update_model_performance(
+                                        pred.model_type, pred.prediction, actual_return_pct, is_profitable
+                                    )
+                    
+                    # Check for additional sell conditions even when signal != -1
+                    if signal != -1 and current_amount > 0:
+                        current_price = float(self.last_prices.get(symbol, 0.0))
+                        
+                        # Check profit optimizer for sell signals
+                        profit_sell_signal = self.profit_optimizer.check_profit_targets(
+                            symbol, current_price, current_amount
+                        )
+                        
+                        trailing_stop_signal = self.profit_optimizer.update_trailing_stops(
+                            symbol, current_price, current_amount
+                        )
+                        
+                        # Check time-based exit signals
+                        time_exit_signal = self.profit_optimizer.check_time_based_exits(
+                            symbol, current_amount
+                        )
+                        
+                        # Execute profit optimizer sells with priority order
+                        sell_signal = None
+                        if trailing_stop_signal and trailing_stop_signal.get('action') == 'SELL':
+                            sell_signal = trailing_stop_signal
+                            sell_signal['type'] = 'TRAILING_STOP'
+                        elif profit_sell_signal and profit_sell_signal.get('action') == 'SELL':
+                            sell_signal = profit_sell_signal
+                            sell_signal['type'] = 'PROFIT_TARGET'
+                        elif time_exit_signal and time_exit_signal.get('action') == 'SELL':
+                            sell_signal = time_exit_signal
+                            sell_signal['type'] = 'TIME_EXIT'
+                        
+                        if sell_signal:
+                            sell_pct = sell_signal.get('quantity_pct', 0.5)
+                            sell_reason = f"{sell_signal['type']} - {sell_signal.get('reasoning', 'optimizer signal')}"
+                            confidence = sell_signal.get('confidence', 0.7)
+                            
+                            trade_amount = current_amount * sell_pct
+                            trade_amount = max(0.0, float(trade_amount))
+                            
+                            if trade_amount > 0:
+                                proceeds = trade_amount * price
+                                fee_amount = proceeds * (fee_rate + slippage)
+                                net_proceeds = proceeds - fee_amount
+                                
+                                # Calculate P&L
+                                avg_cost = getattr(self.profit_optimizer.positions.get(symbol), 'avg_cost', price)
+                                realized_pnl = (price - avg_cost) * trade_amount - fee_amount
+                                
+                                # Execute sell trade
+                                self.balance += net_proceeds
+                                self.positions[symbol] = current_amount - trade_amount
+                                
+                                # Record trade
+                                trade_data = {
+                                    'symbol': symbol,
+                                    'action': 'SELL',
+                                    'quantity': trade_amount,
+                                    'price': price,
+                                    'fee': fee_amount,
+                                    'proceeds': net_proceeds,
+                                    'realized_pnl': realized_pnl,
+                                    'reasoning': sell_reason,
+                                    'confidence': confidence,
+                                    'timestamp': time.time()
+                                }
+                                
+                                self.trade_history.append(trade_data)
+                                self.performance_analyzer.record_trade(trade_data)
+                                self.profit_optimizer.record_trade(
+                                    symbol, 'SELL', trade_amount, price, fee_amount, sell_reason
+                                )
+                                
+                                # Update model performance tracking with actual returns
+                                if hasattr(self, 'signal_generator') and hasattr(self.signal_generator, 'update_model_performance'):
+                                    # Calculate actual return percentage
+                                    actual_return_pct = realized_pnl / (avg_cost * trade_amount) if (avg_cost * trade_amount) > 0 else 0.0
+                                    # Get the model predictions that led to the original buy
+                                    model_predictions = getattr(self, '_last_model_predictions', {}).get(symbol, [])
+                                    for pred in model_predictions:
+                                        # Update with actual return and mark as profitable trade
+                                        is_profitable = realized_pnl > 0
+                                        self.signal_generator.update_model_performance(
+                                            pred.model_type, pred.prediction, actual_return_pct, is_profitable
+                                        )
+                                
+                                trades_executed += 1
+                                self.logger.logger.info(
+                                    f"OPTIMIZER SELL {symbol}: amt={trade_amount:.6f} @ €{price:.4f} "
+                                    f"proceeds=€{net_proceeds:.2f} bal=€{self.balance:.2f} "
+                                    f"P&L=€{realized_pnl:.2f} ({sell_reason})"
+                                )
+                                
+                                self._record_trade_to_csv(symbol, 'SELL', trade_amount, price, 'SUCCESS', 
+                                                        sell_reason, 'OPTIMIZER', confidence, self.balance)
+                                self._send_trade_notification(symbol, 'SELL', trade_amount, price, net_proceeds)
                     
                 except Exception as e:
                     self.logger.logger.error(f"Trade execution failed for {symbol}: {e}")

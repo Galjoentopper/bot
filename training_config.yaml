@@ -112,39 +112,56 @@ trading:
   # Wait time after new candle is published (5-30 seconds recommended)
   candle_buffer_seconds: 15
 
-  # Enhanced thresholds for buy/sell signals (reduced sensitivity)
+  # Optimized thresholds for buy/sell signals (improved for profitability)
   thresholds:
-    default: 0.0005  # Increased from 0.0001 (5x increase)
+    default: 0.0001  # Reduced from 0.0005 to allow more trades
     per_symbol:
-      BTCEUR: 0.0004
-      ETHEUR: 0.0004
-      ADAEUR: 0.0006
-      DOTEUR: 0.0006
-      LINKEUR: 0.0005
+      BTCEUR: 0.00008  # More aggressive for major pairs
+      ETHEUR: 0.00008
+      ADAEUR: 0.00012  # Slightly higher for altcoins
+      DOTEUR: 0.00012
+      LINKEUR: 0.0001
     use_cost_floor: true
-    cost_floor_multiplier: 2.0  # Increased from 1.2
+    cost_floor_multiplier: 1.0  # Reduced from 2.0
     vol_reference: 0.02
-    vol_bounds: [0.3, 3.0]  # Wider bounds
+    vol_bounds: [0.5, 2.5]  # Tighter bounds for better control
 
-  # Model weights for ensemble
+  # Model weights for ensemble - optimized for better performance
   model_weights:
-    gru: 0.45
-    lightgbm: 0.45
+    gru: 0.35
+    lightgbm: 0.55  # Increased weight for better performing model
     ppo: 0.1
 
-  # Risk management
-  stop_loss: 0.02
-  take_profit: 0.04
-  max_drawdown: 0.1
+  # Signal generation thresholds - more aggressive settings
+  confidence_threshold: 0.45  # Reduced from 0.6
+  base_buy_threshold: 0.0003  # Reduced from 0.0005
+  base_sell_threshold: -0.0003  # More aggressive selling
+  volatility_threshold_multiplier: 1.5
+  
+  # Adaptive model weighting
+  adaptive_weights: true       # Enable performance-based weight adjustment
+  weight_adaptation_rate: 0.1  # Rate of weight adaptation (0.1 = 10% per update)
+  
+  # Legacy thresholds for backward compatibility
+  buy_threshold: 0.0003
+  sell_threshold: -0.0003
 
-  # Drift monitoring configuration - ENABLED for production server with trained models
+  # Enhanced risk management - Improved for better Sharpe ratio
+  stop_loss: 0.02   # 2% stop loss for better risk control
+  take_profit: 0.04  # 4% profit target for better risk-reward ratio (2:1)
+  max_drawdown: 0.05  # 5% maximum drawdown - much stricter
+  position_sizing_method: 'kelly_criterion'  # Use Kelly criterion for optimal sizing
+  max_correlation_exposure: 0.4  # Limit correlated positions to 40%
+  volatility_scaling: true  # Scale position size based on volatility
+
+  # Drift monitoring configuration - DISABLED as requested
   # 
   # This server has trained models present for all symbols, making drift monitoring
   # valuable for detecting data distribution changes that could affect model performance.
   # Configured with appropriate sensitivity and rate limiting to provide useful alerts
   # without overwhelming the system.
   drift_monitoring:
-    enabled: true
+    enabled: false
     sensitivity: 'medium'  # Balanced sensitivity for production use
     alert_frequency_limit: 10  # Max 10 alerts per minute per model-symbol combination
     require_multiple_confirmations: true
@@ -182,25 +199,38 @@ notifications:
     bot_token: '7733436451:AAH6Sls8uL4fEgd6Ty7VEKSBIMauhaVkN4c'
     chat_id: '7988790407'
 
-# Profit Optimization Configuration
+# Enhanced Profit Optimization Configuration - Improved for Sharpe ratio
 profit_optimization:
-  min_profit_pct: 0.02  # 2% minimum profit target
-  max_position_pct: 0.25  # 25% maximum position size
-  trailing_stop_pct: 0.05  # 5% trailing stop loss
-  profit_target_pct: 0.15  # 15% profit target
-  max_holding_days: 7  # Maximum holding period
+  min_profit_pct: 0.015  # 1.5% minimum profit target
+  max_position_pct: 0.15  # 15% maximum position size (better diversification)
+  trailing_stop_pct: 0.025 # 2.5% trailing stop loss (tighter risk control)
+  profit_target_pct: 0.06 # 6% profit target (more conservative)
+  max_holding_days: 3     # 3 days maximum holding period (reduce time risk)
   volatility_adjustment: true
-  correlation_threshold: 0.7
+  correlation_threshold: 0.5  # Lower correlation threshold for better diversification
+  # Enhanced parameters for better risk-adjusted returns
+  partial_profit_taking: true
+  profit_scaling_levels: [0.015, 0.03, 0.045]  # Take profits at 1.5%, 3%, 4.5%
+  profit_scaling_amounts: [0.25, 0.35, 0.4]    # Sell 25%, 35%, 40% at each level
+  # Risk management enhancements
+  max_daily_trades: 10    # Limit daily trades to prevent overtrading
+  min_time_between_trades: 300  # 5 minutes minimum between trades
+  volatility_filter: true # Filter trades during high volatility
+  volatility_threshold: 0.03  # 3% volatility threshold
 
-# Performance Analytics Configuration
+# Performance Analytics Configuration - Enhanced for risk monitoring
 performance_analytics:
   risk_free_rate: 0.02  # 2% annual risk-free rate
   benchmark_return: 0.08  # 8% annual benchmark return
-  min_sharpe_ratio: 1.0
-  max_drawdown_threshold: 0.15  # 15%
-  min_win_rate: 0.45  # 45%
+  min_sharpe_ratio: 1.5   # Target higher Sharpe ratio
+  max_drawdown_threshold: 0.05  # 5% maximum drawdown threshold
+  min_win_rate: 0.50  # 50% minimum win rate target
   report_frequency: 'hourly'
   export_path: 'reports'
+  # Additional risk metrics
+  max_var_95: 0.03      # 3% maximum Value at Risk (95% confidence)
+  min_calmar_ratio: 2.0  # Minimum Calmar ratio (return/max drawdown)
+  risk_monitoring_interval: 300  # Monitor risk every 5 minutes
 
 # Cross-platform Configuration
 cross_platform:

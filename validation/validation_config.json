@@ -1,7 +1,7 @@
 {
   "validation_enabled": true,
-  "drift_monitoring_enabled": true,
-  "auto_start_monitoring": true,
+  "drift_monitoring_enabled": false,
+  "auto_start_monitoring": false,
   "validation_on_prediction": true,
   "validation_on_training": true,
   "alert_thresholds": {

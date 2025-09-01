@@ -16,6 +16,7 @@ TRADER_SCRIPT="scripts/enhanced_trader.py"
 EXECUTION_INTERVAL=1800
 MAX_RETRIES=3
 RETRY_DELAY=30
+TRADING_TIMEOUT=300
 
 mkdir -p logs models data config backups reports cache
 
@@ -328,11 +329,18 @@ start_automated_trading_loop() {
 execute_unified_trading_cycle() {
     log_info "Starting unified continuous trading for all symbols: $VERIFIED_SYMBOLS"
     SYMBOL_ARGS=$(echo "$VERIFIED_SYMBOLS" | tr ',' ' ')
-    python3 "$TRADER_SCRIPT" --symbols $SYMBOL_ARGS --config "$CONFIG_FILE" 2> temp_error.log
+    log_info "Executing trading script with $TRADING_TIMEOUT second timeout"
+    timeout $TRADING_TIMEOUT python3 "$TRADER_SCRIPT" --symbols $SYMBOL_ARGS --config "$CONFIG_FILE" 2> temp_error.log
     trade_result=$?
     if [ $trade_result -eq 0 ]; then
-        log_success "Unified continuous trading session completed"
+        log_success "Unified continuous trading session completed successfully"
         log_trade "SESSION" "ALL_SYMBOLS" "CONTINUOUS_SESSION_END" "N/A" "N/A" "SUCCESS" "Continuous trading session ended normally" "ENSEMBLE" "N/A" "N/A"
+        rm -f temp_error.log
+    elif [ $trade_result -eq 124 ]; then
+        log_warning "Unified continuous trading session timed out after $TRADING_TIMEOUT seconds"
+        log_trade "SESSION" "ALL_SYMBOLS" "CONTINUOUS_SESSION_TIMEOUT" "N/A" "N/A" "TIMEOUT" "Trading session terminated due to timeout after $TRADING_TIMEOUT seconds" "ENSEMBLE" "N/A" "N/A"
+        # Cleanup any remaining processes from the timeout
+        pkill -f "$TRADER_SCRIPT" || log_info "No remaining trading processes to clean up"
         rm -f temp_error.log
     else
         error_msg=""
@@ -340,8 +348,8 @@ execute_unified_trading_cycle() {
             error_msg=$(cat temp_error.log)
             rm -f temp_error.log
         fi
-        log_error "Unified continuous trading failed: $error_msg"
-        log_trade "SESSION" "ALL_SYMBOLS" "CONTINUOUS_SESSION_FAILED" "N/A" "N/A" "ERROR" "Continuous trading failed: $error_msg" "N/A" "N/A" "N/A"
+        log_error "Unified continuous trading failed with exit code $trade_result: $error_msg"
+        log_trade "SESSION" "ALL_SYMBOLS" "CONTINUOUS_SESSION_FAILED" "N/A" "N/A" "ERROR" "Continuous trading failed (exit $trade_result): $error_msg" "N/A" "N/A" "N/A"
     fi
 }
 

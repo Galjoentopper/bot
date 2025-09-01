@@ -69,6 +69,24 @@ class ProfitOptimizer:
         self.volatility_adjustment = config.get('volatility_adjustment', True)
         self.correlation_threshold = config.get('correlation_threshold', 0.7)
         
+        # Partial profit-taking parameters
+        self.profit_scaling_levels = config.get('profit_scaling_levels', [0.02, 0.04, 0.06])
+        self.profit_scaling_amounts = config.get('profit_scaling_amounts', [0.3, 0.4, 0.5])
+        
+        # Enhanced risk management parameters
+        self.position_sizing_method = config.get('position_sizing_method', 'fixed')
+        self.max_correlation_exposure = config.get('max_correlation_exposure', 0.4)
+        self.volatility_scaling = config.get('volatility_scaling', True)
+        self.max_daily_trades = config.get('max_daily_trades', 10)
+        self.min_time_between_trades = config.get('min_time_between_trades', 300)
+        self.volatility_filter = config.get('volatility_filter', True)
+        self.volatility_threshold = config.get('volatility_threshold', 0.03)
+        
+        # Trade tracking for daily limits
+        self.daily_trade_count = 0
+        self.last_trade_time = 0
+        self.current_date = datetime.now().date()
+        
         # Performance tracking
         self.total_realized_pnl = 0.0
         self.total_unrealized_pnl = 0.0
@@ -76,7 +94,7 @@ class ProfitOptimizer:
         self.current_drawdown = 0.0
         self.peak_portfolio_value = 0.0
         
-        logger.info("ProfitOptimizer initialized with enhanced profit strategies")
+        logger.info(f"ProfitOptimizer initialized with enhanced risk management: sizing_method={self.position_sizing_method}, volatility_scaling={self.volatility_scaling}")
     
     def calculate_dynamic_thresholds(self, symbol: str, market_data: pd.DataFrame, 
                                    base_threshold: float) -> Dict[str, float]:
@@ -122,48 +140,77 @@ class ProfitOptimizer:
     def calculate_optimal_position_size(self, symbol: str, prediction: float, confidence: float,
                                       current_balance: float, current_positions: Dict[str, float],
                                       market_data: pd.DataFrame) -> float:
-        """Calculate optimal position size using Kelly Criterion and risk management."""
+        """Calculate optimal position size using enhanced Kelly Criterion and improved cash utilization."""
         try:
-            # Base position size from Kelly Criterion approximation
-            win_rate = min(0.9, max(0.1, confidence))  # Clamp between 10% and 90%
+            # Enhanced Kelly Criterion with prediction strength
+            win_rate = min(0.95, max(0.15, confidence))  # Wider range for better utilization
             avg_win = self.profit_target_pct
             avg_loss = self.trailing_stop_pct
             
-            # Kelly fraction
-            kelly_fraction = (win_rate * avg_win - (1 - win_rate) * avg_loss) / avg_win
-            kelly_fraction = max(0, min(0.5, kelly_fraction))  # Cap at 50%
+            # Kelly fraction with prediction strength multiplier
+            kelly_base = (win_rate * avg_win - (1 - win_rate) * avg_loss) / avg_win
+            prediction_strength = min(2.0, abs(prediction) * 1000)  # Scale prediction impact
+            kelly_fraction = kelly_base * prediction_strength
+            kelly_fraction = max(0.02, min(0.4, kelly_fraction))  # Increased range: 2%-40%
             
-            # Calculate portfolio heat (total risk exposure)
+            # Calculate portfolio metrics
             total_position_value = sum(
                 pos_size * current_positions.get(s, 0) 
                 for s, pos_size in current_positions.items()
             )
             total_portfolio_value = current_balance + total_position_value
             current_exposure = total_position_value / total_portfolio_value if total_portfolio_value > 0 else 0
+            cash_ratio = current_balance / total_portfolio_value if total_portfolio_value > 0 else 1.0
             
-            # Adjust for current exposure
-            max_new_position = min(self.max_position_pct, 1.0 - current_exposure)
+            # Enhanced cash utilization - target 80-90% deployment
+            target_cash_ratio = 0.15  # Keep only 15% cash
+            if cash_ratio > target_cash_ratio:
+                # Increase position sizes when we have excess cash
+                cash_utilization_multiplier = min(2.0, cash_ratio / target_cash_ratio)
+                kelly_fraction *= cash_utilization_multiplier
             
-            # Calculate volatility-adjusted size
+            # Dynamic max position based on portfolio size and diversification
+            num_positions = len([p for p in current_positions.values() if p > 0])
+            if num_positions < 3:  # Allow larger positions with fewer holdings
+                dynamic_max_position = min(0.25, self.max_position_pct * 1.5)
+            elif num_positions < 6:
+                dynamic_max_position = self.max_position_pct * 1.2
+            else:
+                dynamic_max_position = self.max_position_pct
+            
+            # Volatility adjustment - more aggressive for stable assets
             if len(market_data) > 20:
                 returns = market_data['close'].pct_change().dropna()
                 volatility = returns.std() * np.sqrt(24)  # 30-minute intervals
-                vol_adjustment = max(0.5, min(1.5, 0.02 / volatility))  # Adjust for volatility
+                if volatility < 0.015:  # Low volatility - increase size
+                    vol_adjustment = 1.3
+                elif volatility < 0.025:  # Medium volatility
+                    vol_adjustment = 1.1
+                elif volatility > 0.05:  # High volatility - reduce size
+                    vol_adjustment = 0.7
+                else:
+                    vol_adjustment = 1.0
             else:
                 vol_adjustment = 1.0
             
-            # Final position size
-            optimal_size = kelly_fraction * max_new_position * vol_adjustment
-            optimal_size = max(0, min(self.max_position_pct, optimal_size))
+            # Final position size calculation
+            optimal_size = kelly_fraction * vol_adjustment
+            optimal_size = max(0.01, min(dynamic_max_position, optimal_size))  # Min 1%, max dynamic
             
-            logger.debug(f"{symbol} optimal position size: {optimal_size:.3f} "
-                        f"(kelly={kelly_fraction:.3f}, exposure={current_exposure:.3f}, vol_adj={vol_adjustment:.3f})")
+            # Ensure we don't exceed total portfolio limits (max 90% deployed)
+            if current_exposure + optimal_size > 0.9:
+                optimal_size = max(0.01, 0.9 - current_exposure)
+            
+            logger.debug(f"{symbol} enhanced position size: {optimal_size:.3f} "
+                        f"(kelly={kelly_fraction:.3f}, cash_ratio={cash_ratio:.3f}, "
+                        f"exposure={current_exposure:.3f}, vol_adj={vol_adjustment:.3f}, "
+                        f"pred_strength={prediction_strength:.3f})")
             
             return optimal_size
             
         except Exception as e:
             logger.error(f"Failed to calculate optimal position size for {symbol}: {e}")
-            return min(0.1, self.max_position_pct)  # Conservative fallback
+            return 0.05  # Less conservative fallback
     
     def update_trailing_stops(self, current_prices: Dict[str, float]) -> Dict[str, TradeSignal]:
         """Update trailing stops and generate sell signals when triggered."""
@@ -205,19 +252,43 @@ class ProfitOptimizer:
                 )
                 logger.info(f"{symbol} trailing stop triggered: price={current_price:.4f}, stop={position.trailing_stop:.4f}")
             
-            # Check for profit target
+            # Check for profit target with partial profit-taking
             elif position.profit_target and current_price >= position.profit_target:
                 unrealized_pnl_pct = position.unrealized_pnl / position.total_cost
-                signals[symbol] = TradeSignal(
-                    symbol=symbol,
-                    action='SELL',
-                    confidence=0.8,
-                    quantity_pct=0.5,  # Sell half position
-                    reasoning=f"Profit target reached at {position.profit_target:.4f} (P&L: {unrealized_pnl_pct:.2%})",
-                    risk_score=0.2,
-                    expected_return=unrealized_pnl_pct
-                )
-                logger.info(f"{symbol} profit target reached: price={current_price:.4f}, target={position.profit_target:.4f}")
+                profit_pct = (current_price - position.avg_cost) / position.avg_cost
+                
+                # Check for partial profit-taking at different levels
+                if hasattr(self, 'profit_scaling_levels') and hasattr(self, 'profit_scaling_amounts'):
+                    for i, level in enumerate(self.profit_scaling_levels):
+                        if profit_pct >= level and not hasattr(position, f'scaled_at_level_{i}'):
+                            sell_amount = self.profit_scaling_amounts[i] if i < len(self.profit_scaling_amounts) else 0.3
+                            
+                            signals[symbol] = TradeSignal(
+                                symbol=symbol,
+                                action='SELL',
+                                confidence=0.8,
+                                quantity_pct=sell_amount,
+                                reasoning=f"Partial profit-taking at {profit_pct:.2%} (level {level:.1%})",
+                                risk_score=0.2,
+                                expected_return=profit_pct
+                            )
+                            
+                            # Mark this level as triggered
+                            setattr(position, f'scaled_at_level_{i}', True)
+                            logger.info(f"{symbol} partial profit-taking: {profit_pct:.2%} profit, selling {sell_amount:.1%}")
+                            break
+                else:
+                    # Default profit target behavior
+                    signals[symbol] = TradeSignal(
+                        symbol=symbol,
+                        action='SELL',
+                        confidence=0.8,
+                        quantity_pct=0.7,  # Sell most but keep some for potential upside
+                        reasoning=f"Main profit target reached: {profit_pct:.2%}",
+                        risk_score=0.2,
+                        expected_return=unrealized_pnl_pct
+                    )
+                    logger.info(f"{symbol} profit target reached: price={current_price:.4f}, target={position.profit_target:.4f}")
         
         return signals
     
@@ -303,6 +374,119 @@ class ProfitOptimizer:
         except Exception as e:
             logger.error(f"Failed to analyze correlation risk: {e}")
             return {}
+    
+    def calculate_kelly_position_size(self, symbol: str, win_rate: float, avg_win: float, avg_loss: float, 
+                                    current_balance: float, volatility: float = None) -> float:
+        """Calculate optimal position size using Kelly criterion."""
+        try:
+            if win_rate <= 0 or win_rate >= 1 or avg_win <= 0 or avg_loss <= 0:
+                return self.max_position_pct  # Fallback to max position size
+            
+            # Kelly formula: f = (bp - q) / b
+            # where b = odds received (avg_win/avg_loss), p = win_rate, q = 1-p
+            b = avg_win / avg_loss
+            p = win_rate
+            q = 1 - p
+            
+            kelly_fraction = (b * p - q) / b
+            
+            # Apply safety margin (use 25% of Kelly to reduce risk)
+            kelly_fraction *= 0.25
+            
+            # Apply volatility scaling if enabled
+            if self.volatility_scaling and volatility is not None:
+                # Reduce position size for high volatility
+                vol_adjustment = min(1.0, 0.02 / max(volatility, 0.01))
+                kelly_fraction *= vol_adjustment
+            
+            # Ensure within bounds
+            kelly_fraction = max(0.01, min(kelly_fraction, self.max_position_pct))
+            
+            logger.debug(f"{symbol} Kelly position size: {kelly_fraction:.3f} (win_rate={win_rate:.3f}, avg_win={avg_win:.3f}, avg_loss={avg_loss:.3f})")
+            return kelly_fraction
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate Kelly position size for {symbol}: {e}")
+            return self.max_position_pct
+    
+    def calculate_volatility_adjusted_size(self, symbol: str, base_size: float, 
+                                         market_data: pd.DataFrame) -> float:
+        """Adjust position size based on current volatility."""
+        try:
+            if not self.volatility_scaling or len(market_data) < 20:
+                return base_size
+            
+            # Calculate recent volatility (20-period)
+            returns = market_data['close'].pct_change().dropna()
+            if len(returns) < 10:
+                return base_size
+            
+            current_vol = returns.tail(20).std() * (252 ** 0.5)  # Annualized volatility
+            target_vol = 0.15  # Target 15% annual volatility
+            
+            # Scale position size inversely with volatility
+            vol_adjustment = min(2.0, target_vol / max(current_vol, 0.05))
+            adjusted_size = base_size * vol_adjustment
+            
+            # Ensure within bounds
+            adjusted_size = max(0.01, min(adjusted_size, self.max_position_pct))
+            
+            logger.debug(f"{symbol} volatility-adjusted size: {adjusted_size:.3f} (vol={current_vol:.3f}, adjustment={vol_adjustment:.3f})")
+            return adjusted_size
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate volatility-adjusted size for {symbol}: {e}")
+            return base_size
+    
+    def check_trade_limits(self) -> bool:
+        """Check if trade limits allow for new trades."""
+        try:
+            current_date = datetime.now().date()
+            current_time = time.time()
+            
+            # Reset daily counter if new day
+            if current_date != self.current_date:
+                self.daily_trade_count = 0
+                self.current_date = current_date
+            
+            # Check daily trade limit
+            if self.daily_trade_count >= self.max_daily_trades:
+                logger.debug(f"Daily trade limit reached: {self.daily_trade_count}/{self.max_daily_trades}")
+                return False
+            
+            # Check minimum time between trades
+            if current_time - self.last_trade_time < self.min_time_between_trades:
+                logger.debug(f"Minimum time between trades not met: {current_time - self.last_trade_time:.0f}s < {self.min_time_between_trades}s")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to check trade limits: {e}")
+            return True  # Allow trade if check fails
+    
+    def should_filter_by_volatility(self, symbol: str, market_data: pd.DataFrame) -> bool:
+        """Check if trade should be filtered due to high volatility."""
+        try:
+            if not self.volatility_filter or len(market_data) < 10:
+                return False
+            
+            # Calculate recent volatility
+            returns = market_data['close'].pct_change().dropna()
+            if len(returns) < 5:
+                return False
+            
+            recent_vol = returns.tail(10).std()
+            
+            if recent_vol > self.volatility_threshold:
+                logger.debug(f"{symbol} filtered due to high volatility: {recent_vol:.4f} > {self.volatility_threshold:.4f}")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Failed to check volatility filter for {symbol}: {e}")
+            return False
     
     def generate_rebalancing_signals(self, current_positions: Dict[str, float],
                                    current_prices: Dict[str, float],
@@ -443,6 +627,10 @@ class ProfitOptimizer:
                 
                 # Set profit target
                 self.positions[symbol].profit_target = price * (1 + self.profit_target_pct)
+                
+                # Update trade tracking
+                self.daily_trade_count += 1
+                self.last_trade_time = trade_time
                 
             elif action.upper() == 'SELL' and symbol in self.positions:
                 pos = self.positions[symbol]
