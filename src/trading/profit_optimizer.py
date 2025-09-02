@@ -664,3 +664,62 @@ class ProfitOptimizer:
             
         except Exception as e:
             logger.error(f"Failed to record trade: {e}")
+
+    def check_profit_targets(self, symbol: str, current_price: float, current_amount: float) -> Optional[TradeSignal]:
+        """Check if profit targets are reached for a specific position."""
+        try:
+            if symbol not in self.positions or self.positions[symbol].quantity <= 0:
+                return None
+
+            position = self.positions[symbol]
+            if current_price <= 0 or current_amount <= 0:
+                return None
+
+            # Update unrealized P&L
+            position.last_price = current_price
+            position.unrealized_pnl = (current_price - position.avg_cost) * position.quantity
+
+            # Check profit target
+            if position.profit_target and current_price >= position.profit_target:
+                unrealized_pnl_pct = position.unrealized_pnl / position.total_cost
+                profit_pct = (current_price - position.avg_cost) / position.avg_cost
+
+                # Check for partial profit-taking at different levels
+                if hasattr(self, 'profit_scaling_levels') and hasattr(self, 'profit_scaling_amounts'):
+                    for i, level in enumerate(self.profit_scaling_levels):
+                        if profit_pct >= level and not hasattr(position, f'scaled_at_level_{i}'):
+                            sell_amount = self.profit_scaling_amounts[i] if i < len(self.profit_scaling_amounts) else 0.3
+
+                            signal = TradeSignal(
+                                symbol=symbol,
+                                action='SELL',
+                                confidence=0.8,
+                                quantity_pct=sell_amount,
+                                reasoning=f"Partial profit-taking at {profit_pct:.2%} (level {level:.1%})",
+                                risk_score=0.2,
+                                expected_return=profit_pct
+                            )
+
+                            # Mark this level as triggered
+                            setattr(position, f'scaled_at_level_{i}', True)
+                            logger.info(f"{symbol} partial profit-taking: {profit_pct:.2%} profit, selling {sell_amount:.1%}")
+                            return signal
+                else:
+                    # Default profit target behavior
+                    signal = TradeSignal(
+                        symbol=symbol,
+                        action='SELL',
+                        confidence=0.8,
+                        quantity_pct=0.7,  # Sell most but keep some for potential upside
+                        reasoning=f"Main profit target reached: {profit_pct:.2%}",
+                        risk_score=0.2,
+                        expected_return=unrealized_pnl_pct
+                    )
+                    logger.info(f"{symbol} profit target reached: price={current_price:.4f}, target={position.profit_target:.4f}")
+                    return signal
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to check profit targets for {symbol}: {e}")
+            return None

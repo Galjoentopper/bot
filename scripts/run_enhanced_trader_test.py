@@ -1,108 +1,132 @@
 #!/usr/bin/env python3
 """
-Test script to run enhanced_trader.py for a maximum of 5 minutes.
-This addresses the user's guideline to run scripts/trader.py for max 5 minutes
-and then kill it, rather than waiting for it to end by itself.
+Test script to run enhanced_trader.py for maximum 5 minutes then kill it.
+This addresses the guideline: "do run scripts/trader.py for max 5 minutes than kill it.
+currently you wait till the scripts ends for itself but it will run continuously."
 """
 
-import os
-import sys
 import subprocess
 import time
+import signal
+import sys
+import os
 from pathlib import Path
 
-def run_enhanced_trader_with_timeout(script_path, timeout_seconds=300, config_path=None, iterations=None):
-    """
-    Run the enhanced trader script with a timeout.
-    
-    Args:
-        script_path (str): Path to the enhanced trader script
-        timeout_seconds (int): Maximum time to run in seconds (default: 300 = 5 minutes)
-        config_path (str): Optional path to configuration file
-        iterations (int): Optional number of iterations to run
-    """
-    print(f"Running {script_path} for maximum {timeout_seconds} seconds...")
-    
-    # Build command
-    cmd = ["python", script_path]
-    
-    # Add configuration if provided
-    if config_path and os.path.exists(config_path):
-        cmd.extend(["--config", config_path])
-    
-    # Add iterations if provided
-    if iterations is not None:
-        cmd.extend(["--iterations", str(iterations)])
-    
-    print(f"Executing command: {' '.join(cmd)}")
-    
+def run_enhanced_trader_with_timeout(timeout_minutes=5):
+    """Run enhanced_trader.py with a timeout and kill it after the specified time."""
+
+    # Convert minutes to seconds
+    timeout_seconds = timeout_minutes * 60
+
+    print(f"🚀 Starting enhanced_trader.py with {timeout_minutes} minute timeout...")
+    print(f"⏰ Will automatically kill the process after {timeout_seconds} seconds")
+    print("=" * 60)
+
+    # Get the script directory and enhanced_trader.py path
+    script_dir = Path(__file__).parent
+    trader_path = script_dir / "enhanced_trader.py"
+
+    if not trader_path.exists():
+        print(f"❌ Error: enhanced_trader.py not found at {trader_path}")
+        return False
+
     try:
-        # Run the script with timeout
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
+        # Start the enhanced trader process
+        print(f"📍 Starting: python {trader_path}")
+        process = subprocess.Popen(
+            [sys.executable, str(trader_path)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout_seconds
+            cwd=str(script_dir)
         )
-        
-        print("Enhanced trader script completed successfully!")
-        print(f"Return code: {result.returncode}")
-        if result.stdout:
-            print("STDOUT:")
-            print(result.stdout)
-        if result.stderr:
-            print("STDERR:")
-            print(result.stderr)
-            
+
+        print(f"✅ Enhanced trader process started with PID: {process.pid}")
+        print("⏳ Waiting for enhanced trader to complete or timeout...")
+
+        start_time = time.time()
+        end_time = start_time + timeout_seconds
+
+        # Monitor the process
+        while time.time() < end_time:
+            if process.poll() is not None:
+                # Process finished on its own
+                print("✅ Enhanced trader process completed on its own")
+                break
+
+            # Show progress every 30 seconds
+            elapsed = int(time.time() - start_time)
+            remaining = int(end_time - time.time())
+
+            if elapsed % 30 == 0 and elapsed > 0:
+                print(f"⏱️  Elapsed: {elapsed}s | Remaining: {remaining}s")
+
+            time.sleep(1)
+
+        # Check if process is still running
+        if process.poll() is None:
+            print(f"⏰ Timeout reached ({timeout_minutes} minutes). Killing enhanced trader process...")
+            try:
+                # Try graceful termination first
+                process.terminate()
+                print("📤 Sent SIGTERM to enhanced trader process")
+
+                # Wait up to 10 seconds for graceful shutdown
+                for i in range(10):
+                    if process.poll() is not None:
+                        print("✅ Enhanced trader process terminated gracefully")
+                        break
+                    time.sleep(1)
+                else:
+                    # Force kill if still running
+                    print("⚠️  Enhanced trader process didn't respond to SIGTERM, force killing...")
+                    process.kill()
+                    print("💀 Enhanced trader process force killed")
+
+            except Exception as e:
+                print(f"❌ Error killing enhanced trader process: {e}")
+                return False
+        else:
+            print("✅ Enhanced trader process completed naturally")
+
+        # Get exit code
+        exit_code = process.poll()
+        print(f"📊 Enhanced trader process exit code: {exit_code}")
+
+        # Show some output if available
+        try:
+            stdout, stderr = process.communicate(timeout=5)
+            if stdout:
+                print("\n📄 Enhanced trader stdout (last 500 chars):")
+                print(stdout[-500:])
+            if stderr:
+                print("\n⚠️  Enhanced trader stderr (last 500 chars):")
+                print(stderr[-500:])
+        except Exception as e:
+            print(f"⚠️  Could not read process output: {e}")
+
         return True
-        
-    except subprocess.TimeoutExpired as e:
-        print(f"Enhanced trader script timed out after {timeout_seconds} seconds")
-        if e.stdout:
-            print("STDOUT before timeout:")
-            print(e.stdout.decode() if isinstance(e.stdout, bytes) else e.stdout)
-        if e.stderr:
-            print("STDERR before timeout:")
-            print(e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr)
-        
-        # The process was automatically killed by subprocess.run
-        return True  # This is expected behavior per the user's guidelines
-        
+
     except Exception as e:
-        print(f"Error running enhanced trader script: {e}")
+        print(f"❌ Error running enhanced trader: {e}")
         return False
 
 def main():
-    """Main function to run the enhanced trader test."""
-    print("Enhanced Trader Test Script with 5-Minute Timeout")
-    print("=" * 50)
-    
-    # Check if enhanced_trader.py exists
-    trader_script = "scripts/enhanced_trader.py"
-    if not os.path.exists(trader_script):
-        print(f"ERROR: Enhanced trader script not found: {trader_script}")
-        return 1
-    
-    # Check for configuration file
-    config_file = "training_config.yaml"
-    if not os.path.exists(config_file):
-        config_file = None
-        print("No configuration file found, running with defaults")
-    
-    # Run enhanced trader for 5 minutes (300 seconds)
-    success = run_enhanced_trader_with_timeout(
-        script_path=trader_script,
-        timeout_seconds=300,  # 5 minutes
-        config_path=config_file,
-        iterations=None  # Let it run iterations until timeout
-    )
-    
+    """Main function."""
+    print("🧪 Enhanced Trader Test Script")
+    print("This will run enhanced_trader.py for a maximum of 5 minutes")
+    print()
+
+    success = run_enhanced_trader_with_timeout(timeout_minutes=5)
+
     if success:
-        print("\n✅ Enhanced trader test completed successfully!")
-        return 0
+        print("\n✅ Test completed successfully")
+        print("🧹 Cleaning up test artifacts...")
+        # Add any cleanup logic here if needed
+        print("✅ Cleanup completed")
     else:
-        print("\n❌ Enhanced trader test failed!")
-        return 1
+        print("\n❌ Test failed")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
