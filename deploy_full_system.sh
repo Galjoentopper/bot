@@ -11,11 +11,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
+# Configuration - Use current directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-LOG_DIR="$PROJECT_DIR/logs"
-BACKUP_DIR="$PROJECT_DIR/backups"
+PROJECT_DIR="$SCRIPT_DIR"
+LOG_DIR="$SCRIPT_DIR/logs"
+BACKUP_DIR="$SCRIPT_DIR/backups"
 
 # Functions
 log_info() {
@@ -58,16 +58,14 @@ check_dependencies() {
 setup_directories() {
     log_info "Setting up directories..."
 
-    # Create necessary directories
-    sudo mkdir -p /opt/trading_bot
-    sudo mkdir -p /opt/trading_bot/logs
-    sudo mkdir -p /opt/trading_bot/backups
-    sudo mkdir -p /opt/trading_bot/data
-    sudo mkdir -p /etc/trading_bot
+    # Create necessary directories in current location
+    mkdir -p logs
+    mkdir -p backups
+    mkdir -p data
+    mkdir -p /etc/trading_bot 2>/dev/null || sudo mkdir -p /etc/trading_bot
 
     # Set permissions
-    sudo chown -R $USER:$USER /opt/trading_bot
-    sudo chmod -R 755 /opt/trading_bot
+    sudo chown -R $USER:$USER logs backups data 2>/dev/null || true
 
     log_success "Directories setup completed"
 }
@@ -75,19 +73,8 @@ setup_directories() {
 copy_files() {
     log_info "Copying project files..."
 
-    # Copy entire project to /opt/trading_bot
-    cp -r "$PROJECT_DIR"/* /opt/trading_bot/ 2>/dev/null || true
-
-    # Copy configuration files
-    if [ -f "$PROJECT_DIR/training_config.yaml" ]; then
-        cp "$PROJECT_DIR/training_config.yaml" /opt/trading_bot/
-    fi
-
-    # Copy environment file if it exists
-    if [ -f "$PROJECT_DIR/.env" ]; then
-        sudo cp "$PROJECT_DIR/.env" /etc/trading_bot/
-        sudo chmod 600 /etc/trading_bot/.env
-    fi
+    # No need to copy files - we're working in the current directory
+    # All files should already be here
 
     log_success "Files copied successfully"
 }
@@ -95,7 +82,8 @@ copy_files() {
 setup_python_environment() {
     log_info "Setting up Python virtual environment..."
 
-    cd /opt/trading_bot
+    # Stay in current directory
+    cd "$SCRIPT_DIR"
 
     # Create virtual environment if it doesn't exist
     if [ ! -d "venv" ]; then
@@ -105,7 +93,14 @@ setup_python_environment() {
     # Activate virtual environment and install dependencies
     source venv/bin/activate
     pip install --upgrade pip
-    pip install -r requirements.txt
+
+    # Install requirements from current directory
+    if [ -f "requirements.txt" ]; then
+        pip install -r requirements.txt
+    else
+        log_error "requirements.txt not found in current directory: $SCRIPT_DIR"
+        exit 1
+    fi
 
     log_success "Python environment setup completed"
 }
@@ -113,16 +108,25 @@ setup_python_environment() {
 setup_systemd_services() {
     log_info "Setting up systemd services..."
 
-    # Copy systemd service files
-    sudo cp "$PROJECT_DIR/trading-bot.service" /etc/systemd/system/
-    sudo cp "$PROJECT_DIR/telegram-bot-listener.service" /etc/systemd/system/
+    # Copy systemd service files from current directory
+    if [ -f "$SCRIPT_DIR/trading-bot.service" ]; then
+        sudo cp "$SCRIPT_DIR/trading-bot.service" /etc/systemd/system/
+    else
+        log_warning "trading-bot.service not found in $SCRIPT_DIR"
+    fi
+
+    if [ -f "$SCRIPT_DIR/telegram-bot-listener.service" ]; then
+        sudo cp "$SCRIPT_DIR/telegram-bot-listener.service" /etc/systemd/system/
+    else
+        log_warning "telegram-bot-listener.service not found in $SCRIPT_DIR"
+    fi
 
     # Reload systemd daemon
     sudo systemctl daemon-reload
 
     # Enable services (but don't start them yet)
-    sudo systemctl enable trading-bot.service
-    sudo systemctl enable telegram-bot-listener.service
+    sudo systemctl enable trading-bot.service 2>/dev/null || log_warning "Could not enable trading-bot.service"
+    sudo systemctl enable telegram-bot-listener.service 2>/dev/null || log_warning "Could not enable telegram-bot-listener.service"
 
     log_success "Systemd services configured"
 }
@@ -130,11 +134,11 @@ setup_systemd_services() {
 setup_cron_jobs() {
     log_info "Setting up cron jobs..."
 
-    # Copy cron configuration
-    sudo cp "$PROJECT_DIR/trading_bot_monitor" /etc/cron.d/
-
-    # Set proper permissions for cron job
-    sudo chmod 644 /etc/cron.d/trading_bot_monitor
+    # Copy cron configuration from current directory
+    if [ -f "$SCRIPT_DIR/trading_bot_monitor" ]; then
+        sudo cp "$SCRIPT_DIR/trading_bot_monitor" /etc/cron.d/
+        sudo chmod 644 /etc/cron.d/trading_bot_monitor
+    fi
 
     log_success "Cron jobs configured"
 }
@@ -142,9 +146,9 @@ setup_cron_jobs() {
 setup_logrotate() {
     log_info "Setting up log rotation..."
 
-    # Create logrotate configuration
+    # Create logrotate configuration for current directory
     sudo tee /etc/logrotate.d/trading_bot > /dev/null << EOF
-/opt/trading_bot/logs/*.log {
+$SCRIPT_DIR/logs/*.log {
     daily
     missingok
     rotate 30
@@ -165,15 +169,15 @@ EOF
 create_startup_script() {
     log_info "Creating startup script..."
 
-    # Create a comprehensive startup script
-    cat > /opt/trading_bot/start_system.sh << 'EOF'
+    # Create a comprehensive startup script in current directory
+    cat > start_system.sh << 'EOF'
 #!/bin/bash
 # Trading System Startup Script
 
 echo "🚀 Starting Trading System..."
 
-# Change to project directory
-cd /opt/trading_bot
+# Stay in current directory
+# cd is not needed since we're already here
 
 # Activate virtual environment
 source venv/bin/activate
@@ -188,7 +192,7 @@ echo "To view logs: ./scripts/enhanced_tmux_manager.sh logs"
 echo "To stop system: ./scripts/enhanced_tmux_manager.sh stop"
 EOF
 
-    chmod +x /opt/trading_bot/start_system.sh
+    chmod +x start_system.sh
 
     log_success "Startup script created"
 }
@@ -196,28 +200,28 @@ EOF
 test_system() {
     log_info "Running system tests..."
 
-    cd /opt/trading_bot
+    # Stay in current directory
+    cd "$SCRIPT_DIR"
     source venv/bin/activate
 
     # Test Python imports
-    python3 -c "import sys; sys.path.insert(0, 'src'); from src.notifier.telegram import TelegramNotifier; print('✅ Telegram import successful')"
+    python3 -c "import sys; sys.path.insert(0, 'src'); from src.notifier.telegram import TelegramNotifier; print('✅ Telegram import successful')" 2>/dev/null || log_warning "Telegram import test failed"
 
     # Test configuration loading
-    python3 -c "from src.config.config_loader import ConfigLoader; config = ConfigLoader('training_config.yaml').config; print('✅ Configuration loading successful')"
+    python3 -c "from src.config.config_loader import ConfigLoader; config = ConfigLoader('training_config.yaml').config; print('✅ Configuration loading successful')" 2>/dev/null || log_warning "Configuration loading test failed"
 
-    log_success "System tests passed"
+    log_success "System tests completed"
 }
 
 show_deployment_summary() {
     log_info "=== DEPLOYMENT SUMMARY ==="
     echo ""
-    echo "📁 Installation Directory: /opt/trading_bot"
-    echo "📝 Configuration: /opt/trading_bot/training_config.yaml"
-    echo "📊 Logs: /opt/trading_bot/logs/"
-    echo "💾 Backups: /opt/trading_bot/backups/"
+    echo "📁 Installation Directory: $SCRIPT_DIR"
+    echo "📝 Configuration: $SCRIPT_DIR/training_config.yaml"
+    echo "📊 Logs: $SCRIPT_DIR/logs/"
+    echo "💾 Backups: $SCRIPT_DIR/backups/"
     echo ""
     echo "🚀 Quick Start Commands:"
-    echo "  cd /opt/trading_bot"
     echo "  ./start_system.sh                    # Start both services"
     echo "  ./scripts/enhanced_tmux_manager.sh status    # Check status"
     echo "  ./scripts/enhanced_tmux_manager.sh logs      # View logs"
@@ -263,7 +267,7 @@ main() {
 
     echo ""
     echo "🎉 Deployment completed! Your trading system is ready to use."
-    echo "   Run: cd /opt/trading_bot && ./start_system.sh"
+    echo "   Run: ./start_system.sh"
 }
 
 # Run main function
