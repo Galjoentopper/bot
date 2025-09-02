@@ -16,6 +16,10 @@ session_exists() {
 # Create trading session
 create_session() {
     cd "$SCRIPT_DIR"
+    
+    # Initialize logs first
+    echo "Initializing logs..."
+    ./scripts/init_logs.sh > /dev/null 2>&1
 
     # Create main session
     tmux new-session -d -s "$SESSION_NAME" -n "trading"
