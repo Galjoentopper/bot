@@ -245,7 +245,16 @@ class TelegramBotListener:
         logger.info("Stopping Telegram Bot Listener...")
         self.running = False
         if self.application:
-            await self.application.stop()
+            try:
+                await self.application.stop()
+                logger.info("Application stopped successfully")
+            except RuntimeError as e:
+                if "not running" in str(e):
+                    logger.info("Application was already stopped")
+                else:
+                    logger.error(f"Error stopping application: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error stopping application: {e}")
         logger.info("Telegram Bot Listener stopped")
 
 def load_config() -> Dict[str, Any]:
@@ -353,11 +362,13 @@ async def main():
     # Create and start the bot listener
     logger.info("Step 3: Creating bot listener...")
     bot_listener = TelegramBotListener(bot_token, chat_id)
+    bot_started = False
 
     # Setup signal handlers for graceful shutdown
     def signal_handler(signum, frame):
         logger.info(f"Received signal {signum}, shutting down...")
-        asyncio.create_task(bot_listener.stop())
+        if bot_started:
+            asyncio.create_task(bot_listener.stop())
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -365,6 +376,7 @@ async def main():
     try:
         logger.info("Step 4: Starting bot listener...")
         await bot_listener.start()
+        bot_started = True
     except KeyboardInterrupt:
         logger.info("Bot listener interrupted by user")
     except Exception as e:
@@ -372,8 +384,11 @@ async def main():
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
     finally:
-        logger.info("Stopping bot listener...")
-        await bot_listener.stop()
+        if bot_started:
+            logger.info("Stopping bot listener...")
+            await bot_listener.stop()
+        else:
+            logger.info("Bot was never started, no need to stop")
 
 if __name__ == "__main__":
     asyncio.run(main())
