@@ -5,7 +5,9 @@
 echo "🔧 Fixing Remaining Hardcoded Paths"
 echo "===================================="
 
-cd /opt/trading_bot/bot
+# Self-locate to current directory (should be /opt/trading_bot/bot)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 # Find and fix any remaining hardcoded SCRIPT_DIR paths
 echo "🔍 Searching for hardcoded SCRIPT_DIR paths..."
