@@ -122,9 +122,17 @@ if tmux has-session -t telegram_session 2>/dev/null; then
     # Check recent logs
     echo ""
     echo "📊 Recent Telegram bot activity:"
-    if [ -f "logs/telegram_bot_listener"*.log ]; then
+    LOG_FILES=$(ls logs/telegram_bot_listener_*.log 2>/dev/null)
+    if [ -n "$LOG_FILES" ]; then
         echo "   Latest log entries:"
-        tail -10 logs/telegram_bot_listener_*.log 2>/dev/null | tail -10
+        for log_file in $LOG_FILES; do
+            echo "   📝 $log_file ($(wc -l < "$log_file") lines, $(du -h "$log_file" | cut -f1)):"
+            if [ -s "$log_file" ]; then
+                tail -5 "$log_file" | sed 's/^/      /'
+            else
+                echo "      (file is empty)"
+            fi
+        done
     else
         echo "   No log files found yet"
     fi
