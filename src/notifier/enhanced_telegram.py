@@ -89,7 +89,7 @@ class EnhancedTelegramNotifier:
         """Start trading system."""
         try:
             result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/tmux_manager.sh start',
+                '/opt/trading_bot/bot/scripts/tmux_manager.sh start',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -106,7 +106,7 @@ class EnhancedTelegramNotifier:
         """Stop trading system."""
         try:
             result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/tmux_manager.sh stop',
+                '/opt/trading_bot/bot/scripts/tmux_manager.sh stop',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -121,7 +121,7 @@ class EnhancedTelegramNotifier:
         try:
             # Stop
             stop_result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/tmux_manager.sh stop',
+                '/opt/trading_bot/bot/scripts/tmux_manager.sh stop',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -131,7 +131,7 @@ class EnhancedTelegramNotifier:
 
             # Start
             start_result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/tmux_manager.sh start',
+                '/opt/trading_bot/bot/scripts/tmux_manager.sh start',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -148,7 +148,7 @@ class EnhancedTelegramNotifier:
         """Get performance metrics."""
         try:
             # Read performance data
-            perf_file = Path("/opt/trading_bot/logs/performance_metrics.json")
+            perf_file = Path("/opt/trading_bot/bot/logs/performance_metrics.json")
             if perf_file.exists():
                 with open(perf_file, 'r') as f:
                     metrics = json.load(f)
@@ -173,7 +173,7 @@ class EnhancedTelegramNotifier:
         """Get system health."""
         try:
             result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/health_check.sh',
+                '/opt/trading_bot/bot/scripts/health_check.sh',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -189,7 +189,7 @@ class EnhancedTelegramNotifier:
     async def _cmd_balance(self, args: List[str]) -> str:
         """Get current balance."""
         try:
-            balance_file = Path("/opt/trading_bot/logs/balance.json")
+            balance_file = Path("/opt/trading_bot/bot/logs/balance.json")
             if balance_file.exists():
                 with open(balance_file, 'r') as f:
                     balance_data = json.load(f)
@@ -211,11 +211,11 @@ class EnhancedTelegramNotifier:
     async def _cmd_recent_trades(self, args: List[str]) -> str:
         """Get recent trades."""
         try:
-            trades_file = Path("/opt/trading_bot/logs/trades_report.csv")
+            trades_file = Path("/opt/trading_bot/bot/logs/trades_report.csv")
             if trades_file.exists():
                 # Get last 5 trades
                 result = await asyncio.create_subprocess_shell(
-                    'tail -5 /opt/trading_bot/logs/trades_report.csv',
+                    'tail -5 /opt/trading_bot/bot/logs/trades_report.csv',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
@@ -267,11 +267,11 @@ class EnhancedTelegramNotifier:
     async def _cmd_config(self, args: List[str]) -> str:
         """Get configuration info."""
         try:
-            config_file = Path("/opt/trading_bot/training_config.yaml")
+            config_file = Path("/opt/trading_bot/bot/training_config.yaml")
             if config_file.exists():
                 # Get basic config info without sensitive data
                 result = await asyncio.create_subprocess_shell(
-                    'grep -E "^(symbols|interval|initial_balance|max_position_size):" /opt/trading_bot/training_config.yaml',
+                    'grep -E "^(symbols|interval|initial_balance|max_position_size):" /opt/trading_bot/bot/training_config.yaml',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
