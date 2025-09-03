@@ -43,6 +43,8 @@ class EnhancedTelegramNotifier:
 
     async def handle_command(self, command: str, args: Optional[List[str]] = None) -> str:
         """Handle incoming command."""
+        logger.info(f"Received command: {command}, args: {args}")
+
         if args is None:
             parts = command.strip().split()
             cmd = parts[0].lower() if parts else ''
@@ -53,13 +55,19 @@ class EnhancedTelegramNotifier:
         if not cmd.startswith('/'):
             cmd = '/' + cmd
 
+        logger.info(f"Processing command: {cmd} with args: {args}")
+
         if cmd in self.command_handlers:
             try:
-                return await self.command_handlers[cmd](args)
+                logger.info(f"Executing command handler for: {cmd}")
+                result = await self.command_handlers[cmd](args)
+                logger.info(f"Command {cmd} executed successfully")
+                return result
             except Exception as e:
-                logger.error(f"Command error: {e}")
+                logger.error(f"Command error for {cmd}: {e}", exc_info=True)
                 return f"❌ Error executing command: {str(e)}"
         else:
+            logger.warning(f"Unknown command: {cmd}")
             return "Unknown command. Available: /status, /start, /stop, /restart, /performance, /health, /balance, /trades, /logs, /config"
 
     async def _cmd_status(self, args: List[str]) -> str:
@@ -94,19 +102,25 @@ class EnhancedTelegramNotifier:
 
     async def _cmd_start(self, args: List[str]) -> str:
         """Start trading system."""
+        logger.info("Executing start command")
         try:
+            logger.info("Running tmux_manager.sh start command")
             result = await asyncio.create_subprocess_shell(
                 '/opt/trading_bot/scripts/tmux_manager.sh start',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             await result.wait()
+            logger.info(f"Start command completed with return code: {result.returncode}")
 
             if result.returncode == 0:
+                logger.info("Start command successful")
                 return "🚀 Trading system started successfully"
             else:
+                logger.error(f"Start command failed with return code: {result.returncode}")
                 return "❌ Failed to start trading system"
         except Exception as e:
+            logger.error(f"Start command exception: {e}", exc_info=True)
             return f"❌ Start command failed: {str(e)}"
 
     async def _cmd_stop(self, args: List[str]) -> str:
@@ -178,19 +192,25 @@ class EnhancedTelegramNotifier:
 
     async def _cmd_health(self, args: List[str]) -> str:
         """Get system health."""
+        logger.info("Executing health command")
         try:
+            logger.info("Running health_check.sh script")
             result = await asyncio.create_subprocess_shell(
                 '/opt/trading_bot/scripts/health_check.sh',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await result.communicate()
+            logger.info(f"Health check completed with return code: {result.returncode}")
 
             if result.returncode == 0:
+                logger.info("Health check successful")
                 return f"```bash\n{stdout.decode().strip()}\n```"
             else:
+                logger.error(f"Health check failed with return code: {result.returncode}, stderr: {stderr.decode().strip()}")
                 return f"❌ Health check failed: {stderr.decode().strip()}"
         except Exception as e:
+            logger.error(f"Health check exception: {e}", exc_info=True)
             return f"❌ Health check error: {str(e)}"
 
     async def _cmd_balance(self, args: List[str]) -> str:
