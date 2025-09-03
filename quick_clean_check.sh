@@ -9,17 +9,54 @@ cd /opt/trading_bot/bot
 
 echo "✅ Checking for hardcoded /opt/trading_bot paths (excluding acceptable ones)..."
 
-# Count problematic hardcoded paths
-PROBLEM_COUNT=0
+echo "📁 Scanning all shell scripts for problematic patterns..."
 
-echo "📁 Scanning shell scripts..."
-find . -name "*.sh" -type f | while read -r file; do
-    # Look for problematic hardcoded paths
-    if grep -q 'SCRIPT_DIR="/opt/trading_bot' "$file" && ! grep -q 'dirname.*BASH_SOURCE' "$file"; then
-        echo "⚠️  $file still has hardcoded path"
-        PROBLEM_COUNT=$((PROBLEM_COUNT + 1))
+# Find all shell scripts and check each one
+FOUND_ISSUES=false
+
+for file in $(find . -name "*.sh" -type f); do
+    # Skip our verification scripts
+    if [[ "$file" == *"verify_clean_structure.sh"* ]] || [[ "$file" == *"quick_clean_check.sh"* ]]; then
+        continue
+    fi
+    
+    # Check for problematic hardcoded paths
+    HARDCODED=$(grep -n 'SCRIPT_DIR="/opt/trading_bot' "$file" 2>/dev/null | grep -v 'dirname.*BASH_SOURCE')
+    
+    if [ -n "$HARDCODED" ]; then
+        echo "⚠️  $file has hardcoded path:"
+        echo "    $HARDCODED"
+        FOUND_ISSUES=true
     fi
 done
+
+if [ "$FOUND_ISSUES" = false ]; then
+    echo "✅ No hardcoded SCRIPT_DIR paths found!"
+fi
+
+echo ""
+echo "🔍 Checking for other /opt/trading_bot references..."
+
+# Check for other hardcoded references (excluding acceptable patterns)
+OTHER_REFS=$(find . -name "*.sh" -type f -exec grep -l "/opt/trading_bot" {} \; | while read -r file; do
+    if [[ "$file" == *"verify_clean_structure.sh"* ]] || [[ "$file" == *"quick_clean_check.sh"* ]]; then
+        continue
+    fi
+    
+    # Look for references that aren't in comments or acceptable patterns
+    BAD_REFS=$(grep -n "/opt/trading_bot" "$file" | grep -v "^[[:space:]]*#" | grep -v "dirname.*BASH_SOURCE" | grep -v "Self-locate" | grep -v "echo.*level")
+    
+    if [ -n "$BAD_REFS" ]; then
+        echo "⚠️  $file:"
+        echo "$BAD_REFS" | head -3
+    fi
+done)
+
+if [ -z "$OTHER_REFS" ]; then
+    echo "✅ No other problematic /opt/trading_bot references found!"
+else
+    echo "$OTHER_REFS"
+fi
 
 echo ""
 echo "📊 Quick Summary:"
