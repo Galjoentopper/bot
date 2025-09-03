@@ -80,7 +80,7 @@ class TelegramBotListener:
     async def _cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /status command."""
         try:
-            response = await self.enhanced_notifier._cmd_status([])
+            response = await self.enhanced_notifier._cmd_status(context.args or [])
             await update.message.reply_text(response, parse_mode='HTML')
         except Exception as e:
             logger.error(f"Status command error: {e}")
@@ -89,7 +89,7 @@ class TelegramBotListener:
     async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command."""
         try:
-            response = await self.enhanced_notifier._cmd_start([])
+            response = await self.enhanced_notifier._cmd_start(context.args or [])
             await update.message.reply_text(response, parse_mode='HTML')
         except Exception as e:
             logger.error(f"Start command error: {e}")
@@ -98,7 +98,7 @@ class TelegramBotListener:
     async def _cmd_stop(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /stop command."""
         try:
-            response = await self.enhanced_notifier._cmd_stop([])
+            response = await self.enhanced_notifier._cmd_stop(context.args or [])
             await update.message.reply_text(response, parse_mode='HTML')
         except Exception as e:
             logger.error(f"Stop command error: {e}")
@@ -107,7 +107,7 @@ class TelegramBotListener:
     async def _cmd_restart(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /restart command."""
         try:
-            response = await self.enhanced_notifier._cmd_restart([])
+            response = await self.enhanced_notifier._cmd_restart(context.args or [])
             await update.message.reply_text(response, parse_mode='HTML')
         except Exception as e:
             logger.error(f"Restart command error: {e}")
@@ -116,7 +116,7 @@ class TelegramBotListener:
     async def _cmd_performance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /performance command."""
         try:
-            response = await self.enhanced_notifier._cmd_performance([])
+            response = await self.enhanced_notifier._cmd_performance(context.args or [])
             await update.message.reply_text(response, parse_mode='HTML')
         except Exception as e:
             logger.error(f"Performance command error: {e}")
@@ -125,7 +125,7 @@ class TelegramBotListener:
     async def _cmd_health(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /health command."""
         try:
-            response = await self.enhanced_notifier._cmd_health([])
+            response = await self.enhanced_notifier._cmd_health(context.args or [])
             await update.message.reply_text(response, parse_mode='HTML')
         except Exception as e:
             logger.error(f"Health command error: {e}")
@@ -134,7 +134,7 @@ class TelegramBotListener:
     async def _cmd_balance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /balance command."""
         try:
-            response = await self.enhanced_notifier._cmd_balance([])
+            response = await self.enhanced_notifier._cmd_balance(context.args or [])
             await update.message.reply_text(response, parse_mode='HTML')
         except Exception as e:
             logger.error(f"Balance command error: {e}")
@@ -143,7 +143,7 @@ class TelegramBotListener:
     async def _cmd_recent_trades(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /trades command."""
         try:
-            response = await self.enhanced_notifier._cmd_recent_trades([])
+            response = await self.enhanced_notifier._cmd_recent_trades(context.args or [])
             await update.message.reply_text(response, parse_mode='HTML')
         except Exception as e:
             logger.error(f"Trades command error: {e}")
@@ -152,7 +152,7 @@ class TelegramBotListener:
     async def _cmd_logs(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /logs command."""
         try:
-            response = await self.enhanced_notifier._cmd_logs([])
+            response = await self.enhanced_notifier._cmd_logs(context.args or [])
             await update.message.reply_text(response, parse_mode='HTML')
         except Exception as e:
             logger.error(f"Logs command error: {e}")
@@ -161,7 +161,7 @@ class TelegramBotListener:
     async def _cmd_config(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /config command."""
         try:
-            response = await self.enhanced_notifier._cmd_config([])
+            response = await self.enhanced_notifier._cmd_config(context.args or [])
             await update.message.reply_text(response, parse_mode='HTML')
         except Exception as e:
             logger.error(f"Config command error: {e}")
