@@ -27,7 +27,7 @@ def setup_logging():
     
     # Create log filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = log_dir / f"telegram_windows_{timestamp}.log"
+    log_file = log_dir / f"telegram_listener_{timestamp}.log"
     
     # Configure logging with better Windows compatibility
     logging.basicConfig(
@@ -41,7 +41,7 @@ def setup_logging():
     )
     
     logger = logging.getLogger(__name__)
-    logger.info("STARTUP: Windows-Compatible Telegram Bot Logging initialized")
+    logger.info("STARTUP: Robust Telegram Bot Listener initialized")
     logger.info(f"LOG_FILE: Writing to: {log_file}")
     return logger
 
@@ -101,7 +101,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"COMMAND: Received /status command from {update.effective_user.first_name}")
     
     response = f"""
-<b>Windows-Compatible Telegram Bot Status</b>
+<b>Telegram Bot Listener Status</b>
 
 STATUS: Bot is running and responding
 TIME: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
@@ -153,7 +153,7 @@ async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Find the most recent log file
         log_dir = project_root / "logs"
-        log_files = list(log_dir.glob("telegram_windows_*.log"))
+        log_files = list(log_dir.glob("telegram_listener_*.log"))
         
         if not log_files:
             await update.message.reply_text("No log files found.")
@@ -183,7 +183,7 @@ async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Main function - non-async version to avoid event loop issues."""
     logger.info("="*50)
-    logger.info("STARTUP: Starting Windows-Compatible Telegram Bot")
+    logger.info("STARTUP: Starting Robust Telegram Bot Listener")
     logger.info("="*50)
     
     # Load config
@@ -209,7 +209,7 @@ def main():
     application.add_handler(CommandHandler("ping", cmd_ping))
     application.add_handler(CommandHandler("logs", cmd_logs))
     
-    logger.info("STARTUP: Windows-Compatible Telegram Bot setup complete!")
+    logger.info("STARTUP: Robust Telegram Bot Listener setup complete!")
     logger.info("STARTUP: Send /status, /test, /ping, or /logs to test the bot")
     logger.info("STARTUP: Starting polling...")
     
@@ -223,7 +223,7 @@ def main():
         import traceback
         logger.error(f"SHUTDOWN: Traceback: {traceback.format_exc()}")
     finally:
-        logger.info("SHUTDOWN: Windows-Compatible Telegram Bot has shut down")
+        logger.info("SHUTDOWN: Robust Telegram Bot Listener has shut down")
 
 if __name__ == "__main__":
     try:

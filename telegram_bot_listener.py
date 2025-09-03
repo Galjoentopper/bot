@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """
-Telegram Bot Listener for Interactive Commands
-Runs alongside the trading system to handle incoming Telegram commands.
+Robust Telegram Bot Listener
+Enterprise-grade Telegram bot with comprehensive logging and error handling.
+Cross-platform compatible for Windows development and Linux production.
 """
 
 import asyncio
 import logging
-import signal
 import sys
 import os
 from datetime import datetime
-from typing import Dict, Any
 from pathlib import Path
 
 # Add project root to path
@@ -19,10 +18,9 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / 'src'))
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from src.notifier.enhanced_telegram import EnhancedTelegramNotifier
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Configure logging with file output
+# Setup logging
 def setup_logging():
     """Setup logging to both file and console."""
     log_dir = project_root / "logs"
@@ -30,365 +28,210 @@ def setup_logging():
     
     # Create log filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = log_dir / f"telegram_bot_listener_{timestamp}.log"
+    log_file = log_dir / f"telegram_listener_{timestamp}.log"
     
-    # Configure logging
+    # Configure logging with UTF-8 encoding
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO,
         handlers=[
-            logging.FileHandler(str(log_file)),
+            logging.FileHandler(str(log_file), encoding='utf-8'),
             logging.StreamHandler(sys.stdout)
-        ]
+        ],
+        force=True  # Override any existing logging config
     )
     
     logger = logging.getLogger(__name__)
-    logger.info(f"Logging initialized - writing to {log_file}")
+    logger.info("STARTUP: Robust Telegram Bot Listener initialized")
+    logger.info(f"LOG_FILE: Writing to: {log_file}")
     return logger
 
 logger = setup_logging()
 
-class TelegramBotListener:
-    """Telegram bot listener for handling interactive commands."""
-
-    def __init__(self, bot_token: str, chat_id: str):
-        self.bot_token = bot_token
-        self.chat_id = chat_id
-        self.application = None
-        self.enhanced_notifier = EnhancedTelegramNotifier(bot_token, chat_id)
-        self.running = False
-
-    async def start(self):
-        """Start the Telegram bot listener."""
-        logger.info("Starting Telegram Bot Listener...")
-        logger.info(f"Bot Token: {self.bot_token[:10]}...")
-        logger.info(f"Chat ID: {self.chat_id}")
-
-        try:
-            # Create application
-            logger.info("Creating Telegram application...")
-            self.application = Application.builder().token(self.bot_token).build()
-
-            # Add command handlers
-            logger.info("Adding command handlers...")
-            self._add_command_handlers()
-
-            # Add message handler for unknown commands
-            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_unknown))
-
-            # Start the bot
-            self.running = True
-            logger.info("Telegram Bot Listener started successfully")
-            logger.info("Available commands: /status, /start, /stop, /restart, /performance, /health, /balance, /trades, /logs, /config")
-
-            # Start polling
-            logger.info("Starting polling for Telegram updates...")
-            await self.application.run_polling(allowed_updates=Update.ALL_TYPES)
-            
-        except Exception as e:
-            logger.error(f"Failed to start Telegram bot: {e}")
-            raise
-
-    def _add_command_handlers(self):
-        """Add all command handlers."""
-        commands = [
-            ('status', self._cmd_status),
-            ('start', self._cmd_start),
-            ('stop', self._cmd_stop),
-            ('restart', self._cmd_restart),
-            ('performance', self._cmd_performance),
-            ('health', self._cmd_health),
-            ('balance', self._cmd_balance),
-            ('trades', self._cmd_recent_trades),
-            ('logs', self._cmd_logs),
-            ('config', self._cmd_config),
-            ('help', self._cmd_help),
-        ]
-
-        for command, handler in commands:
-            self.application.add_handler(CommandHandler(command, handler))
-
-    async def _cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /status command."""
-        logger.info(f"Received /status command from user {update.effective_user.id}")
-        try:
-            response = await self.enhanced_notifier._cmd_status(context.args or [])
-            await update.message.reply_text(response, parse_mode='HTML')
-            logger.info("Status command completed successfully")
-        except Exception as e:
-            logger.error(f"Status command error: {e}")
-            await update.message.reply_text("❌ Error getting status", parse_mode='HTML')
-
-    async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /start command."""
-        logger.info(f"Received /start command from user {update.effective_user.id}")
-        try:
-            response = await self.enhanced_notifier._cmd_start(context.args or [])
-            await update.message.reply_text(response, parse_mode='HTML')
-            logger.info("Start command completed successfully")
-        except Exception as e:
-            logger.error(f"Start command error: {e}")
-            await update.message.reply_text("❌ Error starting system", parse_mode='HTML')
-
-    async def _cmd_stop(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /stop command."""
-        try:
-            response = await self.enhanced_notifier._cmd_stop(context.args or [])
-            await update.message.reply_text(response, parse_mode='HTML')
-        except Exception as e:
-            logger.error(f"Stop command error: {e}")
-            await update.message.reply_text("❌ Error stopping system", parse_mode='HTML')
-
-    async def _cmd_restart(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /restart command."""
-        try:
-            response = await self.enhanced_notifier._cmd_restart(context.args or [])
-            await update.message.reply_text(response, parse_mode='HTML')
-        except Exception as e:
-            logger.error(f"Restart command error: {e}")
-            await update.message.reply_text("❌ Error restarting system", parse_mode='HTML')
-
-    async def _cmd_performance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /performance command."""
-        try:
-            response = await self.enhanced_notifier._cmd_performance(context.args or [])
-            await update.message.reply_text(response, parse_mode='HTML')
-        except Exception as e:
-            logger.error(f"Performance command error: {e}")
-            await update.message.reply_text("❌ Error getting performance", parse_mode='HTML')
-
-    async def _cmd_health(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /health command."""
-        try:
-            response = await self.enhanced_notifier._cmd_health(context.args or [])
-            await update.message.reply_text(response, parse_mode='HTML')
-        except Exception as e:
-            logger.error(f"Health command error: {e}")
-            await update.message.reply_text("❌ Error getting health status", parse_mode='HTML')
-
-    async def _cmd_balance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /balance command."""
-        try:
-            response = await self.enhanced_notifier._cmd_balance(context.args or [])
-            await update.message.reply_text(response, parse_mode='HTML')
-        except Exception as e:
-            logger.error(f"Balance command error: {e}")
-            await update.message.reply_text("❌ Error getting balance", parse_mode='HTML')
-
-    async def _cmd_recent_trades(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /trades command."""
-        try:
-            response = await self.enhanced_notifier._cmd_recent_trades(context.args or [])
-            await update.message.reply_text(response, parse_mode='HTML')
-        except Exception as e:
-            logger.error(f"Trades command error: {e}")
-            await update.message.reply_text("❌ Error getting recent trades", parse_mode='HTML')
-
-    async def _cmd_logs(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /logs command."""
-        try:
-            response = await self.enhanced_notifier._cmd_logs(context.args or [])
-            await update.message.reply_text(response, parse_mode='HTML')
-        except Exception as e:
-            logger.error(f"Logs command error: {e}")
-            await update.message.reply_text("❌ Error getting logs", parse_mode='HTML')
-
-    async def _cmd_config(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /config command."""
-        try:
-            response = await self.enhanced_notifier._cmd_config(context.args or [])
-            await update.message.reply_text(response, parse_mode='HTML')
-        except Exception as e:
-            logger.error(f"Config command error: {e}")
-            await update.message.reply_text("❌ Error getting configuration", parse_mode='HTML')
-
-    async def _cmd_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /help command."""
-        help_text = """🤖 <b>Trading Bot Commands</b>
-
-<b>System Control:</b>
-• /start - Start the trading system
-• /stop - Stop the trading system
-• /restart - Restart the trading system
-• /status - Get system status
-
-<b>Information:</b>
-• /performance - Get performance metrics
-• /health - Get system health status
-• /balance - Get current balance and positions
-• /trades - Get recent trades
-• /logs - Get recent system logs
-• /config - Get configuration info
-
-<b>Help:</b>
-• /help - Show this help message
-
-<i>All commands work with the tmux-managed trading system.</i>
-"""
-        await update.message.reply_text(help_text, parse_mode='HTML')
-
-    async def _handle_unknown(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle unknown messages."""
-        message_text = update.message.text.lower()
-
-        # Check for common greetings
-        greetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening']
-        if any(greeting in message_text for greeting in greetings):
-            response = "👋 Hello! I'm your trading bot assistant. Use /help to see available commands."
-        else:
-            response = "🤔 I didn't understand that command. Use /help to see available commands."
-
-        await update.message.reply_text(response, parse_mode='HTML')
-
-    async def stop(self):
-        """Stop the Telegram bot listener."""
-        logger.info("Stopping Telegram Bot Listener...")
-        self.running = False
-        if self.application:
-            try:
-                await self.application.stop()
-                logger.info("Application stopped successfully")
-            except RuntimeError as e:
-                if "not running" in str(e):
-                    logger.info("Application was already stopped")
-                else:
-                    logger.error(f"Error stopping application: {e}")
-            except Exception as e:
-                logger.error(f"Unexpected error stopping application: {e}")
-        logger.info("Telegram Bot Listener stopped")
-
-def load_config() -> Dict[str, Any]:
+def load_config():
     """Load configuration for Telegram bot."""
-    logger.info("Loading Telegram bot configuration...")
+    logger.info("CONFIG: Loading configuration...")
     
-    # Try multiple configuration sources
-    config_sources = [
-        "training_config.yaml",
-        "config.yaml",
-        ".env"
-    ]
-    
-    for config_file in config_sources:
-        config_path = Path(config_file)
-        if config_path.exists():
-            logger.info(f"Found configuration file: {config_file}")
-            
-            if config_file.endswith('.yaml'):
-                try:
-                    import yaml
-                    with open(config_path, 'r') as f:
-                        config = yaml.safe_load(f)
-                    logger.info("Successfully loaded YAML configuration")
-                    return config
-                except Exception as e:
-                    logger.error(f"Error loading YAML config {config_file}: {e}")
-                    
-            elif config_file == '.env':
-                try:
-                    # Load environment variables from .env file
-                    env_config = {}
-                    with open(config_path, 'r') as f:
-                        for line in f:
-                            line = line.strip()
-                            if line and not line.startswith('#') and '=' in line:
-                                key, value = line.split('=', 1)
-                                env_config[key.strip()] = value.strip().strip('"\'')
-                    
-                    # Convert to expected format
-                    if 'TELEGRAM_BOT_TOKEN' in env_config and 'TELEGRAM_CHAT_ID' in env_config:
-                        config = {
-                            'notifications': {
-                                'telegram': {
-                                    'bot_token': env_config['TELEGRAM_BOT_TOKEN'],
-                                    'chat_id': env_config['TELEGRAM_CHAT_ID']
-                                }
-                            }
-                        }
-                        logger.info("Successfully loaded .env configuration")
-                        return config
-                except Exception as e:
-                    logger.error(f"Error loading .env config: {e}")
-    
-    # Also try environment variables directly
-    import os
+    # Try environment variables first
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
     chat_id = os.getenv('TELEGRAM_CHAT_ID')
     
     if bot_token and chat_id:
-        logger.info("Using environment variables for configuration")
-        return {
-            'notifications': {
-                'telegram': {
-                    'bot_token': bot_token,
-                    'chat_id': chat_id
-                }
-            }
-        }
+        logger.info("CONFIG: Found configuration in environment variables")
+        return {'bot_token': bot_token, 'chat_id': chat_id}
     
-    logger.error("No configuration found in any source")
-    logger.info("Checked: training_config.yaml, config.yaml, .env, environment variables")
+    # Try .env file
+    env_file = project_root / '.env'
+    if env_file.exists():
+        logger.info("CONFIG: Checking .env file...")
+        with open(env_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('TELEGRAM_BOT_TOKEN='):
+                    bot_token = line.split('=', 1)[1].strip().strip('"\'')
+                elif line.startswith('TELEGRAM_CHAT_ID='):
+                    chat_id = line.split('=', 1)[1].strip().strip('"\'')
+        
+        if bot_token and chat_id:
+            logger.info("CONFIG: Found configuration in .env file")
+            return {'bot_token': bot_token, 'chat_id': chat_id}
+    
+    # Try YAML config
+    try:
+        import yaml
+        config_file = project_root / 'training_config.yaml'
+        if config_file.exists():
+            logger.info("CONFIG: Checking training_config.yaml...")
+            with open(config_file, 'r') as f:
+                config = yaml.safe_load(f)
+                telegram_config = config.get('notifications', {}).get('telegram', {})
+                bot_token = telegram_config.get('bot_token')
+                chat_id = telegram_config.get('chat_id')
+                
+                if bot_token and chat_id:
+                    logger.info("CONFIG: Found configuration in training_config.yaml")
+                    return {'bot_token': bot_token, 'chat_id': chat_id}
+    except Exception as e:
+        logger.warning(f"CONFIG: Could not load YAML config: {e}")
+    
+    logger.error("CONFIG: No valid configuration found")
     return {}
 
-async def main():
-    """Main function to run the Telegram bot listener."""
-    logger.info("=" * 50)
-    logger.info("Starting Telegram Bot Listener Service")
-    logger.info("=" * 50)
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /status command."""
+    logger.info(f"COMMAND: Received /status command from {update.effective_user.first_name}")
+    
+    response = f"""
+<b>Telegram Bot Listener Status</b>
 
-    # Load configuration
-    logger.info("Step 1: Loading configuration...")
+STATUS: Bot is running and responding
+TIME: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+USER: {update.effective_user.first_name}
+CHAT: {update.effective_chat.id}
+
+Available commands:
+• /status - Show this status
+• /test - Test logging functionality
+• /ping - Simple ping response
+• /logs - Show recent log entries
+    """
+    
+    await update.message.reply_text(response, parse_mode='HTML')
+    logger.info("COMMAND: Status command completed successfully")
+
+async def cmd_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /test command."""
+    logger.info(f"COMMAND: Received /test command from {update.effective_user.first_name}")
+    
+    # Write test log entries
+    logger.info("TEST: This is a test INFO log entry")
+    logger.warning("TEST: This is a test WARNING log entry")
+    logger.error("TEST: This is a test ERROR log entry (not a real error)")
+    
+    response = """
+<b>Test completed successfully!</b>
+
+The following test entries were written to the log:
+• INFO level test message
+• WARNING level test message  
+• ERROR level test message
+
+Check the log files in the logs/ directory for these entries.
+    """
+    await update.message.reply_text(response, parse_mode='HTML')
+    logger.info("COMMAND: Test command completed successfully")
+
+async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /ping command."""
+    logger.info(f"COMMAND: Received /ping command from {update.effective_user.first_name}")
+    await update.message.reply_text("PONG: Bot is responding")
+    logger.info("COMMAND: Ping command completed successfully")
+
+async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /logs command - show recent log entries."""
+    logger.info(f"COMMAND: Received /logs command from {update.effective_user.first_name}")
+    
+    try:
+        # Find the most recent log file
+        log_dir = project_root / "logs"
+        log_files = list(log_dir.glob("telegram_listener_*.log"))
+        
+        if not log_files:
+            await update.message.reply_text("No log files found.")
+            return
+        
+        latest_log = max(log_files, key=lambda x: x.stat().st_mtime)
+        
+        # Read last 10 lines
+        with open(latest_log, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            recent_lines = lines[-10:] if len(lines) > 10 else lines
+        
+        log_text = "".join(recent_lines)
+        response = f"<b>Recent Log Entries:</b>\n<pre>{log_text}</pre>"
+        
+        # Telegram message limit is 4096 characters
+        if len(response) > 4000:
+            response = response[:4000] + "...\n[Log truncated]"
+        
+        await update.message.reply_text(response, parse_mode='HTML')
+        logger.info("COMMAND: Logs command completed successfully")
+        
+    except Exception as e:
+        logger.error(f"COMMAND: Error in logs command: {e}")
+        await update.message.reply_text(f"Error reading logs: {e}")
+
+def main():
+    """Main function - non-async version to avoid event loop issues."""
+    logger.info("="*50)
+    logger.info("STARTUP: Starting Robust Telegram Bot Listener")
+    logger.info("="*50)
+    
+    # Load config
     config = load_config()
     if not config:
-        logger.error("Failed to load configuration - exiting")
+        logger.error("STARTUP: Failed to load configuration - exiting")
         return
-
-    # Get Telegram configuration
-    logger.info("Step 2: Extracting Telegram configuration...")
-    telegram_config = config.get('notifications', {}).get('telegram', {})
-    bot_token = telegram_config.get('bot_token')
-    chat_id = telegram_config.get('chat_id')
-
-    logger.info(f"Bot token found: {'Yes' if bot_token else 'No'}")
-    logger.info(f"Chat ID found: {'Yes' if chat_id else 'No'}")
-
-    if not bot_token or not chat_id:
-        logger.error("❌ Telegram bot_token or chat_id not configured")
-        logger.info("📝 Please configure telegram in one of these ways:")
-        logger.info("   1. In training_config.yaml under notifications.telegram")
-        logger.info("   2. In .env file: TELEGRAM_BOT_TOKEN=xxx, TELEGRAM_CHAT_ID=xxx")
-        logger.info("   3. As environment variables: export TELEGRAM_BOT_TOKEN=xxx")
-        return
-
-    # Create and start the bot listener
-    logger.info("Step 3: Creating bot listener...")
-    bot_listener = TelegramBotListener(bot_token, chat_id)
-    bot_started = False
-
-    # Setup signal handlers for graceful shutdown
-    def signal_handler(signum, frame):
-        logger.info(f"Received signal {signum}, shutting down...")
-        if bot_started:
-            asyncio.create_task(bot_listener.stop())
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
+    
+    bot_token = config['bot_token']
+    chat_id = config['chat_id']
+    
+    logger.info(f"STARTUP: Bot token configured: {bot_token[:10]}...")
+    logger.info(f"STARTUP: Chat ID configured: {chat_id}")
+    
+    # Create application
+    logger.info("STARTUP: Creating Telegram application...")
+    application = Application.builder().token(bot_token).build()
+    
+    # Add handlers
+    logger.info("STARTUP: Adding command handlers...")
+    application.add_handler(CommandHandler("status", cmd_status))
+    application.add_handler(CommandHandler("test", cmd_test))
+    application.add_handler(CommandHandler("ping", cmd_ping))
+    application.add_handler(CommandHandler("logs", cmd_logs))
+    
+    logger.info("STARTUP: Robust Telegram Bot Listener setup complete!")
+    logger.info("STARTUP: Send /status, /test, /ping, or /logs to test the bot")
+    logger.info("STARTUP: Starting polling...")
+    
     try:
-        logger.info("Step 4: Starting bot listener...")
-        await bot_listener.start()
-        bot_started = True
+        # Use blocking run_polling to avoid async issues
+        application.run_polling(drop_pending_updates=True)
     except KeyboardInterrupt:
-        logger.info("Bot listener interrupted by user")
+        logger.info("SHUTDOWN: Bot stopped by user (Ctrl+C)")
     except Exception as e:
-        logger.error(f"Bot listener error: {e}")
+        logger.error(f"SHUTDOWN: Bot error: {e}")
         import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        logger.error(f"SHUTDOWN: Traceback: {traceback.format_exc()}")
     finally:
-        if bot_started:
-            logger.info("Stopping bot listener...")
-            await bot_listener.stop()
-        else:
-            logger.info("Bot was never started, no need to stop")
+        logger.info("SHUTDOWN: Robust Telegram Bot Listener has shut down")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("SHUTDOWN: Program interrupted by user")
+    except Exception as e:
+        logger.error(f"SHUTDOWN: Program error: {e}")
+        import traceback
+        logger.error(f"SHUTDOWN: Full traceback: {traceback.format_exc()}")
