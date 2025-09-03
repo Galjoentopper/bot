@@ -8,6 +8,8 @@ import asyncio
 import logging
 import signal
 import sys
+import os
+from datetime import datetime
 from typing import Dict, Any
 from pathlib import Path
 
@@ -20,12 +22,31 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from src.notifier.enhanced_telegram import EnhancedTelegramNotifier
 
-# Configure logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+# Configure logging with file output
+def setup_logging():
+    """Setup logging to both file and console."""
+    log_dir = project_root / "logs"
+    log_dir.mkdir(exist_ok=True)
+    
+    # Create log filename with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"telegram_bot_listener_{timestamp}.log"
+    
+    # Configure logging
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO,
+        handlers=[
+            logging.FileHandler(str(log_file)),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"Logging initialized - writing to {log_file}")
+    return logger
+
+logger = setup_logging()
 
 class TelegramBotListener:
     """Telegram bot listener for handling interactive commands."""
@@ -40,23 +61,33 @@ class TelegramBotListener:
     async def start(self):
         """Start the Telegram bot listener."""
         logger.info("Starting Telegram Bot Listener...")
+        logger.info(f"Bot Token: {self.bot_token[:10]}...")
+        logger.info(f"Chat ID: {self.chat_id}")
 
-        # Create application
-        self.application = Application.builder().token(self.bot_token).build()
+        try:
+            # Create application
+            logger.info("Creating Telegram application...")
+            self.application = Application.builder().token(self.bot_token).build()
 
-        # Add command handlers
-        self._add_command_handlers()
+            # Add command handlers
+            logger.info("Adding command handlers...")
+            self._add_command_handlers()
 
-        # Add message handler for unknown commands
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_unknown))
+            # Add message handler for unknown commands
+            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_unknown))
 
-        # Start the bot
-        self.running = True
-        logger.info("Telegram Bot Listener started successfully")
-        logger.info("Available commands: /status, /start, /stop, /restart, /performance, /health, /balance, /trades, /logs, /config")
+            # Start the bot
+            self.running = True
+            logger.info("Telegram Bot Listener started successfully")
+            logger.info("Available commands: /status, /start, /stop, /restart, /performance, /health, /balance, /trades, /logs, /config")
 
-        # Start polling
-        await self.application.run_polling(allowed_updates=Update.ALL_TYPES)
+            # Start polling
+            logger.info("Starting polling for Telegram updates...")
+            await self.application.run_polling(allowed_updates=Update.ALL_TYPES)
+            
+        except Exception as e:
+            logger.error(f"Failed to start Telegram bot: {e}")
+            raise
 
     def _add_command_handlers(self):
         """Add all command handlers."""
@@ -79,18 +110,22 @@ class TelegramBotListener:
 
     async def _cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /status command."""
+        logger.info(f"Received /status command from user {update.effective_user.id}")
         try:
             response = await self.enhanced_notifier._cmd_status(context.args or [])
             await update.message.reply_text(response, parse_mode='HTML')
+            logger.info("Status command completed successfully")
         except Exception as e:
             logger.error(f"Status command error: {e}")
             await update.message.reply_text("❌ Error getting status", parse_mode='HTML')
 
     async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command."""
+        logger.info(f"Received /start command from user {update.effective_user.id}")
         try:
             response = await self.enhanced_notifier._cmd_start(context.args or [])
             await update.message.reply_text(response, parse_mode='HTML')
+            logger.info("Start command completed successfully")
         except Exception as e:
             logger.error(f"Start command error: {e}")
             await update.message.reply_text("❌ Error starting system", parse_mode='HTML')
@@ -215,41 +250,108 @@ class TelegramBotListener:
 
 def load_config() -> Dict[str, Any]:
     """Load configuration for Telegram bot."""
-    try:
-        import yaml
-        config_path = Path("training_config.yaml")
+    logger.info("Loading Telegram bot configuration...")
+    
+    # Try multiple configuration sources
+    config_sources = [
+        "training_config.yaml",
+        "config.yaml",
+        ".env"
+    ]
+    
+    for config_file in config_sources:
+        config_path = Path(config_file)
         if config_path.exists():
-            with open(config_path, 'r') as f:
-                config = yaml.safe_load(f)
-            return config
-        else:
-            logger.error("Configuration file not found")
-            return {}
-    except Exception as e:
-        logger.error(f"Error loading configuration: {e}")
-        return {}
+            logger.info(f"Found configuration file: {config_file}")
+            
+            if config_file.endswith('.yaml'):
+                try:
+                    import yaml
+                    with open(config_path, 'r') as f:
+                        config = yaml.safe_load(f)
+                    logger.info("Successfully loaded YAML configuration")
+                    return config
+                except Exception as e:
+                    logger.error(f"Error loading YAML config {config_file}: {e}")
+                    
+            elif config_file == '.env':
+                try:
+                    # Load environment variables from .env file
+                    env_config = {}
+                    with open(config_path, 'r') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and not line.startswith('#') and '=' in line:
+                                key, value = line.split('=', 1)
+                                env_config[key.strip()] = value.strip().strip('"\'')
+                    
+                    # Convert to expected format
+                    if 'TELEGRAM_BOT_TOKEN' in env_config and 'TELEGRAM_CHAT_ID' in env_config:
+                        config = {
+                            'notifications': {
+                                'telegram': {
+                                    'bot_token': env_config['TELEGRAM_BOT_TOKEN'],
+                                    'chat_id': env_config['TELEGRAM_CHAT_ID']
+                                }
+                            }
+                        }
+                        logger.info("Successfully loaded .env configuration")
+                        return config
+                except Exception as e:
+                    logger.error(f"Error loading .env config: {e}")
+    
+    # Also try environment variables directly
+    import os
+    bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    
+    if bot_token and chat_id:
+        logger.info("Using environment variables for configuration")
+        return {
+            'notifications': {
+                'telegram': {
+                    'bot_token': bot_token,
+                    'chat_id': chat_id
+                }
+            }
+        }
+    
+    logger.error("No configuration found in any source")
+    logger.info("Checked: training_config.yaml, config.yaml, .env, environment variables")
+    return {}
 
 async def main():
     """Main function to run the Telegram bot listener."""
+    logger.info("=" * 50)
     logger.info("Starting Telegram Bot Listener Service")
+    logger.info("=" * 50)
 
     # Load configuration
+    logger.info("Step 1: Loading configuration...")
     config = load_config()
     if not config:
-        logger.error("Failed to load configuration")
+        logger.error("Failed to load configuration - exiting")
         return
 
     # Get Telegram configuration
+    logger.info("Step 2: Extracting Telegram configuration...")
     telegram_config = config.get('notifications', {}).get('telegram', {})
     bot_token = telegram_config.get('bot_token')
     chat_id = telegram_config.get('chat_id')
 
+    logger.info(f"Bot token found: {'Yes' if bot_token else 'No'}")
+    logger.info(f"Chat ID found: {'Yes' if chat_id else 'No'}")
+
     if not bot_token or not chat_id:
-        logger.error("Telegram bot_token or chat_id not configured")
-        logger.info("Please configure telegram.bot_token and telegram.chat_id in training_config.yaml")
+        logger.error("❌ Telegram bot_token or chat_id not configured")
+        logger.info("📝 Please configure telegram in one of these ways:")
+        logger.info("   1. In training_config.yaml under notifications.telegram")
+        logger.info("   2. In .env file: TELEGRAM_BOT_TOKEN=xxx, TELEGRAM_CHAT_ID=xxx")
+        logger.info("   3. As environment variables: export TELEGRAM_BOT_TOKEN=xxx")
         return
 
     # Create and start the bot listener
+    logger.info("Step 3: Creating bot listener...")
     bot_listener = TelegramBotListener(bot_token, chat_id)
 
     # Setup signal handlers for graceful shutdown
@@ -261,12 +363,16 @@ async def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     try:
+        logger.info("Step 4: Starting bot listener...")
         await bot_listener.start()
     except KeyboardInterrupt:
         logger.info("Bot listener interrupted by user")
     except Exception as e:
         logger.error(f"Bot listener error: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
     finally:
+        logger.info("Stopping bot listener...")
         await bot_listener.stop()
 
 if __name__ == "__main__":
