@@ -47,7 +47,13 @@ SCATTERED_PATHS_FOUND=0
 while IFS= read -r -d '' file; do
     if [[ "$file" == *".sh" ]]; then
         # Look for problematic paths, excluding comments and our acceptable patterns
-        PROBLEMATIC_LINES=$(grep -n "/opt/trading_bot" "$file" | grep -v "SCRIPT_DIR.*=/opt/trading_bot/bot" | grep -v "^[[:space:]]*#" | grep -v "echo.*directories.*bot.*level" || true)
+        PROBLEMATIC_LINES=$(grep -n "/opt/trading_bot" "$file" | \
+            grep -v "SCRIPT_DIR.*=/opt/trading_bot/bot" | \
+            grep -v "dirname.*BASH_SOURCE" | \
+            grep -v "cd.*dirname.*BASH_SOURCE" | \
+            grep -v "Self-locate.*bot.*directory" | \
+            grep -v "^[[:space:]]*#" | \
+            grep -v "echo.*directories.*bot.*level" || true)
         
         if [ -n "$PROBLEMATIC_LINES" ]; then
             log_error "Found scattered path references in $file:"

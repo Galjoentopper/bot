@@ -3,7 +3,8 @@
 # Start Monitoring Dashboard Script
 # Creates a tmux session with multiple panes for monitoring
 
-SCRIPT_DIR="/opt/trading_bot/bot"
+# Self-locate the bot directory (server/scripts -> bot)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$SCRIPT_DIR" || exit 1
 
 # Kill existing monitoring session if it exists

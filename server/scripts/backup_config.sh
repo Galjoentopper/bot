@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Configuration Backup Script
-SCRIPT_DIR="/opt/trading_bot/bot"
+# Self-locate the bot directory (server/scripts -> bot)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BACKUP_DIR="$SCRIPT_DIR/backups/config"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 

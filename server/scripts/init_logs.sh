@@ -3,7 +3,8 @@
 # Log Initialization Script
 # Creates necessary log files and directories for the trading bot
 
-SCRIPT_DIR="/opt/trading_bot/bot"
+# Self-locate the bot directory (server/scripts -> bot)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOG_DIR="$SCRIPT_DIR/logs"
 
 echo "=== Initializing Trading Bot Logs ==="

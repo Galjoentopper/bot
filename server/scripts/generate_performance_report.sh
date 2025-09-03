@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Generate Performance Report Script
-SCRIPT_DIR="/opt/trading_bot/bot"
+# Self-locate the bot directory (server/scripts -> bot)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOG_DIR="$SCRIPT_DIR/logs"
 METRICS_FILE="$LOG_DIR/performance_metrics.json"
 

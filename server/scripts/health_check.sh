@@ -1,8 +1,9 @@
 #!/bin/bash
 # Health Check Script
 
+# Self-locate the bot directory (server/scripts -> bot)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOG_DIR="$SCRIPT_DIR/logs"
-SCRIPT_DIR="/opt/trading_bot/bot"
 
 echo "=== Trading Bot Health Check ==="
 echo "Time: $(date)"
