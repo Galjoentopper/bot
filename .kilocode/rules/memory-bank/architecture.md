@@ -2,10 +2,10 @@
 
 ## Project Structure Overview
 
-The crypto trading bot is organized within the `bot` folder as the main project directory, designed for continuous operation on Ubuntu Hetzner server with comprehensive monitoring and fault tolerance.
+The crypto trading bot is organized within the `/opt/trading_bot/bot/` folder as the main project directory, designed for continuous operation on Ubuntu Hetzner server with comprehensive monitoring and fault tolerance.
 
 ```
-bot/ (Main Project Directory)
+/opt/trading_bot/bot/ (Main Project Directory)
 ├── src/                    # Core application source code
 ├── scripts/                # Trading and operational scripts
 ├── server/                 # Production deployment configurations

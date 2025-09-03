@@ -2,10 +2,10 @@
 
 ## Project Structure
 
-The bot project is organized with the `bot/` folder as the main project directory containing all source code, configurations, and operational scripts:
+The bot project is organized with the `/opt/trading_bot/bot/` folder as the main project directory containing all source code, configurations, and operational scripts:
 
 ```
-bot/ (Main Project Directory)
+/opt/trading_bot/bot/ (Main Project Directory)
 ├── src/                    # Core application source code
 ├── scripts/                # Trading and operational scripts
 ├── server/                 # Production deployment configurations

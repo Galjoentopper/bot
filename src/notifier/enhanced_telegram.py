@@ -3,9 +3,10 @@ Enhanced Telegram Notifier with Interactive Commands
 """
 import asyncio
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable, Awaitable
 from datetime import datetime
 import os
+import platform
 import json
 from pathlib import Path
 
@@ -25,7 +26,7 @@ class EnhancedTelegramNotifier:
         self.command_handlers = self._register_commands()
         self.performance_history = []
 
-    def _register_commands(self) -> Dict[str, callable]:
+    def _register_commands(self) -> Dict[str, Callable[[List[str]], Awaitable[str]]]:
         """Register interactive commands."""
         return {
             '/status': self._cmd_status,
@@ -40,12 +41,18 @@ class EnhancedTelegramNotifier:
             '/config': self._cmd_config
         }
 
-    async def handle_command(self, command: str, args: List[str] = None) -> str:
+    async def handle_command(self, command: str, args: Optional[List[str]] = None) -> str:
         """Handle incoming command."""
         if args is None:
-            args = []
+            parts = command.strip().split()
+            cmd = parts[0].lower() if parts else ''
+            args = parts[1:] if len(parts) > 1 else []
+        else:
+            cmd = command.strip().lower()
 
-        cmd = command.split()[0].lower()
+        if not cmd.startswith('/'):
+            cmd = '/' + cmd
+
         if cmd in self.command_handlers:
             try:
                 return await self.command_handlers[cmd](args)
@@ -72,7 +79,7 @@ class EnhancedTelegramNotifier:
                 status = "❌ Stopped"
 
             # Get system info
-            hostname = os.uname().nodename
+            hostname = platform.node()
             uptime = await self._get_system_uptime()
 
             return f"""🤖 <b>System Status</b>
@@ -89,7 +96,7 @@ class EnhancedTelegramNotifier:
         """Start trading system."""
         try:
             result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/bot/scripts/tmux_manager.sh start',
+                '/opt/trading_bot/scripts/tmux_manager.sh start',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -106,7 +113,7 @@ class EnhancedTelegramNotifier:
         """Stop trading system."""
         try:
             result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/bot/scripts/tmux_manager.sh stop',
+                '/opt/trading_bot/scripts/tmux_manager.sh stop',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -121,7 +128,7 @@ class EnhancedTelegramNotifier:
         try:
             # Stop
             stop_result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/bot/scripts/tmux_manager.sh stop',
+                '/opt/trading_bot/scripts/tmux_manager.sh stop',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -131,7 +138,7 @@ class EnhancedTelegramNotifier:
 
             # Start
             start_result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/bot/scripts/tmux_manager.sh start',
+                '/opt/trading_bot/scripts/tmux_manager.sh start',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -148,7 +155,7 @@ class EnhancedTelegramNotifier:
         """Get performance metrics."""
         try:
             # Read performance data
-            perf_file = Path("/opt/trading_bot/bot/logs/performance_metrics.json")
+            perf_file = Path("/opt/trading_bot/logs/performance_metrics.json")
             if perf_file.exists():
                 with open(perf_file, 'r') as f:
                     metrics = json.load(f)
@@ -173,7 +180,7 @@ class EnhancedTelegramNotifier:
         """Get system health."""
         try:
             result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/bot/scripts/health_check.sh',
+                '/opt/trading_bot/scripts/health_check.sh',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -189,7 +196,7 @@ class EnhancedTelegramNotifier:
     async def _cmd_balance(self, args: List[str]) -> str:
         """Get current balance."""
         try:
-            balance_file = Path("/opt/trading_bot/bot/logs/balance.json")
+            balance_file = Path("/opt/trading_bot/logs/balance.json")
             if balance_file.exists():
                 with open(balance_file, 'r') as f:
                     balance_data = json.load(f)
@@ -211,11 +218,11 @@ class EnhancedTelegramNotifier:
     async def _cmd_recent_trades(self, args: List[str]) -> str:
         """Get recent trades."""
         try:
-            trades_file = Path("/opt/trading_bot/bot/logs/trades_report.csv")
+            trades_file = Path("/opt/trading_bot/logs/trades_report.csv")
             if trades_file.exists():
                 # Get last 5 trades
                 result = await asyncio.create_subprocess_shell(
-                    'tail -5 /opt/trading_bot/bot/logs/trades_report.csv',
+                    'tail -5 /opt/trading_bot/logs/trades_report.csv',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
@@ -267,11 +274,11 @@ class EnhancedTelegramNotifier:
     async def _cmd_config(self, args: List[str]) -> str:
         """Get configuration info."""
         try:
-            config_file = Path("/opt/trading_bot/bot/training_config.yaml")
+            config_file = Path("/opt/trading_bot/training_config.yaml")
             if config_file.exists():
                 # Get basic config info without sensitive data
                 result = await asyncio.create_subprocess_shell(
-                    'grep -E "^(symbols|interval|initial_balance|max_position_size):" /opt/trading_bot/bot/training_config.yaml',
+                    'grep -E "^(symbols|interval|initial_balance|max_position_size):" /opt/trading_bot/training_config.yaml',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
@@ -370,4 +377,65 @@ class EnhancedTelegramNotifier:
             return True
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
+            return False
+
+    async def send_startup_notification(self) -> bool:
+        """Send startup notification."""
+        try:
+            message = f"""🚀 <b>Trading Bot Started</b>
+
+<b>System:</b> {platform.node()}
+<b>Time:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+<b>Status:</b> Initializing trading components...
+
+Bot is now online and ready to accept commands.
+"""
+            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode='HTML')
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send startup notification: {e}")
+            return False
+
+    async def send_trade_notification(self, trade_data: Dict[str, Any]) -> bool:
+        """Send trade notification."""
+        try:
+            action = trade_data.get('action', 'unknown').upper()
+            symbol = trade_data.get('symbol', 'unknown')
+            quantity = trade_data.get('quantity', 0)
+            price = trade_data.get('price', 0)
+            value = trade_data.get('value', 0)
+            
+            emoji = "🟢" if action == "BUY" else "🔴" if action == "SELL" else "⚪"
+            
+            message = f"""{emoji} <b>Trade Executed</b>
+
+<b>Action:</b> {action}
+<b>Symbol:</b> {symbol}
+<b>Quantity:</b> {quantity:,.4f}
+<b>Price:</b> €{price:,.4f}
+<b>Total Value:</b> €{value:,.2f}
+
+<b>Time:</b> {datetime.now().strftime('%H:%M:%S')}
+"""
+            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode='HTML')
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send trade notification: {e}")
+            return False
+
+    async def send_error_notification(self, error_msg: str, component: str = "System") -> bool:
+        """Send error notification."""
+        try:
+            message = f"""❌ <b>Error Alert</b>
+
+<b>Component:</b> {component}
+<b>Error:</b> {error_msg}
+<b>Time:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+Please check system logs for more details.
+"""
+            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode='HTML')
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send error notification: {e}")
             return False

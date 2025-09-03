@@ -1,7 +1,7 @@
 # Current Context: Stable Production System
 
 ## Project Directory Context
-- **Main Directory**: `bot/` folder contains the complete trading system
+- **Main Directory**: `/opt/trading_bot/bot/` folder contains the complete trading system
 - **Development Environment**: Windows local development with Ubuntu server deployment
 - **Project Structure**: Organized with separate folders for src/, scripts/, server/, data/, etc.
 - **Current Focus**: Memory bank documentation updates to reflect correct folder structure
@@ -24,6 +24,7 @@
 - Comprehensive validation and drift monitoring framework
 - Automated health checks and recovery procedures
 - **Current**: Updated memory bank documentation to reflect bot/ as main project directory
+- **Latest**: Fixed enhanced_telegram.py hardcoded paths and command handling (September 2025)
 
 ## Immediate Priorities
 1. **Documentation Enhancement**: Complete operational documentation for maintenance

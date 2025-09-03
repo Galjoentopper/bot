@@ -3,7 +3,7 @@ applyTo: '**'
 ---
 # Enterprise Crypto Trading Bot System
 
-**ALWAYS follow these instructions first and update them with new information located in .kilocode\rules\memory-bank before proceeding with any development tasks.**
+**ALWAYS follow these instructions first and update them with new information located in .kilocode\rules\memory-bank before proceeding with any development tasks. if unable follow the instructions in kilocode\rules\memory-bank**
 
 This is an enterprise-grade automated cryptocurrency trading system that maximizes Sharpe ratio through sophisticated machine learning strategies while maintaining operational stability on Ubuntu Hetzner server. The system uses multi-model ML ensemble (GRU neural networks, LightGBM, PPO reinforcement learning) for cryptocurrency trading with comprehensive Telegram-based monitoring and control.
 
