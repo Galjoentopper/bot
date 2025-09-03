@@ -106,7 +106,7 @@ class EnhancedTelegramNotifier:
         try:
             logger.info("Running tmux_manager.sh start command")
             result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/scripts/tmux_manager.sh start',
+                '/opt/trading_bot/bot/scripts/tmux_manager.sh start',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -127,7 +127,7 @@ class EnhancedTelegramNotifier:
         """Stop trading system."""
         try:
             result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/scripts/tmux_manager.sh stop',
+                '/opt/trading_bot/bot/scripts/tmux_manager.sh stop',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -142,7 +142,7 @@ class EnhancedTelegramNotifier:
         try:
             # Stop
             stop_result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/scripts/tmux_manager.sh stop',
+                '/opt/trading_bot/bot/scripts/tmux_manager.sh stop',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -152,7 +152,7 @@ class EnhancedTelegramNotifier:
 
             # Start
             start_result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/scripts/tmux_manager.sh start',
+                '/opt/trading_bot/bot/scripts/tmux_manager.sh start',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -196,7 +196,7 @@ class EnhancedTelegramNotifier:
         try:
             logger.info("Running health_check.sh script")
             result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/scripts/health_check.sh',
+                '/opt/trading_bot/bot/scripts/health_check.sh',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )

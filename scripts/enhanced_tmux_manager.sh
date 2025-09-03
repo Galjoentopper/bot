@@ -57,8 +57,8 @@ create_telegram_session() {
     # Create Telegram session
     tmux new-session -d -s "$TELEGRAM_SESSION_NAME" -n "telegram"
 
-    # Telegram bot listener
-    tmux send-keys -t "$TELEGRAM_SESSION_NAME:telegram" "cd $SCRIPT_DIR && python3 telegram_bot_listener.py 2>&1 | tee -a $LOG_DIR/telegram_$(date +%Y%m%d_%H%M%S).log" C-m
+    # Start telegram bot in telegram session
+    tmux send-keys -t "$TELEGRAM_SESSION_NAME:telegram" "cd $SCRIPT_DIR && python3 telegram_bot_listener_fixed.py 2>&1 | tee -a $LOG_DIR/telegram_$(date +%Y%m%d_%H%M%S).log" C-m
 
     # Telegram logs monitoring
     tmux split-window -h -t "$TELEGRAM_SESSION_NAME:telegram"
