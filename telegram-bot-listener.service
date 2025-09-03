@@ -8,7 +8,7 @@ Type=simple
 User=trading
 Group=trading
 WorkingDirectory=/opt/trading_bot
-ExecStart=/opt/trading_bot/venv/bin/python /opt/trading_bot/telegram_bot_listener.py
+ExecStart=/opt/trading_bot/bot/venv/bin/python /opt/trading_bot/bot/telegram_bot_listener.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -19,7 +19,7 @@ SyslogIdentifier=telegram-bot-listener
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
-ReadWritePaths=/opt/trading_bot/logs /opt/trading_bot/data
+ReadWritePaths=/opt/trading_bot/bot/logs /opt/trading_bot/bot/data
 ProtectHome=yes
 
 # Resource limits

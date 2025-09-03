@@ -186,8 +186,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # Start the trading system using tmux
+        # Start
         result = await asyncio.create_subprocess_shell(
-            '/opt/trading_bot/scripts/tmux_manager.sh start',
+            '/opt/trading_bot/bot/scripts/tmux_manager.sh start',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -212,7 +213,7 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Stop the trading system using tmux
         result = await asyncio.create_subprocess_shell(
-            '/opt/trading_bot/scripts/tmux_manager.sh stop',
+            '/opt/trading_bot/bot/scripts/tmux_manager.sh stop',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -233,7 +234,7 @@ async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Stop first
         stop_result = await asyncio.create_subprocess_shell(
-            '/opt/trading_bot/scripts/tmux_manager.sh stop',
+            '/opt/trading_bot/bot/scripts/tmux_manager.sh stop',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -243,7 +244,7 @@ async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Start again
         start_result = await asyncio.create_subprocess_shell(
-            '/opt/trading_bot/scripts/tmux_manager.sh start',
+            '/opt/trading_bot/bot/scripts/tmux_manager.sh start',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -267,7 +268,7 @@ async def cmd_performance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # Read performance metrics from JSON file
-        perf_file = Path("/opt/trading_bot/logs/performance_metrics.json")
+        perf_file = Path("/opt/trading_bot/bot/logs/performance_metrics.json")
         if perf_file.exists():
             with open(perf_file, 'r') as f:
                 metrics = json.load(f)
@@ -300,7 +301,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Run health check script
         result = await asyncio.create_subprocess_shell(
-            '/opt/trading_bot/scripts/health_check.sh',
+            '/opt/trading_bot/bot/scripts/health_check.sh',
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -403,11 +404,11 @@ async def cmd_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # Read basic config info from YAML file
-        config_file = Path("/opt/trading_bot/training_config.yaml")
+        config_file = Path("/opt/trading_bot/bot/training_config.yaml")
         if config_file.exists():
             # Get basic config info without sensitive data
             result = await asyncio.create_subprocess_shell(
-                'grep -E "^(symbols|interval|initial_balance|max_position_size):" /opt/trading_bot/training_config.yaml',
+                'grep -E "^(symbols|interval|initial_balance|max_position_size):" /opt/trading_bot/bot/training_config.yaml',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
