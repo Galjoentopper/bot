@@ -65,6 +65,23 @@ else
 fi
 echo ""
 
+# Check performance_metrics.json
+echo "📊 PERFORMANCE_METRICS.JSON STATUS"
+echo "----------------------------------"
+PERFORMANCE_FILE="$LOG_DIR/performance_metrics.json"
+if [ -f "$PERFORMANCE_FILE" ]; then
+    echo "✅ performance_metrics.json exists"
+    echo "   Path: $PERFORMANCE_FILE"
+    echo "   Size: $(du -h "$PERFORMANCE_FILE" | cut -f1)"
+    echo "   Last modified: $(ls -l "$PERFORMANCE_FILE" | awk '{print $6, $7, $8}')"
+    echo "   Content preview:"
+    head -5 "$PERFORMANCE_FILE" | sed 's/^/     /'
+else
+    echo "❌ performance_metrics.json missing: $PERFORMANCE_FILE"
+    echo "   This is needed for /performance command"
+fi
+echo ""
+
 # Check trading logs
 echo "📊 TRADING LOGS STATUS"
 echo "---------------------"
@@ -173,6 +190,7 @@ echo "============================"
 MISSING_FILES=()
 [ ! -f "$BALANCE_FILE" ] && MISSING_FILES+=("balance.json")
 [ ! -f "$TRADES_FILE" ] && MISSING_FILES+=("trades_report.csv")
+[ ! -f "$PERFORMANCE_FILE" ] && MISSING_FILES+=("performance_metrics.json")
 
 if [ ${#MISSING_FILES[@]} -gt 0 ]; then
     echo "❌ Missing files for Telegram commands:"

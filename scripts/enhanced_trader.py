@@ -2126,6 +2126,9 @@ class EnhancedUnifiedPaperTrader:
             # Export balance data for Telegram commands
             self._export_balance_data(total_portfolio_value, metrics)
             
+            # Export performance metrics for Telegram commands  
+            self._export_performance_metrics(total_portfolio_value, metrics)
+            
             self.last_portfolio_update = current_time
             
         except Exception as e:
@@ -2260,6 +2263,50 @@ class EnhancedUnifiedPaperTrader:
             
         except Exception as e:
             self.logger.logger.warning(f"Failed to export balance data: {e}")
+
+    def _export_performance_metrics(self, total_portfolio_value: float, metrics) -> None:
+        """Export performance metrics to JSON for Telegram commands."""
+        try:
+            # Ensure logs directory exists
+            os.makedirs('logs', exist_ok=True)
+            
+            # Calculate additional metrics
+            total_equity = self.balance + total_portfolio_value
+            daily_pnl = total_equity - self.initial_balance
+            
+            # Count active positions
+            active_positions = sum(1 for pos in self.positions.values() if pos.quantity > 0)
+            
+            # Calculate win rate if we have trades
+            win_rate = 0.0
+            if hasattr(self, 'trade_history') and self.trade_history:
+                winning_trades = sum(1 for trade in self.trade_history if trade.get('pnl', 0) > 0)
+                win_rate = (winning_trades / len(self.trade_history)) * 100
+            
+            # Create performance metrics structure
+            performance_data = {
+                'timestamp': datetime.now().isoformat(),
+                'portfolio_value': total_portfolio_value,
+                'daily_pnl': daily_pnl,
+                'total_return': getattr(metrics, 'total_return', 0.0),
+                'sharpe_ratio': getattr(metrics, 'sharpe_ratio', 0.0),
+                'win_rate': win_rate,
+                'active_positions': active_positions,
+                'total_trades': len(getattr(self, 'trade_history', [])),
+                'max_drawdown': getattr(metrics, 'max_drawdown', 0.0),
+                'current_drawdown': getattr(metrics, 'current_drawdown', 0.0),
+                'total_pnl': getattr(metrics, 'total_pnl', 0.0)
+            }
+            
+            # Write to performance_metrics.json
+            perf_path = 'logs/performance_metrics.json'
+            with open(perf_path, 'w', encoding='utf-8') as f:
+                json.dump(performance_data, f, indent=2, ensure_ascii=False)
+                
+            self.logger.logger.debug(f"Performance metrics exported to {perf_path}")
+            
+        except Exception as e:
+            self.logger.logger.warning(f"Failed to export performance metrics: {e}")
 
     def run_trading_loop_legacy(self, align_to_candles: bool = True) -> None:
         """Legacy synchronous trading loop: fetch -> signal -> trade -> sleep."""

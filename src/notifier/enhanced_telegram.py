@@ -169,7 +169,7 @@ class EnhancedTelegramNotifier:
         """Get performance metrics."""
         try:
             # Read performance data
-            perf_file = Path("/opt/trading_bot/logs/performance_metrics.json")
+            perf_file = Path("/opt/trading_bot/bot/logs/performance_metrics.json")
             if perf_file.exists():
                 with open(perf_file, 'r') as f:
                     metrics = json.load(f)
@@ -294,11 +294,11 @@ class EnhancedTelegramNotifier:
     async def _cmd_config(self, args: List[str]) -> str:
         """Get configuration info."""
         try:
-            config_file = Path("/opt/trading_bot/training_config.yaml")
+            config_file = Path("/opt/trading_bot/bot/training_config.yaml")
             if config_file.exists():
                 # Get basic config info without sensitive data
                 result = await asyncio.create_subprocess_shell(
-                    'grep -E "^(symbols|interval|initial_balance|max_position_size):" /opt/trading_bot/training_config.yaml',
+                    'grep -E "^(symbols|interval|initial_balance|max_position_size):" /opt/trading_bot/bot/training_config.yaml',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )

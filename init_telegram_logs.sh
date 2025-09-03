@@ -39,17 +39,44 @@ else
     echo "✅ trades_report.csv already exists"
 fi
 
+# Initialize performance_metrics.json if it doesn't exist
+PERFORMANCE_FILE="$LOG_DIR/performance_metrics.json"
+if [ ! -f "$PERFORMANCE_FILE" ]; then
+    cat > "$PERFORMANCE_FILE" << 'EOF'
+{
+  "timestamp": "2025-09-03T00:00:00Z",
+  "portfolio_value": 0.0,
+  "daily_pnl": 0.0,
+  "total_return": 0.0,
+  "sharpe_ratio": 0.0,
+  "win_rate": 0.0,
+  "active_positions": 0,
+  "total_trades": 0,
+  "max_drawdown": 0.0,
+  "current_drawdown": 0.0,
+  "total_pnl": 0.0
+}
+EOF
+    echo "✅ Created performance_metrics.json"
+else
+    echo "✅ performance_metrics.json already exists"
+fi
+
 # Check permissions
 echo "Setting correct permissions..."
 chmod 644 "$BALANCE_FILE" 2>/dev/null || echo "Could not set permissions on balance.json"
 chmod 644 "$TRADES_FILE" 2>/dev/null || echo "Could not set permissions on trades_report.csv"
+chmod 644 "$PERFORMANCE_FILE" 2>/dev/null || echo "Could not set permissions on performance_metrics.json"
 
 echo ""
 echo "Log file initialization complete!"
 echo "Files created in: $LOG_DIR"
 echo "- balance.json: $(wc -l < "$BALANCE_FILE") lines"
 echo "- trades_report.csv: $(wc -l < "$TRADES_FILE") lines"
+echo "- performance_metrics.json: $(wc -l < "$PERFORMANCE_FILE") lines"
 echo ""
 echo "Test Telegram commands:"
-echo "  /balance - Should show initial €10,000 balance"
-echo "  /trades  - Should show 'No recent trades' message"
+echo "  /balance     - Should show current portfolio balance"
+echo "  /trades      - Should show recent trading activity"
+echo "  /performance - Should show performance metrics"
+echo "  /config      - Should show configuration settings"
