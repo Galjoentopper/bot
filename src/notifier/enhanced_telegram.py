@@ -216,7 +216,7 @@ class EnhancedTelegramNotifier:
     async def _cmd_balance(self, args: List[str]) -> str:
         """Get current balance."""
         try:
-            balance_file = Path("/opt/trading_bot/logs/balance.json")
+            balance_file = Path("/opt/trading_bot/bot/logs/balance.json")
             if balance_file.exists():
                 with open(balance_file, 'r') as f:
                     balance_data = json.load(f)
@@ -238,11 +238,11 @@ class EnhancedTelegramNotifier:
     async def _cmd_recent_trades(self, args: List[str]) -> str:
         """Get recent trades."""
         try:
-            trades_file = Path("/opt/trading_bot/logs/trades_report.csv")
+            trades_file = Path("/opt/trading_bot/bot/logs/trades_report.csv")
             if trades_file.exists():
                 # Get last 5 trades
                 result = await asyncio.create_subprocess_shell(
-                    'tail -5 /opt/trading_bot/logs/trades_report.csv',
+                    'tail -5 /opt/trading_bot/bot/logs/trades_report.csv',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
@@ -274,7 +274,7 @@ class EnhancedTelegramNotifier:
         """Get recent logs."""
         try:
             result = await asyncio.create_subprocess_shell(
-                'tail -10 /var/log/trading_bot/trading_*.log 2>/dev/null || echo "No logs found"',
+                'tail -10 /opt/trading_bot/bot/logs/trading_*.log 2>/dev/null || echo "No logs found"',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )

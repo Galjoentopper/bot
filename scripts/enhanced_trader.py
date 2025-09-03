@@ -2123,6 +2123,9 @@ class EnhancedUnifiedPaperTrader:
                 f"Sharpe={metrics.sharpe_ratio:.2f} Drawdown={metrics.current_drawdown:.1%}"
             )
             
+            # Export balance data for Telegram commands
+            self._export_balance_data(total_portfolio_value, metrics)
+            
             self.last_portfolio_update = current_time
             
         except Exception as e:
@@ -2222,6 +2225,41 @@ class EnhancedUnifiedPaperTrader:
             
         except Exception as e:
             self.logger.logger.warning(f"Failed to record trade to CSV: {e}")
+
+    def _export_balance_data(self, total_portfolio_value: float, metrics) -> None:
+        """Export current balance data to JSON for Telegram commands."""
+        try:
+            # Ensure logs directory exists
+            os.makedirs('logs', exist_ok=True)
+            
+            # Calculate position values
+            position_values = {}
+            for symbol, position in self.positions.items():
+                if position.quantity > 0 and symbol in self.last_prices:
+                    position_values[symbol] = position.quantity * self.last_prices[symbol]
+            
+            # Create balance data structure
+            balance_data = {
+                'timestamp': datetime.now().isoformat(),
+                'cash_balance': self.balance,
+                'portfolio_value': total_portfolio_value,
+                'total_equity': self.balance + total_portfolio_value,
+                'positions': position_values,
+                'total_pnl': getattr(metrics, 'total_pnl', 0.0),
+                'total_return': getattr(metrics, 'total_return', 0.0),
+                'sharpe_ratio': getattr(metrics, 'sharpe_ratio', 0.0),
+                'current_drawdown': getattr(metrics, 'current_drawdown', 0.0)
+            }
+            
+            # Write to balance.json
+            balance_path = 'logs/balance.json'
+            with open(balance_path, 'w', encoding='utf-8') as f:
+                json.dump(balance_data, f, indent=2, ensure_ascii=False)
+                
+            self.logger.logger.debug(f"Balance data exported to {balance_path}")
+            
+        except Exception as e:
+            self.logger.logger.warning(f"Failed to export balance data: {e}")
 
     def run_trading_loop_legacy(self, align_to_candles: bool = True) -> None:
         """Legacy synchronous trading loop: fetch -> signal -> trade -> sleep."""

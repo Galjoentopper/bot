@@ -325,7 +325,7 @@ async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # Read balance data from JSON file
-        balance_file = Path("/opt/trading_bot/logs/balance.json")
+        balance_file = Path("/opt/trading_bot/bot/logs/balance.json")
         if balance_file.exists():
             with open(balance_file, 'r') as f:
                 balance_data = json.load(f)
@@ -360,11 +360,11 @@ async def cmd_recent_trades(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # Read recent trades from CSV file
-        trades_file = Path("/opt/trading_bot/logs/trades_report.csv")
+        trades_file = Path("/opt/trading_bot/bot/logs/trades_report.csv")
         if trades_file.exists():
             # Get last 5 trades
             result = await asyncio.create_subprocess_shell(
-                'tail -5 /opt/trading_bot/logs/trades_report.csv',
+                'tail -5 /opt/trading_bot/bot/logs/trades_report.csv',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
