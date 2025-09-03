@@ -27,8 +27,27 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+def load_env_file():
+    """Load environment variables from .env file"""
+    env_file = Path('.env')
+    if env_file.exists():
+        logger.info("Loading .env file")
+        with open(env_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        os.environ[key.strip()] = value.strip()
+                        logger.info(f"Loaded env var: {key.strip()}")
+    else:
+        logger.warning(".env file not found")
+
 async def test_commands():
     """Test all Telegram commands and capture detailed logs"""
+
+    # Load environment variables from .env file first
+    load_env_file()
 
     # Get environment variables
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -36,6 +55,8 @@ async def test_commands():
 
     if not bot_token or not chat_id:
         logger.error("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID environment variables")
+        logger.error(f"TELEGRAM_BOT_TOKEN: {'***' + bot_token[-4:] if bot_token else 'None'}")
+        logger.error(f"TELEGRAM_CHAT_ID: {chat_id if chat_id else 'None'}")
         return
 
     logger.info("Initializing EnhancedTelegramNotifier")
