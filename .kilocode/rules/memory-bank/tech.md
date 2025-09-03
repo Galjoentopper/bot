@@ -1,5 +1,23 @@
 # Technology Stack & Operations Guide
 
+## Project Structure
+
+The bot project is organized with the `bot/` folder as the main project directory containing all source code, configurations, and operational scripts:
+
+```
+bot/ (Main Project Directory)
+├── src/                    # Core application source code
+├── scripts/                # Trading and operational scripts
+├── server/                 # Production deployment configurations
+├── data/                   # Market data and cache storage
+├── model_packages/         # Trained ML models storage
+├── logs/                   # Application and system logs
+├── validation/             # Data validation and monitoring
+├── requirements.txt        # Python dependencies
+├── setup.py               # Package configuration
+└── training_config.yaml   # Main configuration file
+```
+
 ## Core Technologies
 
 ### **Python Runtime Environment**

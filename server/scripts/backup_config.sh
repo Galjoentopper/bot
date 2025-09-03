@@ -2,7 +2,7 @@
 
 # Configuration Backup Script
 SCRIPT_DIR="/opt/trading_bot/bot"
-BACKUP_DIR="/opt/trading_bot/backups/config"
+BACKUP_DIR="$SCRIPT_DIR/backups/config"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 echo "=== Configuration Backup ==="

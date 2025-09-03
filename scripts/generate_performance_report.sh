@@ -1,8 +1,10 @@
 #!/bin/bash
 # Generate performance report
 
-SCRIPT_DIR="/opt/trading_bot"
-source /etc/trading_bot/.env
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    source "$SCRIPT_DIR/.env"
+fi
 
 # Generate performance metrics
 python3 -c "

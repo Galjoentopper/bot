@@ -1,5 +1,11 @@
 # Current Context: Stable Production System
 
+## Project Directory Context
+- **Main Directory**: `bot/` folder contains the complete trading system
+- **Development Environment**: Windows local development with Ubuntu server deployment
+- **Project Structure**: Organized with separate folders for src/, scripts/, server/, data/, etc.
+- **Current Focus**: Memory bank documentation updates to reflect correct folder structure
+
 ## Current System State
 - **Status**: Stable and operational on Ubuntu Hetzner server
 - **Last Major Changes**: System is running in production with all three ML models (GRU, LightGBM, PPO) deployed
@@ -17,6 +23,7 @@
 - Profit optimization system with Kelly criterion position sizing
 - Comprehensive validation and drift monitoring framework
 - Automated health checks and recovery procedures
+- **Current**: Updated memory bank documentation to reflect bot/ as main project directory
 
 ## Immediate Priorities
 1. **Documentation Enhancement**: Complete operational documentation for maintenance

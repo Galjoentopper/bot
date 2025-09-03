@@ -2,7 +2,7 @@
 
 # Log Rotation Script
 LOG_DIR="/opt/trading_bot/bot/logs"
-BACKUP_DIR="/opt/trading_bot/backups/logs"
+BACKUP_DIR="/opt/trading_bot/bot/backups/logs"
 MAX_LOG_SIZE="100M"
 MAX_LOG_FILES=10
 

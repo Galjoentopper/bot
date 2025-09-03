@@ -1,8 +1,9 @@
 #!/bin/bash
 # Log rotation script
 
-LOG_DIR="/var/log/trading_bot"
-SCRIPT_LOGS="/opt/trading_bot/logs"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOG_DIR="$SCRIPT_DIR/logs"
+BACKUP_LOG_DIR="$SCRIPT_DIR/backups/logs"
 
 # Rotate system logs
 find "$LOG_DIR" -name "*.log" -mtime +7 -exec gzip {} \;

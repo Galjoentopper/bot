@@ -18,8 +18,8 @@ echo "Script directory: $SCRIPT_DIR"
 # Create necessary directories
 echo "Creating directories..."
 mkdir -p "$LOG_DIR"
-mkdir -p "/opt/trading_bot/backups/logs"
-mkdir -p "/opt/trading_bot/backups/config"
+mkdir -p "$SCRIPT_DIR/backups/logs"
+mkdir -p "$SCRIPT_DIR/backups/config"
 
 # Change to script directory
 cd "$SCRIPT_DIR" || {

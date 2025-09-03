@@ -1,7 +1,7 @@
 #!/bin/bash
 # Health Check Script
 
-LOG_DIR="/var/log/trading_bot"
+LOG_DIR="$SCRIPT_DIR/logs"
 SCRIPT_DIR="/opt/trading_bot/bot"
 
 echo "=== Trading Bot Health Check ==="

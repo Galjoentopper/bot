@@ -1,7 +1,8 @@
 #!/bin/bash
 # Configuration backup script
 
-BACKUP_DIR="/opt/trading_bot/backups"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BACKUP_DIR="$SCRIPT_DIR/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="$BACKUP_DIR/backup_$TIMESTAMP.tar.gz"
 
@@ -15,8 +16,8 @@ tar -czf "$BACKUP_FILE" \
     --exclude="venv" \
     --exclude="*.pyc" \
     --exclude="__pycache__" \
-    /opt/trading_bot/ \
-    /etc/trading_bot/ \
+    --exclude="backups/*" \
+    -C "$(dirname "$SCRIPT_DIR")" "$(basename "$SCRIPT_DIR")" \
     /etc/systemd/system/trading-bot.service \
     /etc/cron.d/trading_bot_monitor
 

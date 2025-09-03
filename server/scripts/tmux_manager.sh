@@ -3,7 +3,7 @@
 
 SESSION_NAME="trading_session"
 SCRIPT_DIR="/opt/trading_bot/bot"
-LOG_DIR="/var/log/trading_bot"
+LOG_DIR="$SCRIPT_DIR/logs"
 
 # Load environment
 source /etc/trading_bot/.env

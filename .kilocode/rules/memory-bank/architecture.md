@@ -1,8 +1,19 @@
 # System Architecture: Enterprise Crypto Trading Bot
 
-## High-Level System Overview
+## Project Structure Overview
 
-The crypto trading bot is built as a multi-layered, event-driven system designed for continuous operation on Ubuntu Hetzner server with comprehensive monitoring and fault tolerance.
+The crypto trading bot is organized within the `bot` folder as the main project directory, designed for continuous operation on Ubuntu Hetzner server with comprehensive monitoring and fault tolerance.
+
+```
+bot/ (Main Project Directory)
+├── src/                    # Core application source code
+├── scripts/                # Trading and operational scripts
+├── server/                 # Production deployment configurations
+├── data/                   # Market data and cache storage
+├── model_packages/         # Trained ML models storage
+├── logs/                   # Application and system logs
+└── validation/             # Data validation and monitoring
+```
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
