@@ -181,6 +181,7 @@ WantedBy=multi-user.target
 EOF
 
     # Create systemd service file for telegram bot listener
+    # Using systemd-optimized version to avoid event loop conflicts
     sudo tee /etc/systemd/system/telegram-bot-listener.service > /dev/null << EOF
 [Unit]
 Description=Trading Bot Telegram Listener
@@ -193,7 +194,7 @@ Group=$USER
 WorkingDirectory=$SCRIPT_DIR
 Environment=PATH=$SCRIPT_DIR/venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONPATH=$SCRIPT_DIR
-ExecStart=$SCRIPT_DIR/venv/bin/python3 $SCRIPT_DIR/telegram_bot_listener_fixed.py
+ExecStart=$SCRIPT_DIR/venv/bin/python3 $SCRIPT_DIR/telegram_bot_listener_systemd.py
 Restart=always
 RestartSec=10
 StandardOutput=append:$SCRIPT_DIR/logs/telegram_systemd.log

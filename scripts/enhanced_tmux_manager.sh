@@ -149,18 +149,28 @@ case "$1" in
     logs)
         echo "=== Recent Logs ==="
         echo "Trading logs:"
-        if [ -f "$LOG_DIR/trading_$(date +%Y%m%d)*.log" 2>/dev/null ]; then
-            tail -f "$LOG_DIR/trading_$(date +%Y%m%d)*.log" | head -10
+        # Find the most recent trading log file
+        RECENT_TRADING_LOG=$(ls -t "$LOG_DIR"/trading_*.log 2>/dev/null | head -1)
+        if [ -n "$RECENT_TRADING_LOG" ]; then
+            echo "Showing last 20 lines from: $(basename $RECENT_TRADING_LOG)"
+            tail -20 "$RECENT_TRADING_LOG"
         else
-            echo "No recent trading log files found"
+            echo "No trading log files found in $LOG_DIR"
+            echo "Available log files:"
+            ls -la "$LOG_DIR"/ 2>/dev/null || echo "Log directory not found"
         fi
 
         echo ""
         echo "Telegram logs:"
-        if [ -f "$LOG_DIR/telegram_$(date +%Y%m%d)*.log" 2>/dev/null ]; then
-            tail -f "$LOG_DIR/telegram_$(date +%Y%m%d)*.log" | head -10
+        # Find the most recent telegram log file
+        RECENT_TELEGRAM_LOG=$(ls -t "$LOG_DIR"/telegram_*.log 2>/dev/null | head -1)
+        if [ -n "$RECENT_TELEGRAM_LOG" ]; then
+            echo "Showing last 20 lines from: $(basename $RECENT_TELEGRAM_LOG)"
+            tail -20 "$RECENT_TELEGRAM_LOG"
         else
-            echo "No recent Telegram log files found"
+            echo "No Telegram log files found in $LOG_DIR"
+            echo "Available log files:"
+            ls -la "$LOG_DIR"/ 2>/dev/null || echo "Log directory not found"
         fi
         ;;
     restart)
@@ -180,6 +190,12 @@ case "$1" in
         echo "  attach  - Attach to running session (trading first, then Telegram)"
         echo "  logs    - Show recent logs from both services"
         echo "  restart - Restart all services"
+        echo ""
+        echo "Log files are stored in: $LOG_DIR/"
+        echo "Manual log commands:"
+        echo "  tail -f $LOG_DIR/trading_*.log    # Follow trading logs"
+        echo "  tail -f $LOG_DIR/telegram_*.log   # Follow telegram logs"
+        echo "  ls -la $LOG_DIR/                  # List all log files"
         echo ""
         echo "Environment variables:"
         echo "  TRADING_TIMEOUT - Trading session timeout in seconds (default: 300)"
