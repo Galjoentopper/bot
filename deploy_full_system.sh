@@ -194,7 +194,7 @@ Group=$USER
 WorkingDirectory=$SCRIPT_DIR
 Environment=PATH=$SCRIPT_DIR/venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONPATH=$SCRIPT_DIR
-ExecStart=$SCRIPT_DIR/venv/bin/python3 $SCRIPT_DIR/telegram_bot_listener_systemd.py
+ExecStart=$SCRIPT_DIR/venv/bin/python3 $SCRIPT_DIR/telegram_bot_bulletproof.py
 Restart=always
 RestartSec=10
 StandardOutput=append:$SCRIPT_DIR/logs/telegram_systemd.log
@@ -277,7 +277,7 @@ else
     echo "❌ Enhanced tmux manager not found. Starting services manually..."
     # Fallback to direct execution
     tmux new-session -d -s trading-bot "python3 scripts/enhanced_trader.py"
-    tmux new-session -d -s telegram-bot "python3 telegram_bot_listener_fixed.py"
+    tmux new-session -d -s telegram-bot "python3 telegram_bot_bulletproof.py"
 fi
 
 echo "✅ Trading system started!"
@@ -434,7 +434,7 @@ show_deployment_summary() {
     echo ""
     echo "📁 Clean Architecture Notes:"
     echo "  • All components contained within: $SCRIPT_DIR"
-    echo "  • No scattered directories at /opt/trading_bot/ level"
+    echo "  • No scattered directories at /opt/trading_bot/bot/ level"
     echo "  • Everything organized under bot/ folder"
     echo "  • Virtual environment: $SCRIPT_DIR/venv/"
     echo ""

@@ -29,8 +29,8 @@ echo "--------------------"
 for file in "${FILES_TO_CHECK[@]}"; do
     if [ -f "$file" ]; then
         # Count correct vs incorrect paths
-        CORRECT_COUNT=$(grep -c "/opt/trading_bot/bot/" "$file" 2>/dev/null || echo "0")
-        INCORRECT_COUNT=$(grep -cE "/opt/trading_bot/[^b]" "$file" 2>/dev/null || echo "0")
+        CORRECT_COUNT=$(grep -c "/opt/trading_bot/bot/" "$file" 2>/dev/null | head -1 || echo "0")
+        INCORRECT_COUNT=$(grep -cE "/opt/trading_bot/[^b]" "$file" 2>/dev/null | head -1 || echo "0")
         
         if [ "$INCORRECT_COUNT" -gt 0 ]; then
             echo "❌ $file: $INCORRECT_COUNT incorrect paths found"
