@@ -1,6 +1,13 @@
 # Streamlined Trading System .gitignore
 # =====================================
 
+# Node modules and React/TypeScript build artifacts
+node_modules/
+/build
+/dist
+*.tsbuildinfo
+package-lock.json
+
 # Python
 __pycache__/
 *.py[cod]
