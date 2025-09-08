@@ -300,7 +300,7 @@ class EnhancedSignalGenerator:
                 combined_weight = model_weight * pred.confidence
 
                 weighted_sum += pred.prediction * combined_weight
-                confidence_sum += pred.confidence * model_weight
+                confidence_sum += pred.confidence * combined_weight
                 total_weight += combined_weight
                 total_features += pred.features_used
 
@@ -308,9 +308,7 @@ class EnhancedSignalGenerator:
                 return ModelPrediction("ensemble", 0.0, 0.0, 0)
 
             ensemble_prediction = weighted_sum / total_weight
-            ensemble_confidence = confidence_sum / sum(
-                self.model_weights.get(p.model_type, 1.0) for p in predictions
-            )
+            ensemble_confidence = confidence_sum / total_weight
 
             logger.debug(
                 f"Ensemble prediction: {ensemble_prediction:.6f} (confidence: {ensemble_confidence:.3f})"
