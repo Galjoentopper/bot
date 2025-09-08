@@ -1,8 +1,10 @@
 #!/bin/bash
 
 # Log Rotation Script
-LOG_DIR="/opt/trading_bot/bot/logs"
-BACKUP_DIR="/opt/trading_bot/bot/backups/logs"
+# Self-locate the bot directory (server/scripts -> bot)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+LOG_DIR="$SCRIPT_DIR/logs"
+BACKUP_DIR="$SCRIPT_DIR/backups/logs"
 MAX_LOG_SIZE="100M"
 MAX_LOG_FILES=10
 

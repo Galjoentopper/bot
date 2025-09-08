@@ -34,7 +34,7 @@ if pgrep -f "enhanced_trader.py" > /dev/null; then
         "load_average": "$(uptime | awk '{print $(NF-2)}' | tr -d ',')",
         "memory_total": "$(free -h | grep Mem | awk '{print $2}')",
         "memory_used": "$(free -h | grep Mem | awk '{print $3}')",
-        "disk_usage": "$(df -h /opt/trading_bot | tail -1 | awk '{print $5}')"
+        "disk_usage": "$(df -h "$SCRIPT_DIR" | tail -1 | awk '{print $5}')"
     },
     "trading": {
         "log_files_count": $(find "$LOG_DIR" -name "*.log" -type f | wc -l),
@@ -53,7 +53,7 @@ else
         "load_average": "$(uptime | awk '{print $(NF-2)}' | tr -d ',')",
         "memory_total": "$(free -h | grep Mem | awk '{print $2}')",
         "memory_used": "$(free -h | grep Mem | awk '{print $3}')",
-        "disk_usage": "$(df -h /opt/trading_bot | tail -1 | awk '{print $5}')"
+        "disk_usage": "$(df -h "$SCRIPT_DIR" | tail -1 | awk '{print $5}')"
     }
 }
 EOF

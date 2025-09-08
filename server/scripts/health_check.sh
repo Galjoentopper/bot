@@ -46,7 +46,7 @@ echo ""
 echo "=== System Resources ==="
 echo "CPU Usage: $(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1"%"}')"
 echo "Memory: $(free -h | grep Mem | awk '{print $3 "/" $2 " (" $4 " free)"}')"
-echo "Disk: $(df -h /opt/trading_bot | tail -1 | awk '{print $3 "/" $2 " (" $5 " used)"}')"
+echo "Disk: $(df -h "$SCRIPT_DIR" | tail -1 | awk '{print $3 "/" $2 " (" $5 " used)"}')"
 
 # Network connectivity
 echo ""
