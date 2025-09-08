@@ -49,3 +49,10 @@
 - Telegram work in `src/notifier/`; validate with `python test_telegram_commands.py` or `bash debug_telegram.sh`.
 - New exchange/data code in `src/adapters/`; mock in tests; no hard-coded paths/secrets.
 - Ops via `./scripts/tmux_manager.sh {start|status|logs|attach}`; deploy with `./deploy_full_system.sh` after tests pass.
+
+## Deploy Safely (Checklist)
+- Check sessions: `./scripts/tmux_manager.sh status` and systemd `sudo systemctl status trading-bot`.
+- Validate configs: `.env` present and up to date; `training_config.yaml` matches intended symbols.
+- Dry-run tests: `python quick_test_system.py` and `pytest -q`.
+- Tail logs on deploy: `./scripts/tmux_manager.sh logs`.
+- Rollback plan: be ready to `git revert <sha>` or `./stop_system.sh`.
