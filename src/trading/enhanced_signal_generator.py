@@ -196,7 +196,7 @@ class EnhancedSignalGenerator:
                 thresholds = self.profit_optimizer.calculate_dynamic_thresholds(
                     symbol,
                     market_data[symbol],
-                    self.config.get("thresholds", {}).get("default", 0.0005),
+                    abs(self.base_buy_threshold),
                 )
 
                 # Generate signal
