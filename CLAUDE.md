@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is an advanced cryptocurrency trading bot system with machine learning capabilities, designed for automated paper trading with multiple model types including neural networks (GRU), gradient boosting (LightGBM), and reinforcement learning (PPO). The system features comprehensive risk management, Telegram notifications, and enterprise-grade monitoring capabilities.
 
+**IMPORTANT**: This is a deployment server only. Models are trained on a separate training server, packaged as .zip files, and imported to this server using `./import_models.sh`. Never attempt to train models on this production server.
+
 ## Key Commands
 
 ### Development and Testing
@@ -24,15 +26,26 @@ black .  # format code
 flake8 .  # lint code
 ```
 
-### Model Training
+### Model Import (Production Server)
 ```bash
+# Import pre-trained models from zip files
+./import_models.sh  # Place .zip files in root directory first
+
+# Check imported model structure  
+find models/ -name "*.pkl" -o -name "*.pt" -o -name "*.zip" | head -20
+
+# Validate imported models
+ls -la models/{gru,lightgbm,ppo}/*/
+```
+
+### Model Training (Training Server Only - NOT THIS SERVER)
+```bash
+# These commands are for reference only - run on training server
 # Train all models using unified configuration
 python scripts/enhanced_trainer.py --config training_config.yaml
 
 # Train specific model type
 python scripts/enhanced_trainer.py --config training_config.yaml --model-type gru
-python scripts/enhanced_trainer.py --config training_config.yaml --model-type lightgbm
-python scripts/enhanced_trainer.py --config training_config.yaml --model-type ppo
 ```
 
 ### Trading System
@@ -180,13 +193,30 @@ BITVAVO_API_SECRET=your_api_secret
 
 ## Development Workflow
 
-### Adding New Features
+### Production Deployment Workflow (This Server)
+1. **Receive Models**: Get .zip file from training server
+2. **Import Models**: Run `./import_models.sh` to extract and organize models
+3. **Validate Import**: Check model structure and file integrity
+4. **Update Configuration**: Modify `training_config.yaml` if needed for production settings
+5. **Test System**: Run `python quick_test_system.py` to validate
+6. **Deploy**: Start trading system using deployment scripts
+
+### Training Server Workflow (External)
+1. **Data Collection**: Training server fetches historical data
+2. **Feature Engineering**: Generates 200+ technical indicators per symbol
+3. **Model Training**: Trains GRU, LightGBM, PPO models per symbol
+4. **Validation**: Walk-forward validation and performance testing  
+5. **Package Export**: Creates .zip file with all models and metadata
+6. **Transfer**: Sends .zip to production server (this server)
+
+### Adding New Features (Production Server)
 1. Implement in appropriate `src/` module following existing patterns
 2. Update `training_config.yaml` if new parameters are needed
 3. Add tests in corresponding `test_*.py` file
 4. Run full test suite before committing
+5. **Never modify model files directly** - always import from training server
 
-### Model Development
+### Model Development (Training Server Only)
 - New models should inherit from base trainer classes
 - Implement `train()`, `predict()`, `save_model()`, `load_model()` methods
 - Add model metadata persistence for feature consistency
