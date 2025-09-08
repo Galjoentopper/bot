@@ -130,10 +130,12 @@ class ProfitOptimizer:
             )
 
             # Calculate volume trend
-            volume_trend = (
-                market_data["volume"].rolling(5).mean().iloc[-1]
-                / market_data["volume"].rolling(20).mean().iloc[-1]
-            )
+            recent_vol_mean = market_data["volume"].rolling(5).mean().iloc[-1]
+            base_vol_mean = market_data["volume"].rolling(20).mean().iloc[-1]
+            if base_vol_mean and base_vol_mean > 0:
+                volume_trend = recent_vol_mean / base_vol_mean
+            else:
+                volume_trend = 1.0
 
             # Adjust thresholds based on market conditions
             volatility_multiplier = max(
