@@ -82,6 +82,12 @@ sudo systemctl start trading-bot
 sudo systemctl stop trading-bot
 ```
 
+### Discover Available Models
+```bash
+# Print available symbols and model types (JSON) and exit
+python scripts/enhanced_trader.py --config training_config.yaml --show-available
+```
+
 ### Telegram Commands
 Send these commands to your Telegram bot:
 - `/status` - System status
@@ -126,6 +132,22 @@ symbols:
   - ADAEUR
   - DOTEUR
   - LINKEUR
+```
+
+Optional portfolio optimization tuning:
+```yaml
+portfolio_optimization:
+  correlation_threshold: 0.8      # start scaling down above this
+  correlation_min_scale: 0.5      # minimum scale at max correlation
+  cash_min_pct: 0.1               # keep at least 10% cash
+  cash_min_scale: 0.5             # minimum scale when below cash_min_pct
+```
+
+Disable Telegram notifications explicitly:
+```yaml
+notifications:
+  telegram:
+    enabled: false
 ```
 
 ## Security Notes

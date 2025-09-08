@@ -12,6 +12,7 @@
 - Run tests: `pytest -q` or `pytest --cov=src -q` for coverage.
 - Lint/format: `flake8 src` and `black src *.py`.
 - Run locally: `python telegram_bot_listener_systemd.py` or `./start_system.sh` / `./stop_system.sh`.
+- Discovery: `python scripts/enhanced_trader.py --config training_config.yaml --show-available` (prints JSON of available symbols/models and exits).
 
 Note: On servers, prefer `pip install -r requirements.txt` for full runtime deps. Use `pip install -e .[dev]` for editable local development.
 
@@ -48,6 +49,12 @@ Run a single test or function:
 - Models: `src/models/` (GRU, LightGBM, PPO) with per‑symbol artifacts in `models/{type}/{SYMBOL}/` and metadata for feature alignment.
 - Trading engine: `scripts/trader.py` (paper trading; risk mgmt; ensemble signals with weights from `training_config.yaml`).
 - Notifications: `src/notifier/enhanced_telegram.py` for alerts and status.
+
+## Configuration Notes
+- `portfolio_optimization`: tune buy scaling
+  - `correlation_threshold` (default 0.8), `correlation_min_scale` (default 0.5)
+  - `cash_min_pct` (default 0.1), `cash_min_scale` (default 0.5)
+- `notifications.telegram.enabled`: set `false` to disable Telegram cleanly (no warnings).
 
 ## Agent-Specific Instructions
 - Production server only: never train here; import via `./import_models.sh` and verify under `models/`.
