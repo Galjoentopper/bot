@@ -35,9 +35,20 @@ training:
   optuna_timeout: 7200  # 2 hours
 
   # Resource allocation
-  memory_limit: '16GB'
-  gpu_enabled: true
+  memory_limit: '3GB'  # Adjusted for production server capacity
+  gpu_enabled: false   # No GPU on production server
   gpu_memory_fraction: 0.8
+
+# Performance Optimization (Production Server)
+optimization:
+  lazy_loading: true          # Load models on-demand to reduce startup time
+  parallel_loading: true      # Use multiple cores for faster loading
+  memory_mapping: true        # Use memory-mapped model files for efficiency
+  cache_predictions: true     # Cache recent predictions to avoid recomputation
+  batch_inference: true       # Batch multiple symbol predictions together
+  startup_timeout: 300        # Timeout for system startup (seconds)
+  model_warmup: false         # Skip model warmup on production to save memory
+  feature_caching: true       # Cache feature calculations
 
 # Model-specific parameters
 model_parameters:
