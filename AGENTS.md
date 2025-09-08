@@ -30,6 +30,10 @@ Note: On servers, prefer `pip install -r requirements.txt` for full runtime deps
 - Integration checks: `python comprehensive_test_system.py` (broader end-to-end validations).
 - Final validation: `python final_test_system.py` (production readiness; longest runtime).
 
+Run a single test or function:
+- One file: `pytest -q test_trading_system.py`
+- One test: `pytest -q test_trading_system.py::test_basic_flow`
+
 ## Commit & Pull Request Guidelines
 - Commits: imperative, concise (e.g., `Fix telegram startup error`), one logical change.
 - Add context in body for behavior/config changes.
