@@ -23,6 +23,11 @@
 - Names: `test_<unit>.py` and `test_<behavior>()`.
 - Mock network/Exchanges (Telegram, Binance, CCXT, HTTP). Avoid long trainings; seed ML/RL when possible.
 
+### Testing Scripts
+- Fast smoke test: `python quick_test_system.py` (under a minute; no service changes).
+- Integration checks: `python comprehensive_test_system.py` (broader end-to-end validations).
+- Final validation: `python final_test_system.py` (production readiness; longest runtime).
+
 ## Commit & Pull Request Guidelines
 - Commits: imperative, concise (e.g., `Fix telegram startup error`), one logical change.
 - Add context in body for behavior/config changes.
