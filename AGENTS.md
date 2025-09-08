@@ -13,6 +13,8 @@
 - Lint/format: `flake8 src` and `black src *.py`.
 - Run locally: `python telegram_bot_listener_systemd.py` or `./start_system.sh` / `./stop_system.sh`.
 
+Note: On servers, prefer `pip install -r requirements.txt` for full runtime deps. Use `pip install -e .[dev]` for editable local development.
+
 ## Coding Style & Naming Conventions
 - Python 3.8+, 4-space indent, type hints + short docstrings for public APIs.
 - Black for formatting; Flake8 for linting (fix or justify warnings).
