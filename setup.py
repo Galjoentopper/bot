@@ -15,7 +15,7 @@ setup(
         # Core dependencies
         "python-dotenv>=1.0.0",
         "pandas>=2.0.0",
-        "numpy>=1.24.0",
+        "numpy>=1.24.0,<2.0.0",
         "PyYAML>=6.0",
         "pyarrow>=12.0.0",
         # Machine Learning

@@ -199,6 +199,12 @@ ls -la /opt/trading_bot/backups/
 cat /opt/trading_bot/logs/performance_metrics.json
 ```
 
+## Contributor Docs
+
+For development and contribution guidelines, see:
+- AGENTS.md — repository structure, style, testing, and PR process
+- DEPLOY_ROLLBACK_PLAYBOOK.md — deploy and rollback checklist for this server
+
 ### Health Checks
 ```bash
 # Run health check
