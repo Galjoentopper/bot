@@ -47,6 +47,35 @@ graceful_shutdown() {
     sudo systemctl stop trading-bot 2>/dev/null || true
     sudo systemctl stop telegram-bot-listener 2>/dev/null || true
     
+    # Send shutdown notification via Telegram
+    echo "📱 Sending shutdown notification..."
+    python3 -c "
+import sys
+import asyncio
+from pathlib import Path
+sys.path.insert(0, str(Path('.').resolve()))
+sys.path.insert(0, str(Path('./src').resolve()))
+
+async def send_shutdown_notification():
+    try:
+        from src.notifier.enhanced_telegram import EnhancedTelegramNotifier
+        import os
+        
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '7733436451:AAH6Sls8uL4fEgd6Ty7VEKSBIMauhaVkN4c')
+        chat_id = os.getenv('TELEGRAM_CHAT_ID', '7988790407')
+        
+        if bot_token and chat_id:
+            notifier = EnhancedTelegramNotifier(bot_token, chat_id)
+            await notifier.send_system_shutdown_notification('Graceful shutdown requested')
+            print('Shutdown notification sent successfully')
+        else:
+            print('Telegram credentials not configured')
+    except Exception as e:
+        print(f'Failed to send shutdown notification: {e}')
+
+asyncio.run(send_shutdown_notification())
+" 2>/dev/null || echo "⚠️  Could not send shutdown notification"
+
     # Resource cleanup
     if [ -f "scripts/resource_monitor.sh" ]; then
         echo "🧹 Running resource cleanup..."

@@ -182,27 +182,43 @@ class TelegramBotListener:
             await update.message.reply_text("❌ Error getting configuration", parse_mode='HTML')
 
     async def _cmd_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /help command."""
-        help_text = """🤖 <b>Trading Bot Commands</b>
+        """Handle /help command with comprehensive command list and functionality status."""
+        help_text = """🤖 <b>Enhanced Trading Bot Commands</b>
 
-<b>System Control:</b>
-• /start - Start the trading system
-• /stop - Stop the trading system
-• /restart - Restart the trading system
-• /status - Get system status
+<b>🎮 System Control:</b>
+• /start - Start the trading system ✅
+• /stop - Stop the trading system ✅
+• /restart - Restart the trading system ✅
+• /status - Get current system status ✅
 
-<b>Information:</b>
-• /performance - Get performance metrics
-• /health - Get system health status
-• /balance - Get current balance and positions
-• /trades - Get recent trades
-• /logs - Get recent system logs
-• /config - Get configuration info
+<b>📊 Performance & Data:</b>
+• /performance - Real-time performance metrics ✅
+• /health - System health & resource usage ✅
+• /balance - Current account balance & P&L ✅
+• /trades - View recent trades (last 10) ✅
 
-<b>Help:</b>
+<b>🔧 System Information:</b>
+• /logs - View recent system logs ✅
+• /config - Show current configuration ✅
+
+<b>💡 New Features:</b>
+• 📈 <b>Daily Reports:</b> Automatic at 12:00 UTC
+• 🚫 <b>Trade Spam:</b> Individual notifications disabled
+• 🚨 <b>Smart Alerts:</b> Error notifications with context
+• 🛑 <b>Shutdown Alerts:</b> System shutdown notifications
+
+<b>📅 Report Schedule:</b>
+• Daily performance reports sent at 12:00 UTC
+• Use /performance for real-time data anytime
+• Error alerts sent immediately when issues occur
+
+<b>🆘 Support:</b>
 • /help - Show this help message
+• All commands work 24/7
+• Bot responds to greetings
 
-<i>Running via systemd service.</i>
+<i>✅ System: Optimized for reduced message spam</i>
+<i>📊 Next daily report: Tomorrow 12:00 UTC</i>
 """
         await update.message.reply_text(help_text, parse_mode='HTML')
 

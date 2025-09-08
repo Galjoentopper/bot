@@ -35,6 +35,7 @@ yfinance>=0.2.18
 
 # Notifications
 python-telegram-bot>=20.0
+schedule>=1.2.0
 
 # Experiment tracking
 mlflow>=2.5.0
