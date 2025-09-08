@@ -77,6 +77,13 @@ class EnhancedSignalGenerator:
             "volatility_threshold_multiplier", 1.5
         )
 
+        # Portfolio optimization thresholds
+        portfolio_cfg = config.get("portfolio_optimization", {})
+        self.correlation_threshold = portfolio_cfg.get("correlation_threshold", 0.8)
+        self.correlation_min_scale = portfolio_cfg.get("correlation_min_scale", 0.5)
+        self.cash_min_pct = portfolio_cfg.get("cash_min_pct", 0.1)
+        self.cash_min_scale = portfolio_cfg.get("cash_min_scale", 0.5)
+
         # Risk management
         risk_config = config.get("risk_management", {})
         self.max_position_pct = risk_config.get("max_position_pct", 0.15)
@@ -749,17 +756,27 @@ class EnhancedSignalGenerator:
 
                 # For buy signals, apply portfolio constraints
                 if signal.action == "BUY":
-                    # Check correlation risk
+                    # Correlation-aware proportional scaling
                     correlation_risk = correlation_risks.get(symbol, 0.0)
-                    if correlation_risk > 0.8:  # High correlation
-                        # Reduce position size
-                        signal.quantity_pct *= 0.5
-                        signal.reasoning += f" (reduced due to correlation risk: {correlation_risk:.2f})"
+                    if correlation_risk > self.correlation_threshold:
+                        # Scale from 1.0 at threshold to correlation_min_scale at risk=1.0
+                        span = max(1e-6, 1.0 - self.correlation_threshold)
+                        over = min(1.0, max(0.0, correlation_risk - self.correlation_threshold))
+                        factor = 1.0 - (over / span) * (1.0 - self.correlation_min_scale)
+                        factor = max(self.correlation_min_scale, min(1.0, factor))
+                        signal.quantity_pct *= factor
+                        signal.reasoning += (
+                            f" (scaled for correlation risk: {correlation_risk:.2f} -> x{factor:.2f})"
+                        )
 
-                    # Check cash availability
-                    if current_cash_pct < 0.1:  # Less than 10% cash
-                        signal.quantity_pct *= 0.5
-                        signal.reasoning += " (reduced due to low cash)"
+                    # Cash availability scaling
+                    if current_cash_pct < self.cash_min_pct:
+                        cash_factor = max(
+                            self.cash_min_scale,
+                            current_cash_pct / max(self.cash_min_pct, 1e-6),
+                        )
+                        signal.quantity_pct *= cash_factor
+                        signal.reasoning += f" (scaled for low cash: x{cash_factor:.2f})"
 
                     # Only add if still significant
                     if signal.quantity_pct > 0.01:

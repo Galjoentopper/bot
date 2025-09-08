@@ -178,6 +178,11 @@ class EnhancedUnifiedPaperTrader:
                 self.logger.logger.info("Available models report:")
                 self.show_available_models()
                 raise ValueError("No symbols with available models found!")
+        
+        if show_available_mode and (not self.symbols or not self.model_types):
+            # In discovery mode, stop initialization early to avoid heavy setup
+            self.show_only_mode = True
+            return
         if not self.model_types:
             self.logger.logger.error("No available model types found!")
             if not show_available_mode:  # Only raise error if not just showing available models
@@ -3049,6 +3054,8 @@ async def main():
                        help='Specific symbols to trade (default: from config)')
     parser.add_argument('--interval', type=str, default=None,
                        help='Trading interval override (e.g., 30m)')
+    parser.add_argument('--show-available', action='store_true',
+                       help='Show available models/symbols and exit 0')
     
     args = parser.parse_args()
     
@@ -3075,7 +3082,26 @@ async def main():
     # Initialize and run enhanced trader
     trader = None  # predeclare for finally block
     try:
-        trader = EnhancedUnifiedPaperTrader(config_path=None, models_dir=args.models_dir, config=config)
+        trader = EnhancedUnifiedPaperTrader(
+            config_path=None,
+            models_dir=args.models_dir,
+            config=config,
+            show_available_mode=args.show_available,
+        )
+
+        if args.show_available:
+            # Build a structured report for CI/discovery
+            report = {
+                'models_dir': str(trader.models_dir),
+                'available_symbols': getattr(trader, 'symbols', []),
+                'available_model_types': getattr(trader, 'model_types', []),
+            }
+            try:
+                import json
+                print(json.dumps(report, indent=2))
+            except Exception:
+                print(report)
+            return
         
         # Enable enterprise monitoring if available
         trader.enable_enterprise_monitoring()
