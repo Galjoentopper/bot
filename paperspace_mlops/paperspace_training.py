@@ -31,6 +31,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 import psutil
 import yaml
 
@@ -384,6 +385,18 @@ class PaperspaceTraining:
 
             # Prepare data
             X, y, timestamps = task["dataset"]["data"]
+            
+            # Clean data: ensure X is numeric and handle any datetime issues
+            if hasattr(X, 'select_dtypes'):  # if X is DataFrame
+                # Keep only numeric columns
+                numeric_cols = X.select_dtypes(include=[np.number]).columns
+                X = X[numeric_cols].values
+            elif isinstance(X, np.ndarray):
+                # Ensure array is numeric
+                X = np.asarray(X, dtype=np.float32)
+            
+            # Ensure y is numeric
+            y = np.asarray(y, dtype=np.float32)
 
             # Train model
             model_path = self.models_dir / model_type / task["symbol"]
@@ -454,6 +467,24 @@ class PaperspaceTraining:
                     # Use runtime data which has original columns including 'close'
                     logger.info(f"Using runtime data for PPO with {len(runtime_data.columns)} columns")
                     df_data = runtime_data.copy()
+                    
+                    # Reset index to avoid datetime column issues
+                    if not isinstance(df_data.index, pd.RangeIndex):
+                        df_data = df_data.reset_index(drop=True)
+                    
+                    # Ensure all columns are numeric except target
+                    # First drop any datetime/string columns completely
+                    df_data = df_data.select_dtypes(include=[np.number])
+                    
+                    # Verify we still have 'close' column after filtering
+                    if 'close' not in df_data.columns:
+                        logger.warning("'close' column missing after numeric filtering, adding synthetic one")
+                        # Create synthetic close from first numeric column if available
+                        if len(df_data.columns) > 0:
+                            df_data['close'] = df_data.iloc[:, 0]  # Use first numeric column as proxy
+                        else:
+                            df_data['close'] = np.ones(len(df_data))  # Fallback constant values
+                    
                     df_data['target'] = y[:len(df_data)]
                 else:
                     # Fallback: create DataFrame from features and add synthetic 'close'
