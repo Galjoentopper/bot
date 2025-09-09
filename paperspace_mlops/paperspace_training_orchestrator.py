@@ -448,7 +448,7 @@ class PaperspaceOrchestrator:
                     dataset = dataset_builder.build_dataset(
                         symbol=symbol,
                         interval=self.config.get('data_acquisition', {}).get('interval', '30m'),
-                        use_cache=True
+                        use_cache=False  # Force fresh data for Paperspace
                     )
 
                     # Check if dataset is valid (more lenient requirements for Paperspace)
@@ -484,7 +484,7 @@ class PaperspaceOrchestrator:
                         dataset = dataset_builder.build_dataset(
                             symbol=symbol,
                             interval='1h',  # Try hourly data
-                            use_cache=True
+                            use_cache=False  # Force fresh data
                         )
                         
                         if dataset and isinstance(dataset, tuple) and len(dataset) >= 2:
