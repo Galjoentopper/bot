@@ -1,0 +1,84 @@
+{
+  "report_timestamp": "2025-09-09T04:30:26.747132",
+  "report_period": "2025-09-09 to 2025-09-09",
+  "performance_summary": {
+    "current_metrics": {
+      "timestamp": "2025-09-09T04:30:26.735251",
+      "total_return": 0.0,
+      "annualized_return": 0.0,
+      "volatility": 0.0,
+      "sharpe_ratio": 0.0,
+      "sortino_ratio": 0.0,
+      "max_drawdown": 0.0,
+      "current_drawdown": 0.0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "average_win": 0.0,
+      "average_loss": 0.0,
+      "total_trades": 0,
+      "winning_trades": 0,
+      "losing_trades": 0,
+      "portfolio_value": 10000.0,
+      "cash_balance": 10000.0,
+      "total_pnl": 0.0,
+      "realized_pnl": 0,
+      "unrealized_pnl": 0.0
+    },
+    "performance_grade": "F",
+    "risk_assessment": {
+      "volatility": "LOW",
+      "drawdown": "LOW",
+      "concentration": "LOW"
+    },
+    "improvement_suggestions": [
+      "Consider increasing position sizes or improving signal quality to boost returns",
+      "Focus on risk-adjusted returns by improving signal-to-noise ratio",
+      "Review entry criteria to improve win rate",
+      "Optimize profit-taking and loss-cutting strategies",
+      "Consider deploying excess cash to increase market exposure"
+    ],
+    "benchmark_comparison": {
+      "benchmark_return": 0.08,
+      "excess_return": -0.08,
+      "information_ratio": 0.0,
+      "outperformance": false
+    }
+  },
+  "symbol_analysis": {},
+  "time_analysis": {
+    "daily_stats": {
+      "mean_return": NaN,
+      "volatility": NaN,
+      "best_day": NaN,
+      "worst_day": NaN
+    },
+    "weekly_stats": {
+      "mean_return": NaN,
+      "volatility": NaN,
+      "best_week": NaN,
+      "worst_week": NaN
+    }
+  },
+  "risk_analysis": {
+    "value_at_risk_95": 0.0,
+    "value_at_risk_99": 0.0,
+    "expected_shortfall_95": 0.0,
+    "expected_shortfall_99": 0.0,
+    "volatility_percentile": 50.0,
+    "risk_adjusted_return": 0.0
+  },
+  "recommendations": [
+    {
+      "category": "Performance",
+      "priority": "HIGH",
+      "recommendation": "Improve Sharpe ratio from 0.00 to >1.5",
+      "action": "Review signal quality and position sizing"
+    },
+    {
+      "category": "Strategy",
+      "priority": "MEDIUM",
+      "recommendation": "Improve win rate from 0.0% to >50.0%",
+      "action": "Review entry criteria and market timing"
+    }
+  ]
+}

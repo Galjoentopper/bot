@@ -19,13 +19,18 @@ class SimpleDataFetcher:
     """Simple data fetcher that gets fresh data directly from sources"""
     
     def fetch_symbol_data(self, symbol: str, interval: str = "1h", days: int = 180) -> Optional[pd.DataFrame]:
-        """Fetch data from multiple sources with aggressive fallback"""
+        """Fetch data from multiple sources with aggressive fallback for geo-restricted environments"""
         
         logger.info(f"📊 Fetching {symbol} data ({interval}, {days} days)")
         
-        # Try multiple approaches for each symbol
+        # Prioritize geo-restriction friendly sources first
         methods = [
             ("yfinance", self._fetch_yfinance),
+            ("coingecko", self._fetch_coingecko),
+            ("yahoo_crypto", self._fetch_yahoo_crypto),
+            ("coinbase", self._fetch_coinbase),
+            ("kraken", self._fetch_kraken),
+            ("binance_proxy", self._fetch_binance_proxy),
             ("binance_eur", self._fetch_binance_eur),
             ("binance_usdt", self._fetch_binance_usdt),
             ("alternative_api", self._fetch_alternative_data)
@@ -207,6 +212,292 @@ class SimpleDataFetcher:
             logger.error(f"❌ Alternative method: {e}")
             
         return None
+    
+    def _fetch_coingecko(self, symbol: str, interval: str, days: int) -> Optional[pd.DataFrame]:
+        """Fetch from CoinGecko API (geo-restriction friendly)"""
+        try:
+            import requests
+            
+            # Map symbols to CoinGecko IDs
+            symbol_map = {
+                "BTCEUR": "bitcoin",
+                "ETHEUR": "ethereum", 
+                "ADAEUR": "cardano",
+                "DOTEUR": "polkadot",
+                "LINKEUR": "chainlink"
+            }
+            
+            if symbol not in symbol_map:
+                return None
+                
+            coin_id = symbol_map[symbol]
+            
+            # CoinGecko free tier allows up to 30 days of hourly data
+            url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+            params = {
+                "vs_currency": "eur",
+                "days": min(days, 30),
+                "interval": "hourly"
+            }
+            
+            response = requests.get(url, params=params, timeout=15)
+            
+            if response.status_code == 200:
+                data = response.json()
+                prices = data.get("prices", [])
+                volumes = data.get("total_volumes", [])
+                
+                if len(prices) > 15:
+                    # Convert to DataFrame
+                    df_data = []
+                    for i, (timestamp, price) in enumerate(prices):
+                        volume = volumes[i][1] if i < len(volumes) else 0
+                        df_data.append({
+                            'Datetime': pd.to_datetime(timestamp, unit='ms'),
+                            'Open': price,
+                            'High': price * 1.002,  # Estimate high/low from price
+                            'Low': price * 0.998,
+                            'Close': price,
+                            'Volume': volume
+                        })
+                    
+                    df = pd.DataFrame(df_data)
+                    df.set_index('Datetime', inplace=True)
+                    return df[['Open', 'High', 'Low', 'Close', 'Volume']]
+                    
+        except Exception as e:
+            logger.warning(f"CoinGecko fetch failed: {e}")
+        return None
+    
+    def _fetch_yahoo_crypto(self, symbol: str, interval: str, days: int) -> Optional[pd.DataFrame]:
+        """Fetch crypto data from Yahoo Finance with different symbol format"""
+        try:
+            import yfinance as yf
+            
+            # Convert to Yahoo crypto format
+            yahoo_symbol = symbol.replace("EUR", "-EUR") + "="
+            if symbol == "BTCEUR":
+                yahoo_symbol = "BTC-EUR"
+            elif symbol == "ETHEUR": 
+                yahoo_symbol = "ETH-EUR"
+            elif symbol == "ADAEUR":
+                yahoo_symbol = "ADA-EUR"
+            elif symbol == "DOTEUR":
+                yahoo_symbol = "DOT-EUR" 
+            elif symbol == "LINKEUR":
+                yahoo_symbol = "LINK-EUR"
+                
+            ticker = yf.Ticker(yahoo_symbol)
+            
+            # Calculate period
+            if days <= 30:
+                period = "1mo"
+            elif days <= 90:
+                period = "3mo"
+            else:
+                period = "6mo"
+            
+            hist = ticker.history(period=period, interval=interval)
+            if len(hist) > 15:
+                return hist[['Open', 'High', 'Low', 'Close', 'Volume']]
+                
+        except Exception as e:
+            logger.warning(f"Yahoo crypto fetch failed: {e}")
+        return None
+    
+    def _fetch_coinbase(self, symbol: str, interval: str, days: int) -> Optional[pd.DataFrame]:
+        """Fetch from Coinbase Pro API"""
+        try:
+            import requests
+            from datetime import datetime, timedelta
+            
+            # Map to Coinbase product IDs
+            coinbase_map = {
+                "BTCEUR": "BTC-EUR",
+                "ETHEUR": "ETH-EUR",
+                "ADAEUR": "ADA-EUR", 
+                "DOTEUR": "DOT-EUR",
+                "LINKEUR": "LINK-EUR"
+            }
+            
+            if symbol not in coinbase_map:
+                return None
+                
+            product_id = coinbase_map[symbol]
+            
+            # Coinbase granularity (seconds)
+            granularity_map = {
+                "1h": 3600,
+                "4h": 14400,
+                "1d": 86400
+            }
+            granularity = granularity_map.get(interval, 3600)
+            
+            end_time = datetime.utcnow()
+            start_time = end_time - timedelta(days=days)
+            
+            url = f"https://api.exchange.coinbase.com/products/{product_id}/candles"
+            params = {
+                "start": start_time.isoformat(),
+                "end": end_time.isoformat(), 
+                "granularity": granularity
+            }
+            
+            response = requests.get(url, params=params, timeout=15)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if len(data) > 15:
+                    # Coinbase format: [timestamp, low, high, open, close, volume]
+                    df_data = []
+                    for candle in data:
+                        df_data.append({
+                            'Datetime': pd.to_datetime(candle[0], unit='s'),
+                            'Open': candle[3],
+                            'High': candle[2], 
+                            'Low': candle[1],
+                            'Close': candle[4],
+                            'Volume': candle[5]
+                        })
+                    
+                    df = pd.DataFrame(df_data)
+                    df.set_index('Datetime', inplace=True)
+                    df = df.sort_index()
+                    return df[['Open', 'High', 'Low', 'Close', 'Volume']]
+                    
+        except Exception as e:
+            logger.warning(f"Coinbase fetch failed: {e}")
+        return None
+    
+    def _fetch_kraken(self, symbol: str, interval: str, days: int) -> Optional[pd.DataFrame]:
+        """Fetch from Kraken API"""
+        try:
+            import requests
+            
+            # Map to Kraken pairs
+            kraken_map = {
+                "BTCEUR": "XBTEUR",
+                "ETHEUR": "ETHEUR",
+                "ADAEUR": "ADAEUR",
+                "DOTEUR": "DOTEUR", 
+                "LINKEUR": "LINKEUR"
+            }
+            
+            if symbol not in kraken_map:
+                return None
+                
+            pair = kraken_map[symbol]
+            
+            # Kraken interval mapping
+            interval_map = {
+                "1h": 60,
+                "4h": 240,
+                "1d": 1440
+            }
+            kraken_interval = interval_map.get(interval, 60)
+            
+            url = "https://api.kraken.com/0/public/OHLC"
+            params = {
+                "pair": pair,
+                "interval": kraken_interval
+            }
+            
+            response = requests.get(url, params=params, timeout=15)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if "result" in data and pair in data["result"]:
+                    ohlc_data = data["result"][pair]
+                    if len(ohlc_data) > 15:
+                        df_data = []
+                        for candle in ohlc_data:
+                            df_data.append({
+                                'Datetime': pd.to_datetime(candle[0], unit='s'),
+                                'Open': float(candle[1]),
+                                'High': float(candle[2]),
+                                'Low': float(candle[3]), 
+                                'Close': float(candle[4]),
+                                'Volume': float(candle[6])
+                            })
+                        
+                        df = pd.DataFrame(df_data)
+                        df.set_index('Datetime', inplace=True)
+                        return df[['Open', 'High', 'Low', 'Close', 'Volume']]
+                        
+        except Exception as e:
+            logger.warning(f"Kraken fetch failed: {e}")
+        return None
+    
+    def _fetch_binance_proxy(self, symbol: str, interval: str, days: int) -> Optional[pd.DataFrame]:
+        """Fetch from Binance using proxy servers to bypass geo-restrictions"""
+        try:
+            import requests
+            
+            # Free proxy list - rotate through different ones
+            proxy_urls = [
+                "https://api.binance.us/api/v3/klines",  # US version
+                "https://dapi.binance.com/dapi/v1/klines",  # Futures API (different endpoint)
+                "https://api1.binance.com/api/v3/klines",  # Alternative mirror
+                "https://api2.binance.com/api/v3/klines",  # Alternative mirror
+                "https://api3.binance.com/api/v3/klines"   # Alternative mirror
+            ]
+            
+            for proxy_url in proxy_urls:
+                try:
+                    params = {
+                        "symbol": symbol,
+                        "interval": interval,
+                        "limit": min(days * 24 if "h" in interval else days, 1000)
+                    }
+                    
+                    # Try with different headers to avoid detection
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'Accept': 'application/json',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Cache-Control': 'no-cache'
+                    }
+                    
+                    response = requests.get(proxy_url, params=params, headers=headers, timeout=15)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        if len(data) > 15:
+                            return self._process_binance_data(data)
+                            
+                except Exception as e:
+                    logger.debug(f"Proxy {proxy_url} failed: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.warning(f"Binance proxy fetch failed: {e}")
+        return None
+    
+    def _process_binance_data(self, data) -> pd.DataFrame:
+        """Process Binance API response into DataFrame"""
+        df = pd.DataFrame(data, columns=[
+            'timestamp', 'open', 'high', 'low', 'close', 'volume',
+            'close_time', 'quote_asset_volume', 'number_of_trades',
+            'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
+        ])
+        
+        # Convert types
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            df[col] = pd.to_numeric(df[col])
+        
+        # Rename columns to match expected format
+        df = df.rename(columns={
+            'timestamp': 'Datetime',
+            'open': 'Open',
+            'high': 'High', 
+            'low': 'Low',
+            'close': 'Close',
+            'volume': 'Volume'
+        })
+        
+        df.set_index('Datetime', inplace=True)
+        return df[['Open', 'High', 'Low', 'Close', 'Volume']]
     
     def build_simple_dataset(self, symbol: str, interval: str = "1h") -> Optional[Tuple]:
         """Build a simple dataset with basic features"""
