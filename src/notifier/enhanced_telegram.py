@@ -50,6 +50,7 @@ class EnhancedTelegramNotifier:
             "/start": self._cmd_start,
             "/stop": self._cmd_stop,
             "/restart": self._cmd_restart,
+            "/database": self._cmd_database,
             "/performance": self._cmd_performance,
             "/health": self._cmd_health,
             "/balance": self._cmd_balance,
@@ -92,6 +93,255 @@ class EnhancedTelegramNotifier:
         else:
             logger.warning(f"Unknown command: {cmd}")
             return "Unknown command. Available: /status, /start, /stop, /restart, /performance, /health, /balance, /trades, /logs, /config"
+
+    async def _cmd_database(self, args: List[str]) -> str:
+        """Start database refresh workflow.
+
+        Usage examples:
+        - /database
+        - /database BTCEUR,ETHEUR 30m
+        - /database --dry-run
+        - /database BTCEUR --branch=main
+        """
+        try:
+            full_text = (args[0] if args else "/database").strip()
+
+            # Defaults from training_config.yaml if available
+            symbols: List[str] = []
+            interval: str = "30m"
+            dry_run = False
+            git_branch: Optional[str] = None
+
+            # Load config
+            try:
+                import yaml
+                cfg_path = Path("training_config.yaml")
+                if cfg_path.exists():
+                    with open(cfg_path, "r") as f:
+                        cfg = yaml.safe_load(f) or {}
+                    # Accept either plain list or nested
+                    symbols_cfg = cfg.get("symbols") or cfg.get("trading", {}).get("symbols")
+                    if isinstance(symbols_cfg, list):
+                        symbols = [str(s).strip().upper() for s in symbols_cfg]
+                    interval_cfg = cfg.get("interval") or cfg.get("trading", {}).get("interval")
+                    if interval_cfg:
+                        interval = str(interval_cfg).strip()
+            except Exception as e:
+                logger.warning(f"Failed to read training_config.yaml: {e}")
+
+            # Parse inline arguments
+            if full_text and full_text.lower().startswith("/database"):
+                parts = full_text.split()
+                # parts[0] == /database; parse flags and optional tokens
+                for p in parts[1:]:
+                    if p.startswith("--dry-run"):
+                        dry_run = True
+                    elif p.startswith("--branch="):
+                        git_branch = p.split("=", 1)[1]
+                    elif "," in p or p.isalpha():
+                        # Likely symbols list like "BTCEUR,ETHEUR" or a single symbol token
+                        cand = [s.strip().upper() for s in p.split(",") if s.strip()]
+                        # Heuristic: tokens like "30m"/"1h" are interval, not symbol
+                        if all(len(s) >= 5 and s[-3:].upper() in ("EUR", "USD", "USDT") for s in cand):
+                            symbols = cand
+                        else:
+                            # If looks like interval (e.g., 15m/1h), set interval
+                            if p.lower().endswith(("m", "h", "d")) and p[:-1].isdigit():
+                                interval = p.lower()
+                    elif p.lower().endswith(("m", "h", "d")) and p[:-1].isdigit():
+                        interval = p.lower()
+
+            # Fallback to default symbols if still empty
+            if not symbols:
+                symbols = ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
+
+            # Kick off background task
+            asyncio.create_task(self._run_database_refresh(symbols, interval, dry_run=dry_run, git_branch=git_branch))
+
+            sym_preview = ",".join(symbols[:4]) + ("…" if len(symbols) > 4 else "")
+            return (
+                f"🗄️ <b>Database Refresh Started</b>\n\n"
+                f"Symbols: {sym_preview}\nInterval: {interval}\n"
+                f"Mode: {'dry-run' if dry_run else 'live'}\n"
+                f"I will notify here when finished."
+            )
+        except Exception as e:
+            logger.error(f"Database command failed to start: {e}", exc_info=True)
+            return f"❌ Failed to start database refresh: {e}"
+
+    async def _run_database_refresh(self, symbols: List[str], interval: str, dry_run: bool = False, git_branch: Optional[str] = None) -> None:
+        """Background workflow to rebuild DBs, push to Git, and notify via Telegram."""
+        start_ts = datetime.now()
+        log_dir = Path("logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"database_refresh_{start_ts.strftime('%Y%m%d_%H%M%S')}.log"
+
+        def log_line(msg: str):
+            logger.info(msg)
+            try:
+                with open(log_path, "a") as f:
+                    f.write(f"{datetime.now().isoformat()} {msg}\n")
+            except Exception:
+                pass
+
+        try:
+            log_line(f"Starting DB refresh for {len(symbols)} symbols at {interval}; dry_run={dry_run}")
+
+            # Stop trading before rebuild
+            if not dry_run:
+                try:
+                    proc = await asyncio.create_subprocess_shell(
+                        "/opt/trading_bot/bot/scripts/tmux_manager.sh stop",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    log_line("Trading system stopped")
+                except Exception as e:
+                    log_line(f"Warning: failed to stop trading cleanly: {e}")
+
+            # Backup and remove old DBs (skip in dry-run)
+            data_dir = Path("data")
+            data_dir.mkdir(exist_ok=True)
+            if not dry_run:
+                tsdir = Path("data/backups") / start_ts.strftime("%Y%m%d_%H%M%S")
+                tsdir.mkdir(parents=True, exist_ok=True)
+                removed: List[str] = []
+                for sym in symbols:
+                    db_file = data_dir / f"{sym.lower()}_{interval.lower()}.db"
+                    if db_file.exists():
+                        try:
+                            backup_path = tsdir / db_file.name
+                            db_file.replace(backup_path)
+                            removed.append(db_file.name)
+                            log_line(f"Backed up {db_file} -> {backup_path}")
+                        except Exception as e:
+                            log_line(f"Failed to backup {db_file}: {e}")
+
+                if removed:
+                    log_line(f"Backed up and removed: {', '.join(removed)}")
+            else:
+                log_line("Dry-run: Skipping backup and removal of existing DBs")
+
+            # Rebuild databases unless dry-run
+            from src.data_pipeline.db_builder import rebuild_databases
+
+            results = {"success": [], "failed": []}
+            if not dry_run:
+                try:
+                    await rebuild_databases(symbols, interval, data_dir=str(data_dir), log_cb=log_line)
+                    results["success"] = symbols[:]
+                except Exception as e:
+                    # If builder returns partial results in exception message, just log
+                    log_line(f"Error during rebuild: {e}")
+                    results["failed"] = symbols[:]
+            else:
+                log_line("Dry-run: Skipping actual rebuild")
+
+            # Commit and push to GitHub
+            commit_sha = ""
+            if not dry_run:
+                try:
+                    # Optional: switch branch
+                    if git_branch:
+                        proc = await asyncio.create_subprocess_shell(
+                            f"git checkout {git_branch}",
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
+                        )
+                        await proc.communicate()
+
+                    # Ensure we are up to date to avoid push rejects
+                    proc = await asyncio.create_subprocess_shell(
+                        "git fetch --all --prune",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+
+                    proc = await asyncio.create_subprocess_shell(
+                        "git -c rebase.autoStash=true pull --rebase || true",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+
+                    proc = await asyncio.create_subprocess_shell(
+                        "git add -f data/*.db",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+
+                    proc = await asyncio.create_subprocess_shell(
+                        "git diff --cached --quiet || git commit -m 'Refresh databases via /database' --no-verify",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+
+                    # Capture commit SHA for latest commit
+                    proc = await asyncio.create_subprocess_shell(
+                        "git rev-parse --short HEAD",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    stdout, _ = await proc.communicate()
+                    commit_sha = (stdout.decode().strip() or "").strip()
+
+                    proc = await asyncio.create_subprocess_shell(
+                        "git push",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    push_out, push_err = await proc.communicate()
+                    log_line(f"git push exit={proc.returncode} out={push_out.decode().strip()} err={push_err.decode().strip()}")
+                except Exception as e:
+                    log_line(f"Git push failed: {e}")
+
+            # Restart trading
+            if not dry_run:
+                try:
+                    proc = await asyncio.create_subprocess_shell(
+                        "/opt/trading_bot/bot/scripts/tmux_manager.sh start",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    log_line("Trading system restarted")
+                except Exception as e:
+                    log_line(f"Warning: failed to start trading: {e}")
+
+            duration_m = int((datetime.now() - start_ts).total_seconds() // 60)
+            success_n = len(results.get("success", []))
+            total_n = len(symbols)
+            failed = results.get("failed", [])
+
+            message = (
+                f"🗄️ <b>Database Refresh Completed</b>\n\n"
+                f"Symbols: {success_n}/{total_n} ok\n"
+                f"Interval: {interval}\n"
+                f"Commit: {commit_sha or 'n/a'}\n"
+                f"Duration: ~{duration_m} min\n"
+            )
+            if failed:
+                message += f"\n❌ Failed: {', '.join(failed)}\n"
+            message += f"\nLog: {log_path}"
+
+            try:
+                await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode="HTML")
+            except TelegramError as te:
+                logger.error(f"Failed to send completion message: {te}")
+        except Exception as e:
+            logger.error(f"Database refresh workflow failed: {e}", exc_info=True)
+            try:
+                await self.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=f"❌ Database refresh failed: {e}",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
 
     async def _cmd_status(self, args: List[str]) -> str:
         """Get system status."""

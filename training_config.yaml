@@ -7,6 +7,7 @@ data_acquisition:
   symbols: ['BTCEUR', 'ETHEUR', 'ADAEUR', 'DOTEUR', 'LINKEUR']
   interval: '30m'
   lookback_days: 365
+  use_local_databases: true
   data_sources:
     primary: 'binance'
     fallback: 'yfinance'
@@ -17,6 +18,7 @@ data_acquisition:
 training:
   # Model types to train
   models: ['gru', 'lightgbm', 'ppo']
+  random_seed: 42
 
   # Cross-validation settings
   validation_split: 0.2

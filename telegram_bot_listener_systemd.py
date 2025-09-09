@@ -84,6 +84,7 @@ class TelegramBotListener:
             ("start", self._cmd_start),
             ("stop", self._cmd_stop),
             ("restart", self._cmd_restart),
+            ("database", self._cmd_database),
             ("performance", self._cmd_performance),
             ("health", self._cmd_health),
             ("balance", self._cmd_balance),
@@ -131,6 +132,17 @@ class TelegramBotListener:
         except Exception as e:
             logger.error(f"Restart command error: {e}")
             await update.message.reply_text("❌ Error restarting system", parse_mode="HTML")
+
+    async def _cmd_database(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /database command to rebuild and push databases."""
+        try:
+            # Pass full text so notifier can parse args
+            text = update.message.text or "/database"
+            response = await self.enhanced_notifier._cmd_database([text])
+            await update.message.reply_text(response, parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Database command error: {e}")
+            await update.message.reply_text("❌ Error starting database refresh", parse_mode="HTML")
 
     async def _cmd_performance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /performance command."""
@@ -201,6 +213,7 @@ class TelegramBotListener:
 • /health - System health & resource usage ✅
 • /balance - Current account balance & P&L ✅
 • /trades - View recent trades (last 10) ✅
+• /database - Rebuild and push databases ✅
 
 <b>🔧 System Information:</b>
 • /logs - View recent system logs ✅

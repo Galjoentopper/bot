@@ -86,6 +86,25 @@ export AWS_ACCESS_KEY_ID="your-access-key"
 export AWS_SECRET_ACCESS_KEY="your-secret-key"
 ```
 
+## 📚 Use Local Databases (No Fetch)
+
+If your Paperspace environment cannot fetch market data, the orchestrator can use existing SQLite databases from the repository instead of downloading:
+
+- Place databases under the repo `data/` folder (e.g., `/notebooks/bot/data/btceur_30m.db`).
+- Enable in `training_config.yaml`:
+
+```yaml
+data_acquisition:
+  use_local_databases: true
+  symbols: ['BTCEUR','ETHEUR','ADAEUR','DOTEUR','LINKEUR']
+  interval: '30m'
+```
+
+When enabled on Paperspace, the orchestrator will:
+- Preserve `data/*.db` (no aggressive cleanup of DBs)
+- Load datasets strictly from local DBs (no network fetch fallbacks)
+- Cache engineered features under `models/metadata/`
+
 ## 🏗️ Architecture
 
 ### Paperspace Training Pipeline

@@ -86,6 +86,9 @@ class PaperspaceOrchestrator:
         # Load configuration
         self.config = self._load_config()
 
+        # Set deterministic seeds early
+        self._set_global_seeds()
+
         # Pipeline state
         self.pipeline_state = {
             "start_time": self.start_time,
@@ -99,10 +102,23 @@ class PaperspaceOrchestrator:
         # Paths
         if IS_PAPERSPACE:
             self.workspace_dir = Path("/notebooks")
+            self.repo_dir = Path("/notebooks/bot")
         else:
             self.workspace_dir = Path(".")
+            self.repo_dir = Path(".")
 
-        self.data_dir = self.workspace_dir / "data"
+        # Preference: use local repo databases on Paperspace if enabled
+        # Prefer local DBs by default on Paperspace unless explicitly disabled
+        cfg_val = (
+            self.config.get("data_acquisition", {}).get("use_local_databases")
+            if isinstance(self.config, dict)
+            else None
+        )
+        self.use_local_databases: bool = bool(cfg_val) if cfg_val is not None else IS_PAPERSPACE
+        if IS_PAPERSPACE and self.use_local_databases:
+            self.data_dir = self.repo_dir / "data"
+        else:
+            self.data_dir = self.workspace_dir / "data"
         self.models_dir = self.workspace_dir / "models"
         self.export_dir = self.workspace_dir / "exports"
         self.logs_dir = self.workspace_dir / "logs"
@@ -134,6 +150,63 @@ class PaperspaceOrchestrator:
         self.logger.info(f"🚀 Paperspace Training Orchestrator initialized")
         self.logger.info(f"📁 Workspace: {self.workspace_dir}")
         self.logger.info(f"⏰ Max runtime: {self.max_runtime_hours} hours")
+
+    def _set_global_seeds(self) -> None:
+        """Set global random seeds for reproducibility across libs."""
+        try:
+            import os as _os
+            import random as _random
+            import numpy as _np
+
+            seed = 42
+            try:
+                seed = int(
+                    (self.config or {}).get("training", {}).get("random_seed", 42)
+                )
+            except Exception:
+                seed = 42
+
+            _os.environ["PYTHONHASHSEED"] = str(seed)
+            try:
+                _random.seed(seed)
+            except Exception:
+                pass
+            try:
+                _np.random.seed(seed)
+            except Exception:
+                pass
+
+            # Optional: PyTorch
+            try:
+                import torch as _torch
+
+                _torch.manual_seed(seed)
+                if _torch.cuda.is_available():
+                    _torch.cuda.manual_seed_all(seed)
+                try:
+                    _torch.use_deterministic_algorithms(True)
+                except Exception:
+                    pass
+                try:
+                    import torch.backends.cudnn as _cudnn
+
+                    _cudnn.deterministic = True
+                    _cudnn.benchmark = False
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+            # Optional: LightGBM (set env/config hints)
+            try:
+                import os as __os
+                __os.environ.setdefault("LIGHTGBM_RAND_SEED", str(seed))
+            except Exception:
+                pass
+
+            self.logger.info(f"🎯 Set global random seed: {seed}")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Failed to set global seeds: {e}")
 
     def _create_basic_config(self) -> str:
         """Create a basic configuration file for Paperspace"""
@@ -193,7 +266,7 @@ class PaperspaceOrchestrator:
         return config_path
 
     def _clean_old_data(self):
-        """Aggressively clean ALL old data and cache files to force fresh data"""
+        """Clean caches and artifacts. Preserve local DBs when use_local_databases is True."""
 
         self.logger.info("🧹 AGGRESSIVE CLEANUP: Removing ALL cached data...")
 
@@ -201,21 +274,31 @@ class PaperspaceOrchestrator:
             import shutil
             import time
 
-            # More comprehensive directory cleaning
+            # Define directories to clean; preserve data DBs if requested
             clean_dirs = [
-                self.data_dir,
-                self.data_dir / "cache",
                 self.models_dir / "metadata",
                 self.workspace_dir / "models" / "metadata",
-                Path("./data"),
-                Path("./data/cache"),
-                Path("./models"),
                 Path("./models/metadata"),
-                Path("/notebooks/data"),
-                Path("/notebooks/models"),
-                Path("/notebooks/bot/data"),
-                Path("/notebooks/bot/models"),
+                Path("/notebooks/models/metadata"),
             ]
+            # Always clean cache folders
+            cache_dirs = [
+                self.data_dir / "cache",
+                Path("./data/cache"),
+                self.workspace_dir / "data" / "cache",
+                self.repo_dir / "data" / "cache",
+            ]
+            clean_dirs.extend(cache_dirs)
+            # Only clean entire data dirs if NOT preserving local databases
+            if not self.use_local_databases:
+                clean_dirs.extend(
+                    [
+                        self.data_dir,
+                        Path("./data"),
+                        Path("/notebooks/data"),
+                        self.repo_dir / "data",
+                    ]
+                )
 
             files_removed = 0
             dirs_removed = 0
@@ -277,8 +360,6 @@ class PaperspaceOrchestrator:
                 self.data_dir,
                 self.data_dir / "cache",
                 self.models_dir / "metadata",
-                self.workspace_dir / "data",
-                self.workspace_dir / "data" / "cache",
             ]
             for essential_dir in essential_dirs:
                 essential_dir.mkdir(parents=True, exist_ok=True)
@@ -554,7 +635,7 @@ class PaperspaceOrchestrator:
         os.environ["MLFLOW_TRACKING_URI"] = f"file://{mlflow_dir}"
 
     def fetch_and_prepare_data(self) -> Dict[str, Any]:
-        """Intelligent data fetching with caching"""
+        """Prepare data. If use_local_databases=True, load strictly from existing DBs without network fetchers."""
 
         self.update_pipeline_state("data_preparation", "started")
 
@@ -563,7 +644,7 @@ class PaperspaceOrchestrator:
             interval = self.config["data_acquisition"]["interval"]
             lookback_days = self.config["data_acquisition"]["lookback_days"]
 
-            self.logger.info(f"📊 Fetching data for {len(symbols)} symbols")
+            self.logger.info(f"📊 Preparing data for {len(symbols)} symbols")
             self.logger.info(f"📈 Interval: {interval}, Lookback: {lookback_days} days")
 
             # Use existing DatasetBuilder with smart caching
@@ -579,181 +660,64 @@ class PaperspaceOrchestrator:
             datasets = {}
             failed_symbols = []
 
-            for symbol in symbols:
-                try:
-                    self.logger.info(f"📊 Processing {symbol}...")
-                    self.logger.info(f"  🔄 FORCING FRESH DATA (use_cache=False)")
-
-                    import time
-
-                    start_time = time.time()
-
-                    dataset = dataset_builder.build_dataset(
-                        symbol=symbol,
-                        interval=self.config.get("data_acquisition", {}).get("interval", "30m"),
-                        use_cache=False,  # Force fresh data for Paperspace
-                    )
-
-                    fetch_time = time.time() - start_time
-                    self.logger.info(f"  ⏱️ Data fetch took: {fetch_time:.2f} seconds")
-
-                    if fetch_time < 2.0:
-                        self.logger.warning(
-                            f"  ⚠️ SUSPICIOUSLY FAST! ({fetch_time:.2f}s) - might be using cache!"
+            if self.use_local_databases:
+                self.logger.info("📦 Using existing local databases in data/; no network fetch.")
+                for symbol in symbols:
+                    try:
+                        self.logger.info(f"📥 Loading local DB for {symbol}...")
+                        dataset = dataset_builder.build_dataset(
+                            symbol=symbol,
+                            interval=interval,
+                            use_cache=True,
                         )
-
-                    # Check if dataset is valid (more lenient requirements for Paperspace)
-                    if dataset is not None:
-                        # Unpack the tuple returned by build_dataset
-                        if isinstance(dataset, tuple) and len(dataset) >= 2:
+                        if dataset and isinstance(dataset, tuple) and len(dataset) >= 2:
+                            X, _y = dataset[0], dataset[1]
+                            self.logger.info(f"✅ {symbol}: {len(X)} samples (from DB)")
+                            datasets[symbol] = dataset
+                        else:
+                            failed_symbols.append(symbol)
+                            self.logger.warning(f"⚠️ {symbol}: Invalid dataset format from DB")
+                    except Exception as e:
+                        failed_symbols.append(symbol)
+                        self.logger.error(f"❌ {symbol}: {e}")
+                if not datasets:
+                    raise RuntimeError(
+                        "No datasets created from local databases. Ensure data/*.db exist in the repo."
+                    )
+            else:
+                # Original behavior: allow fetching with fallbacks
+                for symbol in symbols:
+                    try:
+                        self.logger.info(f"📊 Processing {symbol}...")
+                        self.logger.info(f"  🔄 FORCING FRESH DATA (use_cache=False)")
+                        import time
+                        start_time = time.time()
+                        dataset = dataset_builder.build_dataset(
+                            symbol=symbol,
+                            interval=self.config.get("data_acquisition", {}).get("interval", "30m"),
+                            use_cache=False,
+                        )
+                        fetch_time = time.time() - start_time
+                        self.logger.info(f"  ⏱️ Data fetch took: {fetch_time:.2f} seconds")
+                        if dataset is not None and isinstance(dataset, tuple) and len(dataset) >= 2:
                             X, y = dataset[0], dataset[1]
-                            if len(X) > 100:  # Much lower requirement for Paperspace
+                            if len(X) > 100:
                                 datasets[symbol] = dataset
                                 self.logger.info(f"✅ {symbol}: {len(X)} samples")
                             else:
                                 failed_symbols.append(symbol)
-                                self.logger.warning(
-                                    f"⚠️ {symbol}: Only {len(X)} samples (need >100)"
-                                )
+                                self.logger.warning(f"⚠️ {symbol}: Only {len(X)} samples (need >100)")
                         else:
                             failed_symbols.append(symbol)
-                            self.logger.warning(f"⚠️ {symbol}: Invalid dataset format")
-                    else:
+                            self.logger.warning(f"⚠️ {symbol}: Invalid or empty dataset")
+                    except Exception as e:
                         failed_symbols.append(symbol)
-                        self.logger.warning(f"⚠️ {symbol}: No data returned")
-
-                except Exception as e:
-                    failed_symbols.append(symbol)
-                    self.logger.error(f"❌ {symbol}: {str(e)}")
-
-            if not datasets:
-                self.logger.error("❌ No valid datasets could be created")
-                self.logger.info("🔧 Trying with reduced requirements...")
-
-                # Try again with even more lenient requirements
-                for symbol in failed_symbols[:]:  # Copy list to modify during iteration
-                    try:
-                        self.logger.info(f"🔄 Retrying {symbol} with minimal requirements...")
-                        dataset = dataset_builder.build_dataset(
-                            symbol=symbol,
-                            interval="1h",  # Try hourly data
-                            use_cache=False,  # Force fresh data
-                        )
-
-                        if dataset and isinstance(dataset, tuple) and len(dataset) >= 2:
-                            X, y = dataset[0], dataset[1]
-                            if len(X) > 50:  # Very minimal requirement
-                                datasets[symbol] = dataset
-                                failed_symbols.remove(symbol)
-                                self.logger.info(f"✅ {symbol}: {len(X)} samples (hourly)")
-                                break  # At least one symbol works
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ {symbol} retry failed: {e}")
-
-                # Final fallback: Use simple data fetcher for ALL symbols
-                if not datasets:
-                    self.logger.info(
-                        "🔄 Final fallback: Using simple data fetcher for ALL symbols..."
-                    )
-                    fetcher = None
-
-                    # Try different import methods
-                    try:
-                        from simple_data_fetcher import SimpleDataFetcher
-
-                        fetcher = SimpleDataFetcher()
-                        self.logger.info("✅ Imported SimpleDataFetcher (direct import)")
-                    except ImportError:
-                        try:
-                            from .simple_data_fetcher import SimpleDataFetcher
-
-                            fetcher = SimpleDataFetcher()
-                            self.logger.info("✅ Imported SimpleDataFetcher (relative import)")
-                        except ImportError:
-                            try:
-                                # Try importing from the same directory
-                                import importlib.util
-
-                                fetcher_path = Path(__file__).parent / "simple_data_fetcher.py"
-                                if fetcher_path.exists():
-                                    spec = importlib.util.spec_from_file_location(
-                                        "simple_data_fetcher", fetcher_path
-                                    )
-                                    module = importlib.util.module_from_spec(spec)
-                                    spec.loader.exec_module(module)
-                                    fetcher = module.SimpleDataFetcher()
-                                    self.logger.info("✅ Imported SimpleDataFetcher (file import)")
-                            except Exception as e:
-                                self.logger.error(f"❌ Could not import SimpleDataFetcher: {e}")
-
-                    if fetcher:
-                        # Try ALL 5 symbols with simple fetcher
-                        all_symbols = ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
-                        for symbol in all_symbols:
-                            try:
-                                self.logger.info(f"🌐 Simple fetch for {symbol}...")
-                                dataset = fetcher.build_simple_dataset(symbol, interval="1h")
-
-                                if dataset and len(dataset[0]) > 15:  # Lowered threshold
-                                    datasets[symbol] = dataset
-                                    self.logger.info(
-                                        f"✅ Simple fetch {symbol}: {len(dataset[0])} samples"
-                                    )
-                                else:
-                                    self.logger.warning(f"⚠️ {symbol}: Dataset too small or None")
-                            except Exception as e:
-                                self.logger.error(f"❌ Simple fetch {symbol} failed: {e}")
-
-                        self.logger.info(
-                            f"📊 Simple fetcher results: {len(datasets)}/5 symbols successful"
-                        )
-                    else:
-                        self.logger.error("❌ Simple data fetcher not available")
-
-                # If simple fetcher got some but not all, try the failed ones again with different intervals
-                if len(datasets) > 0 and len(datasets) < 5:
-                    missing_symbols = [
-                        s
-                        for s in ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
-                        if s not in datasets
-                    ]
-                    self.logger.info(
-                        f"🔄 Retrying {len(missing_symbols)} missing symbols with different approaches..."
-                    )
-
-                    try:
-                        # Use the fetcher variable if already available
-                        if "fetcher" not in locals() or fetcher is None:
-                            from simple_data_fetcher import SimpleDataFetcher
-
-                            fetcher = SimpleDataFetcher()
-
-                        for symbol in missing_symbols:
-                            # Try different intervals
-                            for interval in ["1d", "4h", "2h"]:
-                                try:
-                                    self.logger.info(
-                                        f"🔄 Trying {symbol} with {interval} interval..."
-                                    )
-                                    dataset = fetcher.build_simple_dataset(
-                                        symbol, interval=interval
-                                    )
-
-                                    if dataset and len(dataset[0]) > 15:  # Even lower requirement
-                                        datasets[symbol] = dataset
-                                        self.logger.info(
-                                            f"✅ {symbol} ({interval}): {len(dataset[0])} samples"
-                                        )
-                                        break
-                                except Exception as e:
-                                    self.logger.warning(f"⚠️ {symbol} {interval}: {e}")
-                    except Exception as e:
-                        self.logger.error(f"❌ Retry failed: {e}")
+                        self.logger.error(f"❌ {symbol}: {str(e)}")
 
                 if not datasets:
-                    raise RuntimeError(
-                        "No valid datasets could be created even with simple fetcher"
-                    )
+                    self.logger.error("❌ No valid datasets could be created")
+                    self.logger.info("🔧 Skipping network fetchers here per current branch logic")
+                    raise RuntimeError("No datasets; consider enabling network fetchers or provide local DBs")
 
             # Update config to only include successful symbols
             self.config["data_acquisition"]["symbols"] = list(datasets.keys())
