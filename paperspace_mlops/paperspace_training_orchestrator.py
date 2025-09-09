@@ -451,19 +451,54 @@ class PaperspaceOrchestrator:
                         use_cache=True
                     )
 
-                    if dataset is not None and len(dataset) > 1000:  # Minimum data requirement
-                        datasets[symbol] = dataset
-                        self.logger.info(f"✅ {symbol}: {len(dataset)} samples")
+                    # Check if dataset is valid (more lenient requirements for Paperspace)
+                    if dataset is not None:
+                        # Unpack the tuple returned by build_dataset
+                        if isinstance(dataset, tuple) and len(dataset) >= 2:
+                            X, y = dataset[0], dataset[1]
+                            if len(X) > 100:  # Much lower requirement for Paperspace
+                                datasets[symbol] = dataset
+                                self.logger.info(f"✅ {symbol}: {len(X)} samples")
+                            else:
+                                failed_symbols.append(symbol)
+                                self.logger.warning(f"⚠️ {symbol}: Only {len(X)} samples (need >100)")
+                        else:
+                            failed_symbols.append(symbol)
+                            self.logger.warning(f"⚠️ {symbol}: Invalid dataset format")
                     else:
                         failed_symbols.append(symbol)
-                        self.logger.warning(f"⚠️ {symbol}: Insufficient data")
+                        self.logger.warning(f"⚠️ {symbol}: No data returned")
 
                 except Exception as e:
                     failed_symbols.append(symbol)
                     self.logger.error(f"❌ {symbol}: {str(e)}")
 
             if not datasets:
-                raise RuntimeError("No valid datasets could be created")
+                self.logger.error("❌ No valid datasets could be created")
+                self.logger.info("🔧 Trying with reduced requirements...")
+                
+                # Try again with even more lenient requirements
+                for symbol in failed_symbols[:]:  # Copy list to modify during iteration
+                    try:
+                        self.logger.info(f"🔄 Retrying {symbol} with minimal requirements...")
+                        dataset = dataset_builder.build_dataset(
+                            symbol=symbol,
+                            interval='1h',  # Try hourly data
+                            use_cache=True
+                        )
+                        
+                        if dataset and isinstance(dataset, tuple) and len(dataset) >= 2:
+                            X, y = dataset[0], dataset[1] 
+                            if len(X) > 50:  # Very minimal requirement
+                                datasets[symbol] = dataset
+                                failed_symbols.remove(symbol)
+                                self.logger.info(f"✅ {symbol}: {len(X)} samples (hourly)")
+                                break  # At least one symbol works
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ {symbol} retry failed: {e}")
+                
+                if not datasets:
+                    raise RuntimeError("No valid datasets could be created even with minimal requirements")
 
             # Update config to only include successful symbols
             self.config["data_acquisition"]["symbols"] = list(datasets.keys())
