@@ -128,7 +128,7 @@ class PaperspaceSetup:
         # Core ML packages
         core_packages = [
             "torch>=2.0.0",
-            "sklearn",
+            "scikit-learn",
             "lightgbm",
             "stable-baselines3[extra]",
             "gymnasium",
