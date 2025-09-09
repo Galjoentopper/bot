@@ -95,7 +95,7 @@ class DataLoader:
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
 
-        query += " ORDER BY timestamp"
+        query += " ORDER BY datetime"
 
         if limit:
             query += f" DESC LIMIT {limit}"

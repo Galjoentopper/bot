@@ -391,10 +391,34 @@ class PaperspaceTraining:
 
             # Call train method with appropriate signature for each model type
             if model_type == "gru":
-                # GRU expects train/validation split
-                split_idx = int(len(X) * 0.8)
-                X_train, X_val = X[:split_idx], X[split_idx:]
-                y_train, y_val = y[:split_idx], y[split_idx:]
+                # GRU expects 3D data: (samples, sequence_length, features)
+                # Convert 2D features to 3D sequences
+                sequence_length = trainer.sequence_length  # Get from trainer config
+                logger.info(f"Reshaping data for GRU: sequence_length={sequence_length}")
+                
+                # Create sliding windows
+                def create_sequences(data, seq_len):
+                    if len(data) < seq_len:
+                        # If not enough data, pad with zeros
+                        padded = np.zeros((seq_len, data.shape[1]))
+                        padded[-len(data):] = data
+                        return padded.reshape(1, seq_len, data.shape[1])
+                    
+                    sequences = []
+                    for i in range(seq_len, len(data) + 1):
+                        sequences.append(data[i-seq_len:i])
+                    return np.array(sequences)
+                
+                # Convert to sequences
+                X_sequences = create_sequences(X, sequence_length)
+                y_sequences = y[sequence_length-1:] if len(y) >= sequence_length else y[:len(X_sequences)]
+                
+                # Split train/validation
+                split_idx = int(len(X_sequences) * 0.8)
+                X_train, X_val = X_sequences[:split_idx], X_sequences[split_idx:]
+                y_train, y_val = y_sequences[:split_idx], y_sequences[split_idx:]
+                
+                logger.info(f"GRU data shapes - X_train: {X_train.shape}, y_train: {y_train.shape}")
                 
                 result = trainer.train(
                     X_train=X_train,
@@ -420,13 +444,25 @@ class PaperspaceTraining:
                     save_path=str(model_path)
                 )
             elif model_type == "ppo":
-                # PPO expects DataFrame with proper columns
+                # PPO expects DataFrame with proper columns including 'close'
                 import pandas as pd
                 
-                # Convert to DataFrame format expected by PPO
-                df_data = pd.DataFrame(X, columns=task["dataset"]["features"])
-                df_data['target'] = y
-                df_data.index = pd.to_datetime(timestamps)
+                # Try to get runtime data with original columns first
+                runtime_data = task["dataset"]["metadata"].get("_runtime", {}).get("full_data")
+                
+                if runtime_data is not None:
+                    # Use runtime data which has original columns including 'close'
+                    logger.info(f"Using runtime data for PPO with {len(runtime_data.columns)} columns")
+                    df_data = runtime_data.copy()
+                    df_data['target'] = y[:len(df_data)]
+                else:
+                    # Fallback: create DataFrame from features and add synthetic 'close'
+                    logger.warning("No runtime data found, creating synthetic 'close' column for PPO")
+                    df_data = pd.DataFrame(X, columns=task["dataset"]["features"])
+                    df_data['target'] = y
+                    df_data.index = pd.to_datetime(timestamps)
+                    # Add synthetic close column from target shifts
+                    df_data['close'] = (1 + df_data['target'].shift(1).fillna(0)).cumprod()
                 
                 # Split train/eval
                 split_idx = int(len(df_data) * 0.8)
