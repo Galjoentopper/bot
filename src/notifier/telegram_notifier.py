@@ -3,4 +3,4 @@
 # Import TelegramNotifier from the main telegram module
 from .telegram import TelegramNotifier
 
-__all__ = ['TelegramNotifier']
+__all__ = ["TelegramNotifier"]

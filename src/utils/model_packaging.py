@@ -13,23 +13,24 @@ Features:
 - Rollback capabilities
 """
 
-import os
-import json
-import shutil
 import hashlib
-import zipfile
-import pickle
+import json
 import logging
+import os
+import pickle
+import platform
+import shutil
+import sys
+import zipfile
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple, Union
-from dataclasses import dataclass, asdict
-import platform
-import sys
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Try to import torch and lightgbm for model info extraction
 try:
     import torch  # type: ignore
+
     TORCH_AVAILABLE = True
 except ImportError:  # pragma: no cover - environment without torch
     torch = None  # type: ignore
@@ -37,6 +38,7 @@ except ImportError:  # pragma: no cover - environment without torch
 
 try:
     import lightgbm as lgb  # type: ignore
+
     LIGHTGBM_AVAILABLE = True
 except ImportError:  # pragma: no cover - environment without lightgbm
     lgb = None  # type: ignore
@@ -46,6 +48,7 @@ except ImportError:  # pragma: no cover - environment without lightgbm
 @dataclass
 class ModelMetadata:
     """Comprehensive metadata for packaged models"""
+
     model_name: str
     model_type: str  # 'gru', 'lightgbm', 'ppo'
     symbol: str
@@ -60,24 +63,26 @@ class ModelMetadata:
     target_type: str
     performance_metrics: Dict[str, float]
     training_config: Dict[str, Any]
-    file_paths: Dict[str, Optional[str]]  # relative paths within package (some optional like preprocessor)
+    file_paths: Dict[
+        str, Optional[str]
+    ]  # relative paths within package (some optional like preprocessor)
     compatibility_info: Dict[str, Any]
     notes: str = ""
 
 
 class ModelPackager:
     """Handles model packaging, versioning, and transfer operations"""
-    
+
     def __init__(self, base_dir: str = "models", package_dir: str = "model_packages"):
         self.base_dir = Path(base_dir)
         self.package_dir = Path(package_dir)
         self.package_dir.mkdir(exist_ok=True)
-        
+
         # Create subdirectories
         (self.package_dir / "exports").mkdir(exist_ok=True)
         (self.package_dir / "imports").mkdir(exist_ok=True)
         (self.package_dir / "backups").mkdir(exist_ok=True)
-        
+
         self.logger = logging.getLogger(__name__)
 
     def import_package(self, package_path: str) -> str:
@@ -93,21 +98,21 @@ class ModelPackager:
         extract_root.mkdir(exist_ok=True)
         # Use hash of file for stable extraction folder
         h = hashlib.sha256()
-        with open(package, 'rb') as f:
-            for chunk in iter(lambda: f.read(8192), b''):
+        with open(package, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
                 h.update(chunk)
         dest = extract_root / h.hexdigest()[:16]
         if dest.exists():
             return str(dest)
         dest.mkdir()
         try:
-            with zipfile.ZipFile(package, 'r') as zf:
+            with zipfile.ZipFile(package, "r") as zf:
                 zf.extractall(dest)
         except Exception as e:
             shutil.rmtree(dest, ignore_errors=True)
             raise RuntimeError(f"Failed to extract package {package}: {e}")
         return str(dest)
-    
+
     def _calculate_file_hash(self, file_path: Path) -> str:
         """Calculate SHA256 hash of a file"""
         hash_sha256 = hashlib.sha256()
@@ -115,46 +120,54 @@ class ModelPackager:
             for chunk in iter(lambda: f.read(4096), b""):
                 hash_sha256.update(chunk)
         return hash_sha256.hexdigest()
-    
+
     def _get_system_info(self) -> Dict[str, str]:
         """Get system and dependency information"""
         deps = {
             "python": sys.version,
             "platform": platform.platform(),
-            "architecture": platform.architecture()[0]
+            "architecture": platform.architecture()[0],
         }
-        
+
         # Add ML library versions if available
         if TORCH_AVAILABLE and torch is not None:
             deps["torch"] = getattr(torch, "__version__", "unknown")
         if LIGHTGBM_AVAILABLE and lgb is not None:
             deps["lightgbm"] = getattr(lgb, "__version__", "unknown")
-        
+
         try:
             import numpy as np
+
             deps["numpy"] = np.__version__
         except ImportError:
             pass
-            
+
         try:
             import pandas as pd
+
             deps["pandas"] = pd.__version__
         except ImportError:
             pass
-            
+
         try:
             import sklearn
+
             deps["scikit-learn"] = sklearn.__version__
         except ImportError:
             pass
-        
+
         return deps
-    
+
     def _extract_model_info(self, model_path: Path, model_type: str) -> Dict[str, Any]:
         """Extract model-specific information"""
         info: Dict[str, Any] = {}
 
-        if model_type == "gru" and TORCH_AVAILABLE and torch is not None and model_path.suffix == ".pt":
+        if (
+            model_type == "gru"
+            and TORCH_AVAILABLE
+            and torch is not None
+            and model_path.suffix == ".pt"
+        ):
             try:
                 model_data = torch.load(model_path, map_location="cpu")  # type: ignore[attr-defined]
                 if isinstance(model_data, dict):
@@ -162,7 +175,9 @@ class ModelPackager:
                     if "model_state_dict" in model_data:
                         state_dict = model_data["model_state_dict"]
                         if isinstance(state_dict, dict):
-                            info["layer_info"] = {k: str(getattr(v, 'shape', '')) for k, v in state_dict.items()}
+                            info["layer_info"] = {
+                                k: str(getattr(v, "shape", "")) for k, v in state_dict.items()
+                            }
             except Exception as e:  # pragma: no cover - best effort
                 self.logger.warning(f"Could not extract GRU model info: {e}")
 
@@ -178,7 +193,7 @@ class ModelPackager:
                 self.logger.warning(f"Could not extract LightGBM model info: {e}")
 
         return info
-    
+
     def package_model(
         self,
         model_path: Union[str, Path],
@@ -189,7 +204,7 @@ class ModelPackager:
         performance_metrics: Optional[Dict[str, float]] = None,
         training_config: Optional[Dict[str, Any]] = None,
         version: Optional[str] = None,
-        notes: str = ""
+        notes: str = "",
     ) -> str:
         """Package a model with all its dependencies and metadata."""
 
@@ -224,7 +239,9 @@ class ModelPackager:
             model_hash=model_hash,
             preprocessor_hash=preprocessor_hash,
             feature_columns=feature_columns or [],
-            target_type=training_config.get("target_type", "unknown") if training_config else "unknown",
+            target_type=(
+                training_config.get("target_type", "unknown") if training_config else "unknown"
+            ),
             performance_metrics=performance_metrics or {},
             training_config=training_config or {},
             file_paths={
@@ -246,7 +263,7 @@ class ModelPackager:
 
         self.logger.info(f"Model packaged successfully: {package_path}")
         return str(package_path)
-    
+
     def _generate_readme(self, metadata: ModelMetadata) -> str:
         """Generate README content for the model package"""
         readme = f"""# {metadata.model_name}
@@ -277,38 +294,42 @@ class ModelPackager:
 This package can be imported using the ModelPackager.import_model() method.
 """
         return readme
-    
-    def list_packages(self, model_type: Optional[str] = None, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+
+    def list_packages(
+        self, model_type: Optional[str] = None, symbol: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """List available model packages"""
         packages = []
         export_dir = self.package_dir / "exports"
-        
+
         for package_file in export_dir.glob("*.zip"):
             try:
-                with zipfile.ZipFile(package_file, 'r') as zipf:
-                    metadata_content = zipf.read("metadata.json").decode('utf-8')
+                with zipfile.ZipFile(package_file, "r") as zipf:
+                    metadata_content = zipf.read("metadata.json").decode("utf-8")
                     metadata = json.loads(metadata_content)
-                    
+
                     # Filter by criteria
                     if model_type and metadata.get("model_type") != model_type:
                         continue
                     if symbol and metadata.get("symbol") != symbol:
                         continue
-                    
-                    packages.append({
-                        "file": str(package_file),
-                        "name": metadata.get("model_name"),
-                        "type": metadata.get("model_type"),
-                        "symbol": metadata.get("symbol"),
-                        "version": metadata.get("version"),
-                        "created_at": metadata.get("created_at"),
-                        "size_mb": round(package_file.stat().st_size / (1024*1024), 2)
-                    })
+
+                    packages.append(
+                        {
+                            "file": str(package_file),
+                            "name": metadata.get("model_name"),
+                            "type": metadata.get("model_type"),
+                            "symbol": metadata.get("symbol"),
+                            "version": metadata.get("version"),
+                            "created_at": metadata.get("created_at"),
+                            "size_mb": round(package_file.stat().st_size / (1024 * 1024), 2),
+                        }
+                    )
             except Exception as e:
                 self.logger.warning(f"Could not read package {package_file}: {e}")
-        
+
         return sorted(packages, key=lambda x: x["created_at"], reverse=True)
-    
+
     def import_model(
         self,
         package_path: Union[str, Path],
@@ -347,7 +368,7 @@ This package can be imported using the ModelPackager.import_model() method.
 
         self.logger.info(f"Model imported successfully to: {target_dir_path}")
         return extracted_files
-    
+
     def validate_package(self, package_path: Union[str, Path]) -> Tuple[bool, List[str]]:
         """Validate a model package for integrity and compatibility."""
         issues: List[str] = []
@@ -366,6 +387,7 @@ This package can be imported using the ModelPackager.import_model() method.
                     issues.append("Model file missing from package")
                 if model_file and model_file in files:
                     import tempfile
+
                     with tempfile.NamedTemporaryFile() as tmp:
                         tmp.write(zipf.read(model_file))
                         tmp.flush()
@@ -388,7 +410,7 @@ This package can be imported using the ModelPackager.import_model() method.
         except Exception as e:  # pragma: no cover - best effort
             issues.append(f"Error validating package: {e}")
         return len(issues) == 0, issues
-    
+
     def create_transfer_bundle(
         self,
         model_types: List[str],
@@ -449,10 +471,12 @@ This package can be imported using the ModelPackager.import_model() method.
             bundle_zip.writestr("bundle_info.json", json.dumps(bundle_info, indent=2))
             bundle_zip.writestr("import_models.py", self._generate_transfer_script())
         self.logger.info(
-            "Transfer bundle created: %s with %d models", output_path_path, len(selected_packages)
+            "Transfer bundle created: %s with %d models",
+            output_path_path,
+            len(selected_packages),
         )
         return str(output_path_path)
-    
+
     def _generate_transfer_script(self) -> str:
         """Generate a script to help with model importing"""
         script = '''#!/usr/bin/env python3
@@ -473,13 +497,13 @@ from src.utils.model_packaging import ModelPackager
 
 def main():
     packager = ModelPackager()
-    
+
     # Read bundle info
     with open("bundle_info.json", "r") as f:
         bundle_info = json.load(f)
-    
+
     print(f"Importing {len(bundle_info['packages'])} models...")
-    
+
     for pkg_info in bundle_info["packages"]:
         print(f"Importing {pkg_info['name']}...")
         try:
@@ -487,7 +511,7 @@ def main():
             print(f"  ✓ Imported to: {list(result.values())[0]}")
         except Exception as e:
             print(f"  ✗ Error: {e}")
-    
+
     print("Import complete!")
 
 if __name__ == "__main__":

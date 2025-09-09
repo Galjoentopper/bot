@@ -4,12 +4,12 @@ Test script for Telegram bot commands
 """
 import asyncio
 import logging
-from pathlib import Path
-import sys
 import os
+import sys
+from pathlib import Path
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from src.notifier.enhanced_telegram import EnhancedTelegramNotifier
 
@@ -17,11 +17,12 @@ from src.notifier.enhanced_telegram import EnhancedTelegramNotifier
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def safe_print(text: str, max_length: int = 100) -> None:
     """Print text safely, handling Unicode encoding issues."""
     try:
         # Try to encode and decode to handle Unicode properly
-        safe_text = text.encode('utf-8', errors='replace').decode('utf-8', errors='replace')
+        safe_text = text.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
         preview = safe_text[:max_length]
         if len(safe_text) > max_length:
             preview += "..."
@@ -29,27 +30,25 @@ def safe_print(text: str, max_length: int = 100) -> None:
     except Exception as e:
         print(f"[Unicode encoding error: {e}]")
 
+
 async def test_telegram_commands():
     """Test all Telegram commands."""
     try:
         # Initialize notifier (this will work even without valid tokens for testing)
-        notifier = EnhancedTelegramNotifier(
-            bot_token="test_token",
-            chat_id="test_chat_id"
-        )
+        notifier = EnhancedTelegramNotifier(bot_token="test_token", chat_id="test_chat_id")
 
         # Test all commands
         commands_to_test = [
-            '/status',
-            '/start',
-            '/stop',
-            '/restart',
-            '/performance',
-            '/health',
-            '/balance',
-            '/trades',
-            '/logs',
-            '/config'
+            "/status",
+            "/start",
+            "/stop",
+            "/restart",
+            "/performance",
+            "/health",
+            "/balance",
+            "/trades",
+            "/logs",
+            "/config",
         ]
 
         print("Testing Telegram Commands")
@@ -73,6 +72,7 @@ async def test_telegram_commands():
         return False
 
     return True
+
 
 if __name__ == "__main__":
     print("Starting Telegram Commands Test")

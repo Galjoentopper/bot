@@ -261,8 +261,8 @@ After setup, your pipeline automatically uses S3 for:
 - ✅ **Production**: Downloads and imports
 - ✅ **Cost**: Optimized for minimal expense
 
-**Total setup time**: ~5 minutes  
-**Monthly cost**: ~$0.05 for typical usage  
-**Reliability**: 99.999999999% (11 9's) durability  
+**Total setup time**: ~5 minutes
+**Monthly cost**: ~$0.05 for typical usage
+**Reliability**: 99.999999999% (11 9's) durability
 
 Your MLOps pipeline just got enterprise-grade storage at hobby-project prices! 🚀

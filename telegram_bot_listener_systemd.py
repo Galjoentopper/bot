@@ -6,27 +6,28 @@ Specifically designed to run as a systemd service without event loop conflicts.
 
 import asyncio
 import logging
+import os
 import signal
 import sys
-import os
-from typing import Dict, Any
 from pathlib import Path
+from typing import Any, Dict
 
 # Add project root to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / 'src'))
+sys.path.insert(0, str(project_root / "src"))
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+
 from src.notifier.enhanced_telegram import EnhancedTelegramNotifier
 
 # Configure logging
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
 
 class TelegramBotListener:
     """Telegram bot listener for handling interactive commands - Systemd optimized."""
@@ -50,12 +51,16 @@ class TelegramBotListener:
         self._add_command_handlers()
 
         # Add message handler for unknown commands
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_unknown))
+        self.application.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_unknown)
+        )
 
         # Start the bot
         self.running = True
         logger.info("Telegram Bot Listener started successfully")
-        logger.info("Available commands: /status, /start, /stop, /restart, /performance, /health, /balance, /trades, /logs, /config, /help")
+        logger.info(
+            "Available commands: /status, /start, /stop, /restart, /performance, /health, /balance, /trades, /logs, /config, /help"
+        )
 
         # Initialize the application
         await self.application.initialize()
@@ -75,17 +80,17 @@ class TelegramBotListener:
     def _add_command_handlers(self):
         """Add all command handlers."""
         commands = [
-            ('status', self._cmd_status),
-            ('start', self._cmd_start),
-            ('stop', self._cmd_stop),
-            ('restart', self._cmd_restart),
-            ('performance', self._cmd_performance),
-            ('health', self._cmd_health),
-            ('balance', self._cmd_balance),
-            ('trades', self._cmd_recent_trades),
-            ('logs', self._cmd_logs),
-            ('config', self._cmd_config),
-            ('help', self._cmd_help),
+            ("status", self._cmd_status),
+            ("start", self._cmd_start),
+            ("stop", self._cmd_stop),
+            ("restart", self._cmd_restart),
+            ("performance", self._cmd_performance),
+            ("health", self._cmd_health),
+            ("balance", self._cmd_balance),
+            ("trades", self._cmd_recent_trades),
+            ("logs", self._cmd_logs),
+            ("config", self._cmd_config),
+            ("help", self._cmd_help),
         ]
 
         for command, handler in commands:
@@ -95,91 +100,91 @@ class TelegramBotListener:
         """Handle /status command."""
         try:
             response = await self.enhanced_notifier._cmd_status([])
-            await update.message.reply_text(response, parse_mode='HTML')
+            await update.message.reply_text(response, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Status command error: {e}")
-            await update.message.reply_text("❌ Error getting status", parse_mode='HTML')
+            await update.message.reply_text("❌ Error getting status", parse_mode="HTML")
 
     async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command."""
         try:
             response = await self.enhanced_notifier._cmd_start([])
-            await update.message.reply_text(response, parse_mode='HTML')
+            await update.message.reply_text(response, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Start command error: {e}")
-            await update.message.reply_text("❌ Error starting system", parse_mode='HTML')
+            await update.message.reply_text("❌ Error starting system", parse_mode="HTML")
 
     async def _cmd_stop(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /stop command."""
         try:
             response = await self.enhanced_notifier._cmd_stop([])
-            await update.message.reply_text(response, parse_mode='HTML')
+            await update.message.reply_text(response, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Stop command error: {e}")
-            await update.message.reply_text("❌ Error stopping system", parse_mode='HTML')
+            await update.message.reply_text("❌ Error stopping system", parse_mode="HTML")
 
     async def _cmd_restart(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /restart command."""
         try:
             response = await self.enhanced_notifier._cmd_restart([])
-            await update.message.reply_text(response, parse_mode='HTML')
+            await update.message.reply_text(response, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Restart command error: {e}")
-            await update.message.reply_text("❌ Error restarting system", parse_mode='HTML')
+            await update.message.reply_text("❌ Error restarting system", parse_mode="HTML")
 
     async def _cmd_performance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /performance command."""
         try:
             response = await self.enhanced_notifier._cmd_performance([])
-            await update.message.reply_text(response, parse_mode='HTML')
+            await update.message.reply_text(response, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Performance command error: {e}")
-            await update.message.reply_text("❌ Error getting performance", parse_mode='HTML')
+            await update.message.reply_text("❌ Error getting performance", parse_mode="HTML")
 
     async def _cmd_health(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /health command."""
         try:
             response = await self.enhanced_notifier._cmd_health([])
-            await update.message.reply_text(response, parse_mode='HTML')
+            await update.message.reply_text(response, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Health command error: {e}")
-            await update.message.reply_text("❌ Error getting health status", parse_mode='HTML')
+            await update.message.reply_text("❌ Error getting health status", parse_mode="HTML")
 
     async def _cmd_balance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /balance command."""
         try:
             response = await self.enhanced_notifier._cmd_balance([])
-            await update.message.reply_text(response, parse_mode='HTML')
+            await update.message.reply_text(response, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Balance command error: {e}")
-            await update.message.reply_text("❌ Error getting balance", parse_mode='HTML')
+            await update.message.reply_text("❌ Error getting balance", parse_mode="HTML")
 
     async def _cmd_recent_trades(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /trades command."""
         try:
             response = await self.enhanced_notifier._cmd_recent_trades([])
-            await update.message.reply_text(response, parse_mode='HTML')
+            await update.message.reply_text(response, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Trades command error: {e}")
-            await update.message.reply_text("❌ Error getting recent trades", parse_mode='HTML')
+            await update.message.reply_text("❌ Error getting recent trades", parse_mode="HTML")
 
     async def _cmd_logs(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /logs command."""
         try:
             response = await self.enhanced_notifier._cmd_logs([])
-            await update.message.reply_text(response, parse_mode='HTML')
+            await update.message.reply_text(response, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Logs command error: {e}")
-            await update.message.reply_text("❌ Error getting logs", parse_mode='HTML')
+            await update.message.reply_text("❌ Error getting logs", parse_mode="HTML")
 
     async def _cmd_config(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /config command."""
         try:
             response = await self.enhanced_notifier._cmd_config([])
-            await update.message.reply_text(response, parse_mode='HTML')
+            await update.message.reply_text(response, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Config command error: {e}")
-            await update.message.reply_text("❌ Error getting configuration", parse_mode='HTML')
+            await update.message.reply_text("❌ Error getting configuration", parse_mode="HTML")
 
     async def _cmd_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command with comprehensive command list and functionality status."""
@@ -220,20 +225,29 @@ class TelegramBotListener:
 <i>✅ System: Optimized for reduced message spam</i>
 <i>📊 Next daily report: Tomorrow 12:00 UTC</i>
 """
-        await update.message.reply_text(help_text, parse_mode='HTML')
+        await update.message.reply_text(help_text, parse_mode="HTML")
 
     async def _handle_unknown(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle unknown messages."""
         message_text = update.message.text.lower()
 
         # Check for common greetings
-        greetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening']
+        greetings = [
+            "hello",
+            "hi",
+            "hey",
+            "good morning",
+            "good afternoon",
+            "good evening",
+        ]
         if any(greeting in message_text for greeting in greetings):
-            response = "👋 Hello! I'm your trading bot assistant. Use /help to see available commands."
+            response = (
+                "👋 Hello! I'm your trading bot assistant. Use /help to see available commands."
+            )
         else:
             response = "🤔 I didn't understand that command. Use /help to see available commands."
 
-        await update.message.reply_text(response, parse_mode='HTML')
+        await update.message.reply_text(response, parse_mode="HTML")
 
     async def stop(self):
         """Stop the Telegram bot listener."""
@@ -241,13 +255,15 @@ class TelegramBotListener:
         self.running = False
         self.shutdown_event.set()
 
+
 def load_config() -> Dict[str, Any]:
     """Load configuration for Telegram bot."""
     try:
         import yaml
+
         config_path = Path("training_config.yaml")
         if config_path.exists():
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = yaml.safe_load(f)
             return config
         else:
@@ -256,6 +272,7 @@ def load_config() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error loading configuration: {e}")
         return {}
+
 
 async def main():
     """Main function to run the Telegram bot listener."""
@@ -268,13 +285,15 @@ async def main():
         return
 
     # Get Telegram configuration
-    telegram_config = config.get('notifications', {}).get('telegram', {})
-    bot_token = telegram_config.get('bot_token')
-    chat_id = telegram_config.get('chat_id')
+    telegram_config = config.get("notifications", {}).get("telegram", {})
+    bot_token = telegram_config.get("bot_token")
+    chat_id = telegram_config.get("chat_id")
 
     if not bot_token or not chat_id:
         logger.error("Telegram bot_token or chat_id not configured")
-        logger.info("Please configure telegram.bot_token and telegram.chat_id in training_config.yaml")
+        logger.info(
+            "Please configure telegram.bot_token and telegram.chat_id in training_config.yaml"
+        )
         return
 
     # Create and start the bot listener
@@ -297,6 +316,7 @@ async def main():
         raise
     finally:
         await bot_listener.stop()
+
 
 if __name__ == "__main__":
     # For systemd service - use asyncio.run() directly

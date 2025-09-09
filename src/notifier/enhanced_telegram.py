@@ -1,22 +1,24 @@
 """
 Enhanced Telegram Notifier with Interactive Commands
 """
+
 import asyncio
+import json
 import logging
-from typing import Dict, List, Optional, Any, Callable, Awaitable
-from datetime import datetime, time, timezone
 import os
 import platform
-import json
 import sys
-from pathlib import Path
-import schedule
 import threading
+from datetime import datetime, time, timezone
+from pathlib import Path
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+import schedule
 from telegram import Bot
 from telegram.error import TelegramError
 
 logger = logging.getLogger(__name__)
+
 
 class EnhancedTelegramNotifier:
     """Enhanced Telegram notifier with interactive commands and performance reports."""
@@ -28,14 +30,14 @@ class EnhancedTelegramNotifier:
         self.trading_manager = trading_manager
         self.command_handlers = self._register_commands()
         self.performance_history = []
-        self.disable_trade_notifications = kwargs.get('disable_trade_notifications', True)
-        self.daily_report_enabled = kwargs.get('daily_report_enabled', True)
-        self.error_notifications_enabled = kwargs.get('error_notifications_enabled', True)
-        self.shutdown_notifications_enabled = kwargs.get('shutdown_notifications_enabled', True)
-        
+        self.disable_trade_notifications = kwargs.get("disable_trade_notifications", True)
+        self.daily_report_enabled = kwargs.get("daily_report_enabled", True)
+        self.error_notifications_enabled = kwargs.get("error_notifications_enabled", True)
+        self.shutdown_notifications_enabled = kwargs.get("shutdown_notifications_enabled", True)
+
         # Initialize daily report scheduling
         self._init_daily_reports()
-        
+
         # Start background scheduler
         self.scheduler_thread = None
         if self.daily_report_enabled:
@@ -44,22 +46,22 @@ class EnhancedTelegramNotifier:
     def _register_commands(self) -> Dict[str, Callable[[List[str]], Awaitable[str]]]:
         """Register interactive commands."""
         return {
-            '/status': self._cmd_status,
-            '/start': self._cmd_start,
-            '/stop': self._cmd_stop,
-            '/restart': self._cmd_restart,
-            '/performance': self._cmd_performance,
-            '/health': self._cmd_health,
-            '/balance': self._cmd_balance,
-            '/trades': self._cmd_recent_trades,
-            '/logs': self._cmd_logs,
-            '/config': self._cmd_config,
+            "/status": self._cmd_status,
+            "/start": self._cmd_start,
+            "/stop": self._cmd_stop,
+            "/restart": self._cmd_restart,
+            "/performance": self._cmd_performance,
+            "/health": self._cmd_health,
+            "/balance": self._cmd_balance,
+            "/trades": self._cmd_recent_trades,
+            "/logs": self._cmd_logs,
+            "/config": self._cmd_config,
             # New enhanced commands
-            '/daily': self._cmd_daily_report,
-            '/uptime': self._cmd_uptime,
-            '/summary': self._cmd_quick_summary,
-            '/alerts': self._cmd_recent_alerts,
-            '/version': self._cmd_version,
+            "/daily": self._cmd_daily_report,
+            "/uptime": self._cmd_uptime,
+            "/summary": self._cmd_quick_summary,
+            "/alerts": self._cmd_recent_alerts,
+            "/version": self._cmd_version,
         }
 
     async def handle_command(self, command: str, args: Optional[List[str]] = None) -> str:
@@ -68,13 +70,13 @@ class EnhancedTelegramNotifier:
 
         if args is None:
             parts = command.strip().split()
-            cmd = parts[0].lower() if parts else ''
+            cmd = parts[0].lower() if parts else ""
             args = parts[1:] if len(parts) > 1 else []
         else:
             cmd = command.strip().lower()
 
-        if not cmd.startswith('/'):
-            cmd = '/' + cmd
+        if not cmd.startswith("/"):
+            cmd = "/" + cmd
 
         logger.info(f"Processing command: {cmd} with args: {args}")
 
@@ -96,9 +98,9 @@ class EnhancedTelegramNotifier:
         try:
             # Check tmux session
             result = await asyncio.create_subprocess_shell(
-                'tmux has-session -t trading_session',
+                "tmux has-session -t trading_session",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             await result.wait()
 
@@ -127,9 +129,9 @@ class EnhancedTelegramNotifier:
         try:
             logger.info("Running tmux_manager.sh start command")
             result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/bot/scripts/tmux_manager.sh start',
+                "/opt/trading_bot/bot/scripts/tmux_manager.sh start",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             await result.wait()
             logger.info(f"Start command completed with return code: {result.returncode}")
@@ -148,9 +150,9 @@ class EnhancedTelegramNotifier:
         """Stop trading system."""
         try:
             result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/bot/scripts/tmux_manager.sh stop',
+                "/opt/trading_bot/bot/scripts/tmux_manager.sh stop",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             await result.wait()
 
@@ -163,9 +165,9 @@ class EnhancedTelegramNotifier:
         try:
             # Stop
             stop_result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/bot/scripts/tmux_manager.sh stop',
+                "/opt/trading_bot/bot/scripts/tmux_manager.sh stop",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             await stop_result.wait()
 
@@ -173,9 +175,9 @@ class EnhancedTelegramNotifier:
 
             # Start
             start_result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/bot/scripts/tmux_manager.sh start',
+                "/opt/trading_bot/bot/scripts/tmux_manager.sh start",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             await start_result.wait()
 
@@ -192,7 +194,7 @@ class EnhancedTelegramNotifier:
             # Read performance data
             perf_file = Path("/opt/trading_bot/bot/logs/performance_metrics.json")
             if perf_file.exists():
-                with open(perf_file, 'r') as f:
+                with open(perf_file, "r") as f:
                     metrics = json.load(f)
 
                 return f"""📊 <b>Performance Metrics</b>
@@ -217,9 +219,9 @@ class EnhancedTelegramNotifier:
         try:
             logger.info("Running health_check.sh script")
             result = await asyncio.create_subprocess_shell(
-                '/opt/trading_bot/bot/scripts/health_check.sh',
+                "/opt/trading_bot/bot/scripts/health_check.sh",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await result.communicate()
             logger.info(f"Health check completed with return code: {result.returncode}")
@@ -228,7 +230,9 @@ class EnhancedTelegramNotifier:
                 logger.info("Health check successful")
                 return f"```bash\n{stdout.decode().strip()}\n```"
             else:
-                logger.error(f"Health check failed with return code: {result.returncode}, stderr: {stderr.decode().strip()}")
+                logger.error(
+                    f"Health check failed with return code: {result.returncode}, stderr: {stderr.decode().strip()}"
+                )
                 return f"❌ Health check failed: {stderr.decode().strip()}"
         except Exception as e:
             logger.error(f"Health check exception: {e}", exc_info=True)
@@ -239,7 +243,7 @@ class EnhancedTelegramNotifier:
         try:
             balance_file = Path("/opt/trading_bot/bot/logs/balance.json")
             if balance_file.exists():
-                with open(balance_file, 'r') as f:
+                with open(balance_file, "r") as f:
                     balance_data = json.load(f)
 
                 return f"""💰 <b>Current Balance</b>
@@ -263,20 +267,22 @@ class EnhancedTelegramNotifier:
             if trades_file.exists():
                 # Get last 5 trades
                 result = await asyncio.create_subprocess_shell(
-                    'tail -5 /opt/trading_bot/bot/logs/trades_report.csv',
+                    "tail -5 /opt/trading_bot/bot/logs/trades_report.csv",
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                    stderr=asyncio.subprocess.PIPE,
                 )
                 stdout, stderr = await result.communicate()
 
                 if result.returncode == 0:
-                    trades = stdout.decode().strip().split('\n')
+                    trades = stdout.decode().strip().split("\n")
                     if len(trades) > 1:  # Skip header
                         trade_list = []
                         for trade in trades[1:]:
-                            parts = trade.split(',')
+                            parts = trade.split(",")
                             if len(parts) >= 6:
-                                trade_list.append(f"• {parts[1]}: {parts[2]} {parts[3]} @ €{parts[4]}")
+                                trade_list.append(
+                                    f"• {parts[1]}: {parts[2]} {parts[3]} @ €{parts[4]}"
+                                )
 
                         return f"""📈 <b>Recent Trades</b>
 
@@ -297,7 +303,7 @@ class EnhancedTelegramNotifier:
             result = await asyncio.create_subprocess_shell(
                 'tail -10 /opt/trading_bot/bot/logs/trading_*.log 2>/dev/null || echo "No logs found"',
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await result.communicate()
 
@@ -321,7 +327,7 @@ class EnhancedTelegramNotifier:
                 result = await asyncio.create_subprocess_shell(
                     'grep -E "^(symbols|interval|initial_balance|max_position_size):" /opt/trading_bot/bot/training_config.yaml',
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                    stderr=asyncio.subprocess.PIPE,
                 )
                 stdout, stderr = await result.communicate()
 
@@ -344,9 +350,9 @@ class EnhancedTelegramNotifier:
         """Get system uptime."""
         try:
             result = await asyncio.create_subprocess_shell(
-                'uptime -p',
+                "uptime -p",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await result.communicate()
 
@@ -376,7 +382,7 @@ class EnhancedTelegramNotifier:
 
 <i>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>
 """
-            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode='HTML')
+            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode="HTML")
             return True
         except Exception as e:
             logger.error(f"Failed to send performance report: {e}")
@@ -385,7 +391,7 @@ class EnhancedTelegramNotifier:
     async def send_system_health_alert(self, health_data: Dict[str, Any]) -> bool:
         """Send system health alert."""
         try:
-            status_emoji = "✅" if health_data.get('overall_status') == 'healthy' else "❌"
+            status_emoji = "✅" if health_data.get("overall_status") == "healthy" else "❌"
 
             message = f"""{status_emoji} <b>System Health Alert</b>
 
@@ -394,18 +400,20 @@ class EnhancedTelegramNotifier:
 
 <b>Components:</b>
 """
-            for component, status in health_data.get('components', {}).items():
-                comp_status = "✅" if status.get('status') == 'healthy' else "❌"
-                message += f"• {component.title()}: {comp_status} {status.get('status', 'unknown')}\n"
+            for component, status in health_data.get("components", {}).items():
+                comp_status = "✅" if status.get("status") == "healthy" else "❌"
+                message += (
+                    f"• {component.title()}: {comp_status} {status.get('status', 'unknown')}\n"
+                )
 
-            if health_data.get('warnings'):
+            if health_data.get("warnings"):
                 message += f"\n<b>Warnings:</b>\n"
-                for warning in health_data['warnings'][:3]:  # Limit to 3 warnings
+                for warning in health_data["warnings"][:3]:  # Limit to 3 warnings
                     message += f"• {warning}\n"
 
             message += f"\n<i>Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>"
 
-            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode='HTML')
+            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode="HTML")
             return True
         except Exception as e:
             logger.error(f"Failed to send health alert: {e}")
@@ -414,7 +422,7 @@ class EnhancedTelegramNotifier:
     async def send_message(self, message: str) -> bool:
         """Send a simple message."""
         try:
-            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode='HTML')
+            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode="HTML")
             return True
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
@@ -429,6 +437,7 @@ class EnhancedTelegramNotifier:
 
     def _start_scheduler(self):
         """Start the background scheduler for daily reports."""
+
         def run_scheduler():
             while True:
                 try:
@@ -436,7 +445,7 @@ class EnhancedTelegramNotifier:
                     threading.Event().wait(60)  # Check every minute
                 except Exception as e:
                     logger.error(f"Scheduler error: {e}")
-        
+
         self.scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
         self.scheduler_thread.start()
         logger.info("Daily report scheduler started")
@@ -456,17 +465,17 @@ class EnhancedTelegramNotifier:
         """Send comprehensive daily performance report at 12:00 UTC."""
         try:
             current_time = datetime.now(timezone.utc)
-            report_date = current_time.strftime('%Y-%m-%d')
-            
+            report_date = current_time.strftime("%Y-%m-%d")
+
             # Get system metrics
             metrics = await self._get_system_metrics()
-            
+
             # Get trading performance
             trading_stats = await self._get_trading_statistics()
-            
+
             # Get recent trades summary
             trades_summary = await self._get_daily_trades_summary()
-            
+
             message = f"""📊 <b>Daily Performance Report</b>
 🗓️ <b>{report_date}</b> | 🕐 12:00 UTC
 
@@ -489,11 +498,11 @@ class EnhancedTelegramNotifier:
 <i>📤 Next report: Tomorrow at 12:00 UTC</i>
 <i>⚙️ Use /performance for real-time stats</i>
 """
-            
-            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode='HTML')
+
+            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode="HTML")
             logger.info(f"Daily performance report sent for {report_date}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to send daily performance report: {e}")
             await self.send_error_notification("Daily Performance Report", str(e))
@@ -505,22 +514,25 @@ class EnhancedTelegramNotifier:
             # Check for recent trades from reports or logs
             if os.path.exists("reports"):
                 import glob
-                today = datetime.now().strftime('%Y%m%d')
+
+                today = datetime.now().strftime("%Y%m%d")
                 report_files = glob.glob(f"reports/performance_report_{today}*.json")
-                
+
                 if report_files:
                     latest_report = max(report_files)
-                    with open(latest_report, 'r') as f:
+                    with open(latest_report, "r") as f:
                         data = json.load(f)
-                        
-                    if data.get('trades'):
-                        return f"\n<b>🔄 Recent Trades:</b>\n" + "\n".join([
-                            f"• {trade.get('symbol', 'Unknown')}: {trade.get('action', 'N/A')} @ €{trade.get('price', 0):.2f}"
-                            for trade in data['trades'][-3:]  # Last 3 trades
-                        ])
-            
+
+                    if data.get("trades"):
+                        return f"\n<b>🔄 Recent Trades:</b>\n" + "\n".join(
+                            [
+                                f"• {trade.get('symbol', 'Unknown')}: {trade.get('action', 'N/A')} @ €{trade.get('price', 0):.2f}"
+                                for trade in data["trades"][-3:]  # Last 3 trades
+                            ]
+                        )
+
             return "\n<b>🔄 Recent Trades:</b>\n• No trades today"
-            
+
         except Exception as e:
             logger.error(f"Failed to get daily trades summary: {e}")
             return "\n<b>🔄 Recent Trades:</b>\n• Unable to load trades data"
@@ -529,55 +541,60 @@ class EnhancedTelegramNotifier:
         """Get current trading statistics."""
         try:
             stats = {
-                'total_trades': 0,
-                'profitable_trades': 0,
-                'win_rate': 0.0,
-                'daily_pnl': 0.0,
-                'total_balance': 10000.0,
-                'symbols_summary': '• No active positions'
+                "total_trades": 0,
+                "profitable_trades": 0,
+                "win_rate": 0.0,
+                "daily_pnl": 0.0,
+                "total_balance": 10000.0,
+                "symbols_summary": "• No active positions",
             }
-            
+
             # Try to get real trading stats from manager
             if self.trading_manager:
                 # Implementation depends on your trading manager interface
                 pass
-            
+
             # Fallback: check reports directory for latest performance
             if os.path.exists("reports"):
                 import glob
+
                 report_files = glob.glob("reports/performance_report_*.json")
                 if report_files:
                     latest_report = max(report_files)
-                    with open(latest_report, 'r') as f:
+                    with open(latest_report, "r") as f:
                         data = json.load(f)
-                    
-                    stats.update({
-                        'total_trades': len(data.get('trades', [])),
-                        'total_balance': data.get('current_balance', 10000.0),
-                        'daily_pnl': data.get('daily_pnl', 0.0)
-                    })
-            
+
+                    stats.update(
+                        {
+                            "total_trades": len(data.get("trades", [])),
+                            "total_balance": data.get("current_balance", 10000.0),
+                            "daily_pnl": data.get("daily_pnl", 0.0),
+                        }
+                    )
+
             return stats
-            
+
         except Exception as e:
             logger.error(f"Failed to get trading statistics: {e}")
             return {
-                'total_trades': 0,
-                'profitable_trades': 0,
-                'win_rate': 0.0,
-                'daily_pnl': 0.0,
-                'total_balance': 10000.0,
-                'symbols_summary': '• Error loading data'
+                "total_trades": 0,
+                "profitable_trades": 0,
+                "win_rate": 0.0,
+                "daily_pnl": 0.0,
+                "total_balance": 10000.0,
+                "symbols_summary": "• Error loading data",
             }
 
-    async def send_enhanced_error_notification(self, error_type: str, error_message: str, context: str = "") -> bool:
+    async def send_enhanced_error_notification(
+        self, error_type: str, error_message: str, context: str = ""
+    ) -> bool:
         """Send enhanced error notification with context."""
         try:
             if not self.error_notifications_enabled:
                 return False
-                
-            timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
-            
+
+            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
             message = f"""🚨 <b>System Error Alert</b>
 
 <b>Error Type:</b> {error_type}
@@ -593,11 +610,11 @@ class EnhancedTelegramNotifier:
 <i>Use /health to check system status</i>
 <i>Use /logs to view recent logs</i>
 """
-            
-            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode='HTML')
+
+            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode="HTML")
             logger.info(f"Enhanced error notification sent: {error_type}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to send enhanced error notification: {e}")
             return False
@@ -607,9 +624,9 @@ class EnhancedTelegramNotifier:
         try:
             if not self.shutdown_notifications_enabled:
                 return False
-                
-            timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
-            
+
+            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
             message = f"""🛑 <b>Trading System Shutdown</b>
 
 <b>Time:</b> {timestamp}
@@ -623,11 +640,11 @@ class EnhancedTelegramNotifier:
 <i>💡 System will need manual restart</i>
 <i>📞 Use /start command when ready to resume</i>
 """
-            
-            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode='HTML')
+
+            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode="HTML")
             logger.info(f"System shutdown notification sent: {reason}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to send shutdown notification: {e}")
             return False
@@ -643,7 +660,7 @@ class EnhancedTelegramNotifier:
 
 Bot is now online and ready to accept commands.
 """
-            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode='HTML')
+            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode="HTML")
             return True
         except Exception as e:
             logger.error(f"Failed to send startup notification: {e}")
@@ -654,17 +671,19 @@ Bot is now online and ready to accept commands.
         try:
             # Skip individual trade notifications if disabled (default behavior)
             if self.disable_trade_notifications:
-                logger.debug(f"Trade notification skipped (disabled): {trade_data.get('symbol')} {trade_data.get('action')}")
+                logger.debug(
+                    f"Trade notification skipped (disabled): {trade_data.get('symbol')} {trade_data.get('action')}"
+                )
                 return True
-            
-            action = trade_data.get('action', 'unknown').upper()
-            symbol = trade_data.get('symbol', 'unknown')
-            quantity = trade_data.get('quantity', 0)
-            price = trade_data.get('price', 0)
-            value = trade_data.get('value', 0)
-            
+
+            action = trade_data.get("action", "unknown").upper()
+            symbol = trade_data.get("symbol", "unknown")
+            quantity = trade_data.get("quantity", 0)
+            price = trade_data.get("price", 0)
+            value = trade_data.get("value", 0)
+
             emoji = "🟢" if action == "BUY" else "🔴" if action == "SELL" else "⚪"
-            
+
             message = f"""{emoji} <b>Trade Executed</b>
 
 <b>Action:</b> {action}
@@ -676,7 +695,7 @@ Bot is now online and ready to accept commands.
 <b>Time:</b> {datetime.now().strftime('%H:%M:%S')}
 <i>💡 Get daily summary at 12:00 UTC or use /trades for recent trades</i>
 """
-            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode='HTML')
+            await self.bot.send_message(chat_id=self.chat_id, text=message, parse_mode="HTML")
             return True
         except Exception as e:
             logger.error(f"Failed to send trade notification: {e}")
@@ -687,7 +706,7 @@ Bot is now online and ready to accept commands.
         try:
             if not self.error_notifications_enabled:
                 return False
-            
+
             return await self.send_enhanced_error_notification(component, error_msg)
         except Exception as e:
             logger.error(f"Failed to send error notification: {e}")
@@ -709,35 +728,33 @@ Bot is now online and ready to accept commands.
         """Get system uptime and basic stats."""
         try:
             import subprocess
-            
+
             # Get system uptime
             result = await asyncio.create_subprocess_shell(
-                'uptime -p',
+                "uptime -p",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await result.communicate()
             uptime = stdout.decode().strip() if result.returncode == 0 else "Unknown"
-            
+
             # Get process start time
             trading_pids = await asyncio.create_subprocess_shell(
-                'pgrep -f enhanced_trader.py',
-                stdout=asyncio.subprocess.PIPE
+                "pgrep -f enhanced_trader.py", stdout=asyncio.subprocess.PIPE
             )
             pid_stdout, _ = await trading_pids.communicate()
-            
+
             process_uptime = "Not running"
             if trading_pids.returncode == 0 and pid_stdout:
-                pid = pid_stdout.decode().strip().split('\n')[0]
+                pid = pid_stdout.decode().strip().split("\n")[0]
                 if pid:
                     start_result = await asyncio.create_subprocess_shell(
-                        f'ps -p {pid} -o lstart=',
-                        stdout=asyncio.subprocess.PIPE
+                        f"ps -p {pid} -o lstart=", stdout=asyncio.subprocess.PIPE
                     )
                     start_stdout, _ = await start_result.communicate()
                     if start_result.returncode == 0:
                         process_uptime = start_stdout.decode().strip()
-            
+
             return f"""⏰ <b>System Uptime</b>
 
 <b>Server Uptime:</b> {uptime.replace('up ', '')}
@@ -746,7 +763,7 @@ Bot is now online and ready to accept commands.
 
 <b>Quick Stats:</b>
 • Daily reports: {'✅ Enabled' if self.daily_report_enabled else '❌ Disabled'}
-• Error alerts: {'✅ Enabled' if self.error_notifications_enabled else '❌ Disabled'}  
+• Error alerts: {'✅ Enabled' if self.error_notifications_enabled else '❌ Disabled'}
 • Trade notifications: {'❌ Disabled (spam prevention)' if self.disable_trade_notifications else '✅ Enabled'}
 """
         except Exception as e:
@@ -757,7 +774,7 @@ Bot is now online and ready to accept commands.
         try:
             metrics = await self._get_system_metrics()
             stats = await self._get_trading_statistics()
-            
+
             return f"""📋 <b>Quick System Summary</b>
 
 <b>💰 Portfolio:</b>
@@ -782,48 +799,48 @@ Bot is now online and ready to accept commands.
         """Get recent alerts and notifications."""
         try:
             alerts_found = []
-            
+
             # Check for recent error logs
             if os.path.exists("logs/resource_alerts.log"):
                 result = await asyncio.create_subprocess_shell(
-                    'tail -5 logs/resource_alerts.log',
+                    "tail -5 logs/resource_alerts.log",
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                    stderr=asyncio.subprocess.PIPE,
                 )
                 stdout, stderr = await result.communicate()
                 if result.returncode == 0 and stdout:
-                    alerts_found.extend(stdout.decode().strip().split('\n')[-3:])
-            
+                    alerts_found.extend(stdout.decode().strip().split("\n")[-3:])
+
             # Check system logs for errors
             log_result = await asyncio.create_subprocess_shell(
                 'grep -i error logs/*.log 2>/dev/null | tail -3 || echo "No recent errors"',
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             log_stdout, _ = await log_result.communicate()
-            
+
             recent_alerts = "📜 <b>Recent Alerts & Notifications</b>\n\n"
-            
+
             if alerts_found:
                 recent_alerts += "<b>🚨 Resource Alerts:</b>\n"
                 for alert in alerts_found[-3:]:
                     if alert.strip():
                         recent_alerts += f"• {alert.strip()}\n"
                 recent_alerts += "\n"
-            
+
             if log_stdout and log_stdout.decode().strip() != "No recent errors":
                 recent_alerts += "<b>📋 Recent System Messages:</b>\n"
-                for line in log_stdout.decode().strip().split('\n')[-3:]:
+                for line in log_stdout.decode().strip().split("\n")[-3:]:
                     if line.strip():
                         recent_alerts += f"• {line.split(':')[-1].strip()}\n"
             else:
                 recent_alerts += "<b>✅ No recent alerts or errors</b>\n"
-            
+
             recent_alerts += f"\n<i>📅 Checked: {datetime.now().strftime('%H:%M:%S')}</i>"
             recent_alerts += f"\n<i>💡 Use /logs for detailed system logs</i>"
-            
+
             return recent_alerts
-            
+
         except Exception as e:
             return f"❌ Alerts check failed: {str(e)}"
 
@@ -831,12 +848,15 @@ Bot is now online and ready to accept commands.
         """Get bot version and system information."""
         try:
             # Get Python version
-            python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-            
+            python_version = (
+                f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+            )
+
             # Get system info
             import platform
+
             system_info = f"{platform.system()} {platform.release()}"
-            
+
             return f"""🤖 <b>Trading Bot System Info</b>
 
 <b>🔧 Software:</b>
@@ -847,7 +867,7 @@ Bot is now online and ready to accept commands.
 
 <b>📊 Features:</b>
 • ✅ Daily reports at 12:00 UTC
-• ✅ Enhanced error notifications  
+• ✅ Enhanced error notifications
 • ✅ Smart trade notification filtering
 • ✅ Resource monitoring & alerts
 • ✅ Graceful shutdown notifications

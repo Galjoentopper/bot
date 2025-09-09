@@ -5,32 +5,34 @@ Tests the Telegram bot connection and message sending functionality.
 """
 
 import asyncio
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / 'src'))
+sys.path.insert(0, str(project_root / "src"))
 
 try:
     from src.notifier.telegram import TelegramNotifier
+
     print("✅ Successfully imported TelegramNotifier")
 except ImportError as e:
     print(f"❌ Failed to import TelegramNotifier: {e}")
     sys.exit(1)
+
 
 async def test_telegram_connection():
     """Test Telegram connection with the configured credentials."""
 
     # Test configuration
     config = {
-        'notifications': {
-            'telegram': {
-                'enabled': True,
-                'bot_token': '7733436451:AAH6Sls8uL4fEgd6Ty7VEKSBIMauhaVkN4c',
-                'chat_id': '7988790407'
+        "notifications": {
+            "telegram": {
+                "enabled": True,
+                "bot_token": "7733436451:AAH6Sls8uL4fEgd6Ty7VEKSBIMauhaVkN4c",
+                "chat_id": "7988790407",
             }
         }
     }
@@ -68,8 +70,10 @@ This is a test message to verify Telegram integration is working correctly.
     except Exception as e:
         print(f"❌ Error during Telegram test: {e}")
         import traceback
+
         traceback.print_exc()
         return False
+
 
 async def test_manual_credentials():
     """Test with manually provided credentials."""
@@ -77,14 +81,10 @@ async def test_manual_credentials():
     print("\n🔧 Testing with manual credentials...")
 
     try:
-        bot_token = '7733436451:AAH6Sls8uL4fEgd6Ty7VEKSBIMauhaVkN4c'
-        chat_id = '7988790407'
+        bot_token = "7733436451:AAH6Sls8uL4fEgd6Ty7VEKSBIMauhaVkN4c"
+        chat_id = "7988790407"
 
-        notifier = TelegramNotifier(
-            bot_token=bot_token,
-            chat_id=chat_id,
-            enabled=True
-        )
+        notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id, enabled=True)
 
         print(f"📊 Manual notifier status: enabled={notifier.enabled}")
 
@@ -114,16 +114,18 @@ Testing with manually provided credentials.
     except Exception as e:
         print(f"❌ Error during manual Telegram test: {e}")
         import traceback
+
         traceback.print_exc()
         return False
+
 
 def check_environment():
     """Check environment variables and configuration."""
     print("🔍 Checking environment...")
 
     # Check for environment variables
-    telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
-    telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     if telegram_token:
         print(f"✅ Found TELEGRAM_BOT_TOKEN: {telegram_token[:10]}...")
@@ -138,6 +140,7 @@ def check_environment():
     # Check Python path
     print(f"📁 Python path includes: {project_root}")
     print(f"📁 src directory exists: {(project_root / 'src').exists()}")
+
 
 async def main():
     """Main test function."""
@@ -173,6 +176,7 @@ async def main():
         print("   - Bot has permission to send messages")
         print("   - Network connectivity")
         print("   - python-telegram-bot library is installed")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -155,7 +155,7 @@ def install_dependencies():
         logger.info("📦 Installing essential packages (no requirements file found)")
         essential_packages = [
             "torch>=1.12.0,<2.0.0",
-            "lightgbm>=3.3.0,<4.0.0", 
+            "lightgbm>=3.3.0,<4.0.0",
             "stable-baselines3>=1.6.0,<2.0.0",
             "pandas>=1.5.0,<2.0.0",
             "numpy>=1.21.0,<1.25.0",
@@ -167,7 +167,7 @@ def install_dependencies():
             "python-telegram-bot>=20.0",
             "pyyaml>=6.0",
             "psutil>=5.8.0",
-            "requests>=2.28.0", 
+            "requests>=2.28.0",
             "boto3>=1.26.0",
             "ta>=0.10.0",
             "flask>=2.2.0",

@@ -6,12 +6,12 @@ Gym-compatible trading environment for reinforcement learning.
 Simulates realistic trading conditions with transaction costs and slippage.
 """
 
-import numpy as np
-import pandas as pd
-from typing import Dict, Optional, Tuple
 import logging
+from typing import Dict, Optional, Tuple
 
 import gymnasium as gym
+import numpy as np
+import pandas as pd
 from gymnasium import spaces
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ class TradingEnvironment(gym.Env):
     ) -> None:
         super().__init__()
 
-        if 'close' not in data.columns:
+        if "close" not in data.columns:
             raise ValueError("Data must contain 'close' column")
 
         # Data slicing for domain randomization
@@ -74,20 +74,25 @@ class TradingEnvironment(gym.Env):
         # Buffers
         n_features = len(self.feature_columns)
         portfolio_features = 3
-        self._observation_buffer = np.zeros((self.lookback_window, n_features + portfolio_features), dtype=np.float32)
+        self._observation_buffer = np.zeros(
+            (self.lookback_window, n_features + portfolio_features), dtype=np.float32
+        )
         self._market_data_buffer = np.zeros((self.lookback_window, n_features), dtype=np.float32)
         self._portfolio_features_buffer = np.zeros(portfolio_features, dtype=np.float32)
 
         # Spaces
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
         self.observation_space = spaces.Box(
-            low=-100.0, high=100.0, shape=(self.lookback_window, n_features + portfolio_features), dtype=np.float32
+            low=-100.0,
+            high=100.0,
+            shape=(self.lookback_window, n_features + portfolio_features),
+            dtype=np.float32,
         )
 
         logger.info(f"Trading environment initialized with {len(self.data)} steps")
         logger.info(f"Action space: {self.action_space}")
         logger.info(f"Observation space: {self.observation_space.shape}")
-        
+
         # Store seed for later use
         self._seed = None
 
@@ -99,7 +104,7 @@ class TradingEnvironment(gym.Env):
 
     def _preprocess_data(self) -> None:
         # Feature columns (exclude 'close')
-        self.feature_columns = [c for c in self.data.columns if c != 'close']
+        self.feature_columns = [c for c in self.data.columns if c != "close"]
         if self.feature_columns:
             market = self.data[self.feature_columns].to_numpy(dtype=np.float32)
             market = np.nan_to_num(market, nan=0.0, posinf=1.0, neginf=-1.0)
@@ -123,9 +128,9 @@ class TradingEnvironment(gym.Env):
         self.rewards_history = []
         obs = self._get_observation()
         info: Dict[str, float] = {
-            'balance': float(self.balance),
-            'position': float(self.position),
-            'current_step': float(self.current_step),
+            "balance": float(self.balance),
+            "position": float(self.position),
+            "current_step": float(self.current_step),
         }
         return obs, info
 
@@ -134,36 +139,50 @@ class TradingEnvironment(gym.Env):
             return self._get_observation(), 0.0, True, False, {}
 
         position_change = float(np.clip(float(action[0]), -1.0, 1.0))
-        new_position = float(np.clip(self.position + position_change, -self.max_position_size, self.max_position_size))
+        new_position = float(
+            np.clip(
+                self.position + position_change,
+                -self.max_position_size,
+                self.max_position_size,
+            )
+        )
 
         reward = 0.0
         if abs(new_position - self.position) > 1e-6:
             reward = self._execute_trade(new_position)
 
         self.current_step += 1
-        current_price = float(self.data.iloc[self.current_step]['close'])
+        current_price = float(self.data.iloc[self.current_step]["close"])
         portfolio_value = float(self._calculate_portfolio_value(current_price))
         self.portfolio_values.append(portfolio_value)
 
         obs = self._get_observation()
         terminated = self.current_step >= len(self.data) - 1
         if self.episode_length is not None:
-            terminated = terminated or (self.current_step - self.lookback_window >= self.episode_length)
+            terminated = terminated or (
+                self.current_step - self.lookback_window >= self.episode_length
+            )
         truncated = portfolio_value <= self.initial_balance * 0.1
 
         info = {
-            'portfolio_value': portfolio_value,
-            'position': self.position,
-            'balance': self.balance,
-            'total_trades': self.total_trades,
-            'total_fees': self.total_fees_paid,
-            'current_price': current_price,
+            "portfolio_value": portfolio_value,
+            "position": self.position,
+            "balance": self.balance,
+            "total_trades": self.total_trades,
+            "total_fees": self.total_fees_paid,
+            "current_price": current_price,
         }
         self.rewards_history.append(float(reward))
-        return obs, float(reward) * float(self.reward_scaling), bool(terminated), bool(truncated), info
+        return (
+            obs,
+            float(reward) * float(self.reward_scaling),
+            bool(terminated),
+            bool(truncated),
+            info,
+        )
 
     def _execute_trade(self, new_position: float) -> float:
-        current_price = float(self.data.iloc[self.current_step]['close'])
+        current_price = float(self.data.iloc[self.current_step]["close"])
         position_change = float(new_position - self.position)
         trade_size = abs(position_change) * float(self.balance)
 
@@ -175,20 +194,22 @@ class TradingEnvironment(gym.Env):
         self.total_fees_paid += total_cost
         self.total_trades += 1
 
-        self.trades_history.append({
-            'step': int(self.current_step),
-            'price': current_price,
-            'position_change': position_change,
-            'new_position': new_position,
-            'cost': total_cost,
-        })
+        self.trades_history.append(
+            {
+                "step": int(self.current_step),
+                "price": current_price,
+                "position_change": position_change,
+                "new_position": new_position,
+                "cost": total_cost,
+            }
+        )
 
         self.position = float(new_position)
 
         if self.current_step < len(self.data) - 1:
-            next_price = float(self.data.iloc[self.current_step + 1]['close'])
+            next_price = float(self.data.iloc[self.current_step + 1]["close"])
             price_change = (next_price - current_price) / max(current_price, 1e-8)
-            if self.reward_mode == 'pnl_pct':
+            if self.reward_mode == "pnl_pct":
                 position_reward = float(self.position) * float(price_change)
                 cost_penalty = -(total_cost / max(self.balance, 1e-8))
                 trading_penalty = -abs(position_change) * 0.001
@@ -199,7 +220,11 @@ class TradingEnvironment(gym.Env):
                 trading_penalty = -abs(position_change) * 0.001 * float(self.balance)
                 total_reward = float(position_reward + cost_penalty + trading_penalty)
         else:
-            total_reward = -(total_cost / max(self.balance, 1e-8)) if self.reward_mode == 'pnl_pct' else -total_cost
+            total_reward = (
+                -(total_cost / max(self.balance, 1e-8))
+                if self.reward_mode == "pnl_pct"
+                else -total_cost
+            )
         return float(total_reward)
 
     def _get_observation(self) -> np.ndarray:
@@ -210,13 +235,17 @@ class TradingEnvironment(gym.Env):
         self._market_data_buffer.fill(0.0)
         buffer_start = self.lookback_window - len(market_data)
         if market_data.shape[0] > 0:
-            self._market_data_buffer[buffer_start:self.lookback_window] = market_data
+            self._market_data_buffer[buffer_start : self.lookback_window] = market_data
 
-        current_price = float(self.data.iloc[self.current_step]['close'])
+        current_price = float(self.data.iloc[self.current_step]["close"])
         unrealized_pnl = float(self._calculate_unrealized_pnl(current_price))
-        self._portfolio_features_buffer[0] = np.clip(self.balance / self.initial_balance, 0.01, 10.0)
+        self._portfolio_features_buffer[0] = np.clip(
+            self.balance / self.initial_balance, 0.01, 10.0
+        )
         self._portfolio_features_buffer[1] = np.clip(self.position, -1.0, 1.0)
-        self._portfolio_features_buffer[2] = np.clip(unrealized_pnl / self.initial_balance, -2.0, 2.0)
+        self._portfolio_features_buffer[2] = np.clip(
+            unrealized_pnl / self.initial_balance, -2.0, 2.0
+        )
 
         portfolio_matrix = np.tile(self._portfolio_features_buffer, (self.lookback_window, 1))
         self._observation_buffer[:, : self._market_data_buffer.shape[1]] = self._market_data_buffer
@@ -231,9 +260,11 @@ class TradingEnvironment(gym.Env):
             return 0.0
         position_value = abs(self.position) * float(self.balance)
         if len(self.trades_history) > 0:
-            last_trade_price = float(self.trades_history[-1]['price'])
+            last_trade_price = float(self.trades_history[-1]["price"])
             if last_trade_price > 0:
-                price_change = np.clip((current_price - last_trade_price) / last_trade_price, -0.5, 0.5)
+                price_change = np.clip(
+                    (current_price - last_trade_price) / last_trade_price, -0.5, 0.5
+                )
                 unrealized_pnl = float(self.position) * float(price_change) * float(position_value)
             else:
                 unrealized_pnl = 0.0
@@ -256,19 +287,19 @@ class TradingEnvironment(gym.Env):
             max_dd = 0.0
             vol = 0.0
         if len(self.trades_history) > 0:
-            pnl_values = np.array([t.get('pnl', 0.0) for t in self.trades_history])
+            pnl_values = np.array([t.get("pnl", 0.0) for t in self.trades_history])
             win_rate = float(np.sum(pnl_values > 0) / len(self.trades_history))
         else:
             win_rate = 0.0
         return {
-            'total_return': total_return,
-            'sharpe_ratio': sharpe,
-            'max_drawdown': max_dd,
-            'volatility': vol,
-            'win_rate': win_rate,
-            'total_trades': float(self.total_trades),
-            'total_fees': float(self.total_fees_paid),
-            'final_balance': float(self.balance),
+            "total_return": total_return,
+            "sharpe_ratio": sharpe,
+            "max_drawdown": max_dd,
+            "volatility": vol,
+            "win_rate": win_rate,
+            "total_trades": float(self.total_trades),
+            "total_fees": float(self.total_fees_paid),
+            "final_balance": float(self.balance),
         }
 
     def _calculate_max_drawdown(self, portfolio_values: np.ndarray) -> float:

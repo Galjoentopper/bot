@@ -20,31 +20,74 @@ __email__ = "contact@botkilo.com"
 
 # Import main components for easy access
 try:
-    from .data_pipeline.loader import DataLoader
+    # Core components
+    # Backtesting
+    from .backtesting.backtest import Backtester
+
+    # Configuration
+    from .config.config_loader import ConfigLoader
+    from .core.config_manager import ConfigurationManager
+    from .core.container import DIContainer
+    from .core.enhanced_logger import EnhancedLogger
     from .data_pipeline.features import FeatureEngine
+
+    # Data pipeline
+    from .data_pipeline.loader import DataLoader
     from .data_pipeline.preprocess import DataPreprocessor
+
+    # Models
     from .models.gru_trainer import GRUTrainer
     from .models.lgbm_trainer import LightGBMTrainer
+    from .models.model_manager import ModelManager
     from .models.ppo_trainer import PPOTrainer
-    from .rl_env.trading_env import TradingEnvironment
-    from .backtesting.backtest import Backtester
+    from .notifier.enhanced_telegram import EnhancedTelegramNotifier
+
+    # Notifications
     from .notifier.telegram import TelegramNotifier
-    from .utils.logger import setup_logging, TradingBotLogger
+
+    # RL Environment
+    from .rl_env.trading_env import TradingEnvironment
+    from .trading.position_tracker import PositionTracker
+
+    # Trading components
+    from .trading.trading_metrics import TradingMetrics
+
+    # Utilities
+    from .utils.logger import TradingBotLogger, setup_logging
+
 except ImportError as e:
     # Handle import errors gracefully during development
     import warnings
+
     warnings.warn(f"Some modules could not be imported: {e}", ImportWarning)
 
 __all__ = [
+    # Core
+    "ConfigurationManager",
+    "EnhancedLogger",
+    "DIContainer",
+    # Data pipeline
     "DataLoader",
-    "FeatureEngine", 
+    "FeatureEngine",
     "DataPreprocessor",
+    # Models
     "GRUTrainer",
     "LightGBMTrainer",
     "PPOTrainer",
+    "ModelManager",
+    # RL Environment
     "TradingEnvironment",
+    # Backtesting
     "Backtester",
+    # Trading
+    "TradingMetrics",
+    "PositionTracker",
+    # Notifications
     "TelegramNotifier",
+    "EnhancedTelegramNotifier",
+    # Utilities
     "setup_logging",
     "TradingBotLogger",
+    # Configuration
+    "ConfigLoader",
 ]

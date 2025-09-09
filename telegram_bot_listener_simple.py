@@ -6,26 +6,26 @@ Robust version that handles event loop conflicts properly.
 
 import asyncio
 import logging
+import os
 import signal
 import sys
-import os
-from typing import Dict, Any
 from pathlib import Path
+from typing import Any, Dict
 
 # Add project root to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / 'src'))
+sys.path.insert(0, str(project_root / "src"))
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 # Configure logging
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
 
 class SimpleTelegramBot:
     """Simple and robust Telegram bot listener."""
@@ -61,13 +61,15 @@ class SimpleTelegramBot:
     def _setup_handlers(self):
         """Setup command handlers."""
         # Status command
-        self.application.add_handler(CommandHandler('status', self._cmd_status))
-        self.application.add_handler(CommandHandler('start', self._cmd_start))
-        self.application.add_handler(CommandHandler('stop', self._cmd_stop))
-        self.application.add_handler(CommandHandler('help', self._cmd_help))
+        self.application.add_handler(CommandHandler("status", self._cmd_status))
+        self.application.add_handler(CommandHandler("start", self._cmd_start))
+        self.application.add_handler(CommandHandler("stop", self._cmd_stop))
+        self.application.add_handler(CommandHandler("help", self._cmd_help))
 
         # Unknown messages
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_unknown))
+        self.application.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_unknown)
+        )
 
     async def _cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /status command."""
@@ -78,17 +80,17 @@ class SimpleTelegramBot:
 ✅ System: Ready
 
 <i>Use /help for available commands</i>"""
-        await update.message.reply_text(response, parse_mode='HTML')
+        await update.message.reply_text(response, parse_mode="HTML")
 
     async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command."""
         response = "🚀 Trading system start command received!"
-        await update.message.reply_text(response, parse_mode='HTML')
+        await update.message.reply_text(response, parse_mode="HTML")
 
     async def _cmd_stop(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /stop command."""
         response = "🛑 Trading system stop command received!"
-        await update.message.reply_text(response, parse_mode='HTML')
+        await update.message.reply_text(response, parse_mode="HTML")
 
     async def _cmd_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command."""
@@ -100,12 +102,12 @@ class SimpleTelegramBot:
 • /help - Show this help
 
 <i>Bot is running and ready to receive commands!</i>"""
-        await update.message.reply_text(help_text, parse_mode='HTML')
+        await update.message.reply_text(help_text, parse_mode="HTML")
 
     async def _handle_unknown(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle unknown messages."""
         response = "🤔 Unknown command. Use /help to see available commands."
-        await update.message.reply_text(response, parse_mode='HTML')
+        await update.message.reply_text(response, parse_mode="HTML")
 
     async def stop_bot(self):
         """Stop the bot gracefully."""
@@ -118,13 +120,15 @@ class SimpleTelegramBot:
             except Exception as e:
                 logger.warning(f"Bot stop warning: {e}")
 
+
 def load_config() -> Dict[str, Any]:
     """Load configuration."""
     try:
         import yaml
+
         config_path = Path("training_config.yaml")
         if config_path.exists():
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = yaml.safe_load(f)
             return config
         else:
@@ -133,6 +137,7 @@ def load_config() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error loading configuration: {e}")
         return {}
+
 
 async def run_bot():
     """Run the bot with proper error handling."""
@@ -145,9 +150,9 @@ async def run_bot():
         return
 
     # Get Telegram configuration
-    telegram_config = config.get('notifications', {}).get('telegram', {})
-    bot_token = telegram_config.get('bot_token')
-    chat_id = telegram_config.get('chat_id')
+    telegram_config = config.get("notifications", {}).get("telegram", {})
+    bot_token = telegram_config.get("bot_token")
+    chat_id = telegram_config.get("chat_id")
 
     if not bot_token or not chat_id:
         logger.error("Telegram bot_token or chat_id not configured")
@@ -183,6 +188,7 @@ async def run_bot():
         if bot.running:
             await bot.stop_bot()
 
+
 def main():
     """Main entry point with event loop handling."""
     try:
@@ -201,6 +207,7 @@ def main():
         except Exception as e:
             logger.error(f"Bot failed: {e}")
             sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
