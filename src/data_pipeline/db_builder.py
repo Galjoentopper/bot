@@ -18,6 +18,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
+
+# Use the final data fetcher - the ultimate solution
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -25,11 +28,17 @@ from typing import Callable, Iterable, List, Optional
 
 import pandas as pd
 
-# We reuse the robust fetcher implemented for Paperspace to avoid exchange blockers
-try:
-    from paperspace_mlops.simple_data_fetcher import SimpleDataFetcher
-except Exception:  # pragma: no cover - fallback if path differs
-    SimpleDataFetcher = None  # type: ignore
+final_fetcher_path = Path(__file__).parent.parent.parent / "final_data_fetcher.py"
+if final_fetcher_path.exists():
+    sys.path.insert(0, str(final_fetcher_path.parent))
+    try:
+        from final_data_fetcher import FinalDataFetcher
+
+        SimpleDataFetcher = FinalDataFetcher  # Compatible interface
+    except Exception:
+        SimpleDataFetcher = None
+else:
+    SimpleDataFetcher = None
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +155,7 @@ async def rebuild_databases(
     symbols: Iterable[str],
     interval: str,
     data_dir: str = "data",
-    days: int = 90,
+    days: int = 365,
     log_cb: Optional[Callable[[str], None]] = None,
 ) -> List[BuildResult]:
     """Rebuild SQLite databases for the given symbols.
@@ -162,6 +171,7 @@ async def rebuild_databases(
         days: History depth hint for fetcher
         log_cb: Optional logging callback
     """
+
     def log(msg: str) -> None:
         if log_cb:
             try:
@@ -172,7 +182,9 @@ async def rebuild_databases(
         logger.info(msg)
 
     if SimpleDataFetcher is None:
-        raise RuntimeError("SimpleDataFetcher not available; ensure paperspace_mlops is in PYTHONPATH")
+        raise RuntimeError(
+            "SimpleDataFetcher not available; ensure paperspace_mlops is in PYTHONPATH"
+        )
 
     out: List[BuildResult] = []
     fetcher = SimpleDataFetcher()

@@ -115,6 +115,7 @@ class EnhancedTelegramNotifier:
             # Load config
             try:
                 import yaml
+
                 cfg_path = Path("training_config.yaml")
                 if cfg_path.exists():
                     with open(cfg_path, "r") as f:
@@ -142,7 +143,9 @@ class EnhancedTelegramNotifier:
                         # Likely symbols list like "BTCEUR,ETHEUR" or a single symbol token
                         cand = [s.strip().upper() for s in p.split(",") if s.strip()]
                         # Heuristic: tokens like "30m"/"1h" are interval, not symbol
-                        if all(len(s) >= 5 and s[-3:].upper() in ("EUR", "USD", "USDT") for s in cand):
+                        if all(
+                            len(s) >= 5 and s[-3:].upper() in ("EUR", "USD", "USDT") for s in cand
+                        ):
                             symbols = cand
                         else:
                             # If looks like interval (e.g., 15m/1h), set interval
@@ -156,7 +159,11 @@ class EnhancedTelegramNotifier:
                 symbols = ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
 
             # Kick off background task
-            asyncio.create_task(self._run_database_refresh(symbols, interval, dry_run=dry_run, git_branch=git_branch))
+            asyncio.create_task(
+                self._run_database_refresh(
+                    symbols, interval, dry_run=dry_run, git_branch=git_branch
+                )
+            )
 
             sym_preview = ",".join(symbols[:4]) + ("…" if len(symbols) > 4 else "")
             return (
@@ -169,7 +176,13 @@ class EnhancedTelegramNotifier:
             logger.error(f"Database command failed to start: {e}", exc_info=True)
             return f"❌ Failed to start database refresh: {e}"
 
-    async def _run_database_refresh(self, symbols: List[str], interval: str, dry_run: bool = False, git_branch: Optional[str] = None) -> None:
+    async def _run_database_refresh(
+        self,
+        symbols: List[str],
+        interval: str,
+        dry_run: bool = False,
+        git_branch: Optional[str] = None,
+    ) -> None:
         """Background workflow to rebuild DBs, push to Git, and notify via Telegram."""
         start_ts = datetime.now()
         log_dir = Path("logs")
@@ -185,7 +198,9 @@ class EnhancedTelegramNotifier:
                 pass
 
         try:
-            log_line(f"Starting DB refresh for {len(symbols)} symbols at {interval}; dry_run={dry_run}")
+            log_line(
+                f"Starting DB refresh for {len(symbols)} symbols at {interval}; dry_run={dry_run}"
+            )
 
             # Stop trading before rebuild
             if not dry_run:
@@ -229,7 +244,30 @@ class EnhancedTelegramNotifier:
             results = {"success": [], "failed": []}
             if not dry_run:
                 try:
-                    await rebuild_databases(symbols, interval, data_dir=str(data_dir), log_cb=log_line)
+                    # Use the final data fetcher for optimal results
+                    import subprocess
+                    import sys
+                    from pathlib import Path
+
+                    final_fetcher_path = Path(data_dir).parent / "final_data_fetcher.py"
+                    if final_fetcher_path.exists():
+                        log_line("🚀 Using final data fetcher for optimal 1-year coverage")
+                        cmd = [sys.executable, str(final_fetcher_path)] + symbols
+                        result = subprocess.run(
+                            cmd, capture_output=True, text=True, cwd=str(data_dir.parent)
+                        )
+
+                        if result.returncode == 0:
+                            log_line("✅ Final data fetcher completed successfully")
+                            log_line(result.stdout)
+                        else:
+                            log_line(f"❌ Final data fetcher failed: {result.stderr}")
+                            raise RuntimeError(f"Final data fetcher failed: {result.stderr}")
+                    else:
+                        # Fallback to original method
+                        await rebuild_databases(
+                            symbols, interval, data_dir=str(data_dir), days=365, log_cb=log_line
+                        )
                     results["success"] = symbols[:]
                 except Exception as e:
                     # If builder returns partial results in exception message, just log
@@ -295,7 +333,9 @@ class EnhancedTelegramNotifier:
                         stderr=asyncio.subprocess.PIPE,
                     )
                     push_out, push_err = await proc.communicate()
-                    log_line(f"git push exit={proc.returncode} out={push_out.decode().strip()} err={push_err.decode().strip()}")
+                    log_line(
+                        f"git push exit={proc.returncode} out={push_out.decode().strip()} err={push_err.decode().strip()}"
+                    )
                 except Exception as e:
                     log_line(f"Git push failed: {e}")
 

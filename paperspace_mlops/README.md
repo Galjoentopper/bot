@@ -1,27 +1,28 @@
 # Paperspace MLOps Pipeline
 
-Complete automated MLOps pipeline for training trading bot models on Paperspace Gradient and automatically deploying them to production servers.
+Complete automated MLOps pipeline for training trading bot models on Paperspace Gradient using local databases.
 
 ## 🚀 Quick Start
 
 ### On Paperspace Gradient
 
-1. **Upload your trading bot repository** to Paperspace (or set environment variables for Git cloning)
+1. **Upload your trading bot repository** with data to Paperspace
+   - Ensure your `data/` folder contains SQLite databases (e.g., `btceur_30m.db`, `etheur_30m.db`)
+   - Databases should be built using the final_data_fetcher.py on your production server
 
-2. **Run the setup script**:
+2. **Run the one-time setup script**:
    ```bash
    python paperspace_mlops/paperspace_setup.py
    ```
+   - Installs all dependencies and configures environment
+   - Only needs to be run once per machine
 
 3. **Start training**:
    ```bash
-   python start_training.py
+   python paperspace_mlops/paperspace_training.py
    ```
-
-Or run the orchestrator directly:
-```bash
-python paperspace_mlops/paperspace_training_orchestrator.py
-```
+   - Uses existing databases in `data/` folder (no network fetching)
+   - Automatically manages time limits and training parameters
 
 ### On Production Server
 
@@ -86,59 +87,55 @@ export AWS_ACCESS_KEY_ID="your-access-key"
 export AWS_SECRET_ACCESS_KEY="your-secret-key"
 ```
 
-## 📚 Use Local Databases (No Fetch)
+## 📚 Local Database Training
 
-If your Paperspace environment cannot fetch market data, the orchestrator can use existing SQLite databases from the repository instead of downloading:
+This pipeline exclusively uses local SQLite databases for training (no network data fetching):
 
-- Place databases under the repo `data/` folder (e.g., `/notebooks/bot/data/btceur_30m.db`).
-- Enable in `training_config.yaml`:
+### Database Requirements
+- Place databases in the repo `data/` folder (e.g., `/notebooks/bot/data/btceur_30m.db`)
+- Each database should contain ~17,520 samples (1 year of 30-minute candles)
+- Use `final_data_fetcher.py` on your production server to build high-quality databases
 
-```yaml
-data_acquisition:
-  use_local_databases: true
-  symbols: ['BTCEUR','ETHEUR','ADAEUR','DOTEUR','LINKEUR']
-  interval: '30m'
-```
-
-When enabled on Paperspace, the orchestrator will:
-- Preserve `data/*.db` (no aggressive cleanup of DBs)
-- Load datasets strictly from local DBs (no network fetch fallbacks)
+### Training Process
+The training script will:
+- Verify data availability and sample counts
+- Load datasets strictly from local databases
 - Cache engineered features under `models/metadata/`
+- Train models without any network dependencies
 
 ## 🏗️ Architecture
 
-### Paperspace Training Pipeline
+### Two-Script Architecture
 
+**paperspace_setup.py** - One-time environment preparation:
 ```
-1. Environment Setup
-   ├── Install dependencies
-   ├── Setup directories
-   └── Configure MLflow
+1. Environment Detection (Paperspace vs Local)
+2. Directory Structure Setup
+3. Python Environment Configuration
+4. Dependency Installation
+5. Environment Variable Configuration
+6. Data Availability Verification
+7. Optional Tools Setup
+8. Environment Validation
+```
 
-2. Data Acquisition
-   ├── Fetch market data
-   ├── Build datasets
-   └── Feature engineering
+**paperspace_training.py** - Main training pipeline:
+```
+1. Data Verification
+   ├── Check local database availability
+   ├── Verify sample counts (~17,520 per symbol)
+   └── Feature consistency validation
 
-3. Model Training
-   ├── Train GRU models
-   ├── Train LightGBM models
-   ├── Train PPO models
-   └── Parallel execution with time management
+2. Model Training
+   ├── Train GRU models (time-series prediction)
+   ├── Train LightGBM models (structured features)
+   ├── Train PPO models (reinforcement learning)
+   └── Adaptive time management with 6-hour limit
 
-4. Model Packaging
-   ├── Collect trained models
-   ├── Package metadata
-   └── Create zip archive
-
-5. Model Transfer
-   ├── Try HTTP upload
-   ├── Fallback to cloud storage
-   ├── Fallback to GitHub releases
-   └── Final fallback to email
-
-6. Production Notification
-   └── Send webhook to production server
+3. Model Export
+   ├── Collect all trained models
+   ├── Package metadata and configurations
+   └── Create deployment-ready zip archive
 ```
 
 ### Production Import Pipeline
@@ -169,15 +166,13 @@ When enabled on Paperspace, the orchestrator will:
 
 ```
 paperspace_mlops/
-├── README.md                           # This file
-├── paperspace_setup.py                 # Paperspace environment setup
-├── paperspace_training_orchestrator.py # Main training orchestrator
-├── model_transfer_service.py           # Enhanced model transfer
-└── production_import_handler.py        # Production import automation
+├── README.md                    # This documentation
+├── paperspace_setup.py          # One-time environment setup script
+└── paperspace_training.py       # Main training script (uses local data only)
 
-# Root level scripts
-├── start_training.py                   # Quick start training script
-└── start_production_webhook.py         # Production webhook server
+# Supporting files (if needed)
+├── model_transfer_service.py    # Enhanced model transfer (optional)
+└── production_import_handler.py # Production import automation (optional)
 ```
 
 ## 🛠️ Transfer Methods
@@ -366,36 +361,37 @@ find models/ -name "*.pkl" -o -name "*.pt" | head -10
 
 ### Complete End-to-End Workflow
 
-1. **Prepare Paperspace**:
+1. **Prepare Data on Production Server**:
    ```bash
-   # Upload repository or set git URL
-   # Set environment variables
-   # Run setup script
-   python paperspace_mlops/paperspace_setup.py
+   # Build fresh databases with final_data_fetcher.py
+   python final_data_fetcher.py
+   # This creates ~17,520 samples per symbol and pushes to GitHub
    ```
 
-2. **Start Production Webhook**:
+2. **Setup Paperspace Environment (One-time)**:
    ```bash
-   # On production server
-   python start_production_webhook.py --port 5000
+   # Upload repository with data/ folder to Paperspace
+   # Run setup script once per machine
+   python paperspace_mlops/paperspace_setup.py
    ```
 
 3. **Start Training**:
    ```bash
-   # On Paperspace
-   python start_training.py
+   # Run training using local databases only
+   python paperspace_mlops/paperspace_training.py
    ```
 
-4. **Monitor Progress**:
-   - Watch Paperspace logs for training progress
-   - Monitor production webhook for import notifications
-   - Check Telegram for status updates
+4. **Import Models to Production**:
+   ```bash
+   # Download the created models.zip and extract
+   ./import_models.sh models.zip
+   ```
 
 5. **Validate Deployment**:
    ```bash
-   # On production server
+   # Test the imported models
    python quick_test_system.py
    ls -la models/
    ```
 
-The entire process is designed to be hands-off once started, with automatic error handling and recovery at every step.
+This streamlined process uses local data only, eliminating network dependencies and API rate limits during training.
