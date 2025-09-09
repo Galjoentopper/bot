@@ -635,26 +635,57 @@ class PaperspaceOrchestrator:
                     except Exception as e:
                         self.logger.warning(f"⚠️ {symbol} retry failed: {e}")
                 
-                # Final fallback: Use simple data fetcher
+                # Final fallback: Use simple data fetcher for ALL symbols
                 if not datasets:
-                    self.logger.info("🔄 Final fallback: Using simple data fetcher...")
+                    self.logger.info("🔄 Final fallback: Using simple data fetcher for ALL symbols...")
                     try:
                         from .simple_data_fetcher import SimpleDataFetcher
                         fetcher = SimpleDataFetcher()
                         
-                        for symbol in failed_symbols[:2]:  # Try first 2 symbols
+                        # Try ALL 5 symbols with simple fetcher
+                        all_symbols = ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
+                        for symbol in all_symbols:
                             try:
                                 self.logger.info(f"🌐 Simple fetch for {symbol}...")
                                 dataset = fetcher.build_simple_dataset(symbol, interval="1h")
                                 
-                                if dataset and len(dataset[0]) > 30:
+                                if dataset and len(dataset[0]) > 20:  # Very low requirement
                                     datasets[symbol] = dataset
                                     self.logger.info(f"✅ Simple fetch {symbol}: {len(dataset[0])} samples")
-                                    break  # Success with at least one symbol
+                                else:
+                                    self.logger.warning(f"⚠️ {symbol}: Dataset too small or None")
                             except Exception as e:
-                                self.logger.warning(f"⚠️ Simple fetch {symbol} failed: {e}")
+                                self.logger.error(f"❌ Simple fetch {symbol} failed: {e}")
+                                
+                        self.logger.info(f"📊 Simple fetcher results: {len(datasets)}/5 symbols successful")
+                        
                     except ImportError:
                         self.logger.error("❌ Simple data fetcher not available")
+                        
+                # If simple fetcher got some but not all, try the failed ones again with different intervals
+                if len(datasets) > 0 and len(datasets) < 5:
+                    missing_symbols = [s for s in ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"] if s not in datasets]
+                    self.logger.info(f"🔄 Retrying {len(missing_symbols)} missing symbols with different approaches...")
+                    
+                    try:
+                        from .simple_data_fetcher import SimpleDataFetcher
+                        fetcher = SimpleDataFetcher()
+                        
+                        for symbol in missing_symbols:
+                            # Try different intervals
+                            for interval in ["1d", "4h", "2h"]:
+                                try:
+                                    self.logger.info(f"🔄 Trying {symbol} with {interval} interval...")
+                                    dataset = fetcher.build_simple_dataset(symbol, interval=interval)
+                                    
+                                    if dataset and len(dataset[0]) > 15:  # Even lower requirement
+                                        datasets[symbol] = dataset
+                                        self.logger.info(f"✅ {symbol} ({interval}): {len(dataset[0])} samples")
+                                        break
+                                except Exception as e:
+                                    self.logger.warning(f"⚠️ {symbol} {interval}: {e}")
+                    except Exception as e:
+                        self.logger.error(f"❌ Retry failed: {e}")
                 
                 if not datasets:
                     raise RuntimeError("No valid datasets could be created even with simple fetcher")

@@ -19,46 +19,129 @@ class SimpleDataFetcher:
     """Simple data fetcher that gets fresh data directly from sources"""
     
     def fetch_symbol_data(self, symbol: str, interval: str = "1h", days: int = 180) -> Optional[pd.DataFrame]:
-        """Fetch data directly from yfinance"""
+        """Fetch data from multiple sources with aggressive fallback"""
         
         logger.info(f"📊 Fetching {symbol} data ({interval}, {days} days)")
         
-        try:
-            import yfinance as yf
-            
-            # Try yfinance first
-            ticker = yf.Ticker(symbol)
-            
-            # Calculate period
-            if days <= 30:
-                period = "1mo"
-            elif days <= 90:
-                period = "3mo"  
-            elif days <= 180:
-                period = "6mo"
-            else:
-                period = "1y"
-            
-            # Fetch data
-            hist = ticker.history(period=period, interval=interval)
-            
-            if len(hist) > 50:
-                logger.info(f"✅ yfinance {symbol}: {len(hist)} samples")
-                return hist
-            else:
-                logger.warning(f"⚠️ yfinance {symbol}: Only {len(hist)} samples")
-                
-        except Exception as e:
-            logger.error(f"❌ yfinance {symbol}: {e}")
+        # Try multiple approaches for each symbol
+        methods = [
+            ("yfinance", self._fetch_yfinance),
+            ("binance_eur", self._fetch_binance_eur),
+            ("binance_usdt", self._fetch_binance_usdt),
+            ("alternative_api", self._fetch_alternative_data)
+        ]
         
-        # Try alternative approach with requests
-        try:
-            logger.info(f"🔄 Trying alternative data source for {symbol}...")
-            return self._fetch_alternative_data(symbol, interval, days)
+        for method_name, method in methods:
+            try:
+                logger.info(f"  🔄 Trying {method_name} for {symbol}...")
+                data = method(symbol, interval, days)
+                
+                if data is not None and len(data) > 15:  # Very low threshold
+                    logger.info(f"  ✅ {method_name} {symbol}: {len(data)} samples")
+                    return data
+                else:
+                    logger.warning(f"  ⚠️ {method_name} {symbol}: Insufficient data ({len(data) if data is not None else 0} samples)")
+                    
+            except Exception as e:
+                logger.warning(f"  ❌ {method_name} {symbol}: {e}")
+        
+        logger.error(f"❌ All methods failed for {symbol}")
+        return None
+    
+    def _fetch_yfinance(self, symbol: str, interval: str, days: int) -> Optional[pd.DataFrame]:
+        """Fetch from yfinance"""
+        import yfinance as yf
+        
+        ticker = yf.Ticker(symbol)
+        
+        # Calculate period
+        if days <= 30:
+            period = "1mo"
+        elif days <= 90:
+            period = "3mo"  
+        elif days <= 180:
+            period = "6mo"
+        else:
+            period = "1y"
+        
+        # Try different intervals if the requested one fails
+        intervals_to_try = [interval, "1h", "1d", "30m"]
+        
+        for try_interval in intervals_to_try:
+            try:
+                hist = ticker.history(period=period, interval=try_interval)
+                if len(hist) > 15:
+                    return hist
+            except Exception:
+                continue
+                
+        return None
+    
+    def _fetch_binance_eur(self, symbol: str, interval: str, days: int) -> Optional[pd.DataFrame]:
+        """Try binance with EUR pairs"""
+        return self._fetch_binance_api(symbol, interval, days)
+    
+    def _fetch_binance_usdt(self, symbol: str, interval: str, days: int) -> Optional[pd.DataFrame]:
+        """Try binance with USDT pairs"""
+        usdt_symbol = symbol.replace("EUR", "USDT")
+        return self._fetch_binance_api(usdt_symbol, interval, days)
+    
+    def _fetch_binance_api(self, symbol: str, interval: str, days: int) -> Optional[pd.DataFrame]:
+        """Generic binance API fetch"""
+        import requests
+        
+        url = "https://api.binance.com/api/v3/klines"
+        
+        # Convert interval
+        binance_interval = interval
+        if interval == "30m":
+            binance_interval = "30m"
+        elif interval == "1h":
+            binance_interval = "1h"
+        elif interval == "1d":
+            binance_interval = "1d"
+        elif interval == "4h":
+            binance_interval = "4h"
+        elif interval == "2h":
+            binance_interval = "2h"
+        
+        params = {
+            "symbol": symbol,
+            "interval": binance_interval,
+            "limit": min(days * 24 if "h" in interval else days, 1000)
+        }
+        
+        response = requests.get(url, params=params, timeout=15)
+        
+        if response.status_code == 200:
+            data = response.json()
             
-        except Exception as e:
-            logger.error(f"❌ Alternative fetch {symbol}: {e}")
-            
+            if len(data) > 10:
+                # Convert to DataFrame
+                df = pd.DataFrame(data, columns=[
+                    'timestamp', 'open', 'high', 'low', 'close', 'volume',
+                    'close_time', 'quote_asset_volume', 'number_of_trades',
+                    'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
+                ])
+                
+                # Convert types
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                for col in ['open', 'high', 'low', 'close', 'volume']:
+                    df[col] = pd.to_numeric(df[col])
+                
+                # Rename columns to match expected format
+                df = df.rename(columns={
+                    'timestamp': 'Datetime',
+                    'open': 'Open',
+                    'high': 'High', 
+                    'low': 'Low',
+                    'close': 'Close',
+                    'volume': 'Volume'
+                })
+                
+                df.set_index('Datetime', inplace=True)
+                return df[['Open', 'High', 'Low', 'Close', 'Volume']]
+                
         return None
     
     def _fetch_alternative_data(self, symbol: str, interval: str, days: int) -> Optional[pd.DataFrame]:
