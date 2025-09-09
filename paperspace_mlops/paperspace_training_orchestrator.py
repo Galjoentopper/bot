@@ -635,8 +635,29 @@ class PaperspaceOrchestrator:
                     except Exception as e:
                         self.logger.warning(f"⚠️ {symbol} retry failed: {e}")
                 
+                # Final fallback: Use simple data fetcher
                 if not datasets:
-                    raise RuntimeError("No valid datasets could be created even with minimal requirements")
+                    self.logger.info("🔄 Final fallback: Using simple data fetcher...")
+                    try:
+                        from .simple_data_fetcher import SimpleDataFetcher
+                        fetcher = SimpleDataFetcher()
+                        
+                        for symbol in failed_symbols[:2]:  # Try first 2 symbols
+                            try:
+                                self.logger.info(f"🌐 Simple fetch for {symbol}...")
+                                dataset = fetcher.build_simple_dataset(symbol, interval="1h")
+                                
+                                if dataset and len(dataset[0]) > 30:
+                                    datasets[symbol] = dataset
+                                    self.logger.info(f"✅ Simple fetch {symbol}: {len(dataset[0])} samples")
+                                    break  # Success with at least one symbol
+                            except Exception as e:
+                                self.logger.warning(f"⚠️ Simple fetch {symbol} failed: {e}")
+                    except ImportError:
+                        self.logger.error("❌ Simple data fetcher not available")
+                
+                if not datasets:
+                    raise RuntimeError("No valid datasets could be created even with simple fetcher")
 
             # Update config to only include successful symbols
             self.config["data_acquisition"]["symbols"] = list(datasets.keys())
