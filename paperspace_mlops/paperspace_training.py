@@ -372,9 +372,9 @@ class PaperspaceTraining:
 
                 trainer = GRUTrainer(self.config)
             elif model_type == "lightgbm":
-                from src.models.lgbm_trainer import LGBMTrainer
+                from src.models.lgbm_trainer import LightGBMTrainer
 
-                trainer = LGBMTrainer(self.config)
+                trainer = LightGBMTrainer(self.config)
             elif model_type == "ppo":
                 from src.models.ppo_trainer import PPOTrainer
 
@@ -389,9 +389,59 @@ class PaperspaceTraining:
             model_path = self.models_dir / model_type / task["symbol"]
             model_path.mkdir(parents=True, exist_ok=True)
 
-            result = trainer.train(
-                X, y, symbol=task["symbol"], save_path=str(model_path), fast_mode=task["fast_mode"]
-            )
+            # Call train method with appropriate signature for each model type
+            if model_type == "gru":
+                # GRU expects train/validation split
+                split_idx = int(len(X) * 0.8)
+                X_train, X_val = X[:split_idx], X[split_idx:]
+                y_train, y_val = y[:split_idx], y[split_idx:]
+                
+                result = trainer.train(
+                    X_train=X_train,
+                    y_train=y_train,
+                    X_val=X_val,
+                    y_val=y_val,
+                    save_path=str(model_path),
+                    experiment_name=f"gru_{task['symbol'].lower()}",
+                    verbose=False
+                )
+            elif model_type == "lightgbm":
+                # LightGBM expects train/validation split
+                split_idx = int(len(X) * 0.8)
+                X_train, X_val = X[:split_idx], X[split_idx:]
+                y_train, y_val = y[:split_idx], y[split_idx:]
+                
+                result = trainer.train(
+                    X_train=X_train,
+                    y_train=y_train,
+                    X_val=X_val,
+                    y_val=y_val,
+                    experiment_name=f"lgbm_{task['symbol'].lower()}",
+                    save_path=str(model_path)
+                )
+            elif model_type == "ppo":
+                # PPO expects DataFrame with proper columns
+                import pandas as pd
+                
+                # Convert to DataFrame format expected by PPO
+                df_data = pd.DataFrame(X, columns=task["dataset"]["features"])
+                df_data['target'] = y
+                df_data.index = pd.to_datetime(timestamps)
+                
+                # Split train/eval
+                split_idx = int(len(df_data) * 0.8)
+                train_data = df_data[:split_idx]
+                eval_data = df_data[split_idx:]
+                
+                result = trainer.train(
+                    train_data=train_data,
+                    eval_data=eval_data,
+                    total_timesteps=50000 if task["fast_mode"] else 100000,
+                    experiment_name=f"ppo_{task['symbol'].lower()}",
+                    save_path=str(model_path)
+                )
+            else:
+                raise ValueError(f"Unknown model type: {model_type}")
 
             return {
                 "success": True,

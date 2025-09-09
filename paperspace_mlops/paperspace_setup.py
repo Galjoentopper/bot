@@ -147,6 +147,7 @@ class PaperspaceSetup:
             "psutil",
             "tqdm",
             "boto3",  # For S3 model uploads
+            "structlog",  # For structured logging
         ]
 
         # Install packages
