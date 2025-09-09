@@ -21,7 +21,8 @@ def install_packages():
     
     packages = [
         "numpy pandas pyyaml requests boto3 openpyxl ta yfinance",
-        "python-telegram-bot scikit-learn lightgbm torch gymnasium"
+        "python-telegram-bot scikit-learn lightgbm torch gymnasium",
+        "structlog schedule mlflow optuna psutil tqdm"
     ]
     
     for package_group in packages:

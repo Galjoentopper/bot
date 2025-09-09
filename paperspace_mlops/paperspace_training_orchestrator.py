@@ -121,6 +121,9 @@ class PaperspaceOrchestrator:
 
         # Clean old data and cache on startup
         self._clean_old_data()
+        
+        # Install missing dependencies
+        self._install_missing_dependencies()
 
         self.logger.info(f"🚀 Paperspace Training Orchestrator initialized")
         self.logger.info(f"📁 Workspace: {self.workspace_dir}")
@@ -276,6 +279,34 @@ class PaperspaceOrchestrator:
             self.logger.error(f"❌ Aggressive cleanup failed: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
+
+    def _install_missing_dependencies(self):
+        """Install missing dependencies that are commonly needed"""
+        
+        self.logger.info("📦 Installing missing dependencies...")
+        
+        missing_packages = [
+            "structlog",
+            "schedule", 
+            "mlflow",
+            "optuna",
+            "psutil",
+            "tqdm"
+        ]
+        
+        for package in missing_packages:
+            try:
+                __import__(package)
+                self.logger.debug(f"✅ {package} already available")
+            except ImportError:
+                try:
+                    self.logger.info(f"📦 Installing {package}...")
+                    subprocess.run([
+                        sys.executable, "-m", "pip", "install", package
+                    ], check=True, capture_output=True, timeout=120)
+                    self.logger.info(f"✅ Installed {package}")
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Failed to install {package}: {e}")
 
     def _setup_logging(self) -> logging.Logger:
         """Setup comprehensive logging"""
