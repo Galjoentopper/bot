@@ -445,7 +445,11 @@ class PaperspaceOrchestrator:
                 try:
                     self.logger.info(f"📊 Processing {symbol}...")
 
-                    dataset = dataset_builder.build_dataset(symbol=symbol, save_to_disk=True)
+                    dataset = dataset_builder.build_dataset(
+                        symbol=symbol,
+                        interval=self.config.get('data_acquisition', {}).get('interval', '30m'),
+                        use_cache=True
+                    )
 
                     if dataset is not None and len(dataset) > 1000:  # Minimum data requirement
                         datasets[symbol] = dataset
