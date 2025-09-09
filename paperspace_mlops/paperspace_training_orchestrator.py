@@ -40,7 +40,29 @@ class PaperspaceOrchestrator:
     """Main orchestrator for automated training pipeline"""
 
     def __init__(self, config_path: str = "training_config.yaml"):
-        self.config_path = config_path
+        # Look for config file in multiple locations
+        possible_paths = [
+            config_path,
+            f"../{config_path}",
+            f"../../{config_path}",
+            "/notebooks/bot/training_config.yaml",
+            "/content/bot/training_config.yaml",
+            "/workspace/bot/training_config.yaml",
+        ]
+
+        self.config_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                self.config_path = path
+                print(f"✅ Found config file: {path}")
+                break
+
+        if not self.config_path:
+            # Create a basic config file if none found
+            print("⚠️ No config file found, creating basic configuration...")
+            self.config_path = self._create_basic_config()
+
+        self.original_config_path = config_path
         self.start_time = datetime.now()
         self.max_runtime_hours = 5.5  # Leave 30 min buffer
         self.logger = self._setup_logging()
@@ -90,6 +112,60 @@ class PaperspaceOrchestrator:
         self.logger.info(f"🚀 Paperspace Training Orchestrator initialized")
         self.logger.info(f"📁 Workspace: {self.workspace_dir}")
         self.logger.info(f"⏰ Max runtime: {self.max_runtime_hours} hours")
+
+    def _create_basic_config(self) -> str:
+        """Create a basic configuration file for Paperspace"""
+
+        basic_config = {
+            "symbols": ["BTCEUR", "ETHEUR"],
+            "interval": "30m",
+            "lookback_days": 180,
+            "model_weights": {"lightgbm": 0.55, "gru": 0.35, "ppo": 0.1},
+            "thresholds": {
+                "per_symbol": {
+                    "BTCEUR": {"buy": 0.6, "sell": 0.4},
+                    "ETHEUR": {"buy": 0.6, "sell": 0.4},
+                }
+            },
+            "models": {
+                "gru": {
+                    "epochs": 50,
+                    "batch_size": 32,
+                    "learning_rate": 0.001,
+                    "hidden_size": 64,
+                    "num_layers": 2,
+                    "dropout": 0.2,
+                    "sequence_length": 60,
+                },
+                "lightgbm": {
+                    "num_leaves": 31,
+                    "learning_rate": 0.05,
+                    "feature_fraction": 0.9,
+                    "bagging_fraction": 0.8,
+                    "bagging_freq": 5,
+                    "verbose": 0,
+                    "n_estimators": 100,
+                },
+                "ppo": {
+                    "total_timesteps": 50000,
+                    "learning_rate": 0.0003,
+                    "n_steps": 2048,
+                    "batch_size": 64,
+                    "n_epochs": 10,
+                    "gamma": 0.99,
+                    "gae_lambda": 0.95,
+                    "clip_range": 0.2,
+                    "ent_coef": 0.01,
+                },
+            },
+        }
+
+        config_path = "paperspace_training_config.yaml"
+        with open(config_path, "w") as f:
+            yaml.dump(basic_config, f, default_flow_style=False)
+
+        print(f"✅ Created basic config file: {config_path}")
+        return config_path
 
     def _setup_logging(self) -> logging.Logger:
         """Setup comprehensive logging"""
