@@ -184,51 +184,98 @@ class PaperspaceOrchestrator:
         return config_path
 
     def _clean_old_data(self):
-        """Clean old data and cache files to prevent interference"""
+        """Aggressively clean ALL old data and cache files to force fresh data"""
         
-        self.logger.info("🧹 Cleaning old data and cache files...")
+        self.logger.info("🧹 AGGRESSIVE CLEANUP: Removing ALL cached data...")
         
         try:
             import shutil
+            import time
             
-            # Directories to clean
+            # More comprehensive directory cleaning
             clean_dirs = [
                 self.data_dir,
-                self.data_dir / "cache",
+                self.data_dir / "cache", 
                 self.models_dir / "metadata",
                 self.workspace_dir / "models" / "metadata",
                 Path("./data"),
-                Path("./models/metadata")
+                Path("./data/cache"),
+                Path("./models"),
+                Path("./models/metadata"),
+                Path("/notebooks/data"),
+                Path("/notebooks/models"),
+                Path("/notebooks/bot/data"),
+                Path("/notebooks/bot/models")
             ]
             
             files_removed = 0
+            dirs_removed = 0
             
             for clean_dir in clean_dirs:
                 if clean_dir.exists():
                     try:
-                        # Remove cache files
-                        cache_patterns = ["*.parquet", "*.pkl", "*_cache.csv", "*_metadata.json", "features_*.json"]
+                        self.logger.info(f"  🗑️ Cleaning directory: {clean_dir}")
                         
-                        for pattern in cache_patterns:
-                            for cache_file in clean_dir.rglob(pattern):
-                                if cache_file.is_file():
-                                    cache_file.unlink()
+                        # Remove ALL files in directory (more aggressive)
+                        for item in clean_dir.rglob("*"):
+                            if item.is_file():
+                                try:
+                                    # Log what we're removing
+                                    if files_removed < 10:  # Log first few files
+                                        self.logger.info(f"    Removing: {item.name}")
+                                    item.unlink()
                                     files_removed += 1
-                                    
-                        self.logger.debug(f"  Cleaned: {clean_dir}")
+                                except Exception as e:
+                                    self.logger.warning(f"    Failed to remove {item}: {e}")
                         
+                        # Remove empty subdirectories
+                        for item in list(clean_dir.rglob("*"))[::-1]:  # Reverse order for proper cleanup
+                            if item.is_dir() and item != clean_dir:
+                                try:
+                                    if not any(item.iterdir()):
+                                        item.rmdir()
+                                        dirs_removed += 1
+                                except Exception:
+                                    pass  # Directory not empty, skip
+                                    
                     except Exception as e:
                         self.logger.warning(f"  Failed to clean {clean_dir}: {e}")
             
-            self.logger.info(f"✅ Removed {files_removed} cache files")
+            self.logger.info(f"✅ AGGRESSIVE CLEANUP COMPLETE: {files_removed} files, {dirs_removed} directories removed")
+            
+            # Also clear any Python cache
+            try:
+                import sys
+                if hasattr(sys, 'modules'):
+                    # Clear any cached data modules
+                    modules_to_clear = [k for k in sys.modules.keys() if 'data' in k or 'cache' in k]
+                    for module in modules_to_clear:
+                        if module in sys.modules:
+                            del sys.modules[module]
+                    self.logger.info(f"✅ Cleared {len(modules_to_clear)} cached Python modules")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Python cache clear failed: {e}")
             
             # Recreate essential directories
-            essential_dirs = [self.data_dir, self.data_dir / "cache", self.models_dir / "metadata"]
+            essential_dirs = [
+                self.data_dir, 
+                self.data_dir / "cache", 
+                self.models_dir / "metadata",
+                self.workspace_dir / "data",
+                self.workspace_dir / "data" / "cache"
+            ]
             for essential_dir in essential_dirs:
                 essential_dir.mkdir(parents=True, exist_ok=True)
+                self.logger.info(f"  📁 Created: {essential_dir}")
                 
+            # Add timestamp verification
+            cleanup_time = time.time()
+            self.logger.info(f"🕒 Cleanup timestamp: {cleanup_time}")
+            
         except Exception as e:
-            self.logger.warning(f"⚠️ Data cleanup failed: {e}")
+            self.logger.error(f"❌ Aggressive cleanup failed: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
 
     def _setup_logging(self) -> logging.Logger:
         """Setup comprehensive logging"""
@@ -494,12 +541,22 @@ class PaperspaceOrchestrator:
             for symbol in symbols:
                 try:
                     self.logger.info(f"📊 Processing {symbol}...")
+                    self.logger.info(f"  🔄 FORCING FRESH DATA (use_cache=False)")
+                    
+                    import time
+                    start_time = time.time()
 
                     dataset = dataset_builder.build_dataset(
                         symbol=symbol,
                         interval=self.config.get('data_acquisition', {}).get('interval', '30m'),
                         use_cache=False  # Force fresh data for Paperspace
                     )
+                    
+                    fetch_time = time.time() - start_time
+                    self.logger.info(f"  ⏱️ Data fetch took: {fetch_time:.2f} seconds")
+                    
+                    if fetch_time < 2.0:
+                        self.logger.warning(f"  ⚠️ SUSPICIOUSLY FAST! ({fetch_time:.2f}s) - might be using cache!")
 
                     # Check if dataset is valid (more lenient requirements for Paperspace)
                     if dataset is not None:
