@@ -35,6 +35,16 @@ IS_PAPERSPACE = (
     os.environ.get("PAPERSPACE_JOB_ID") is not None or os.environ.get("GRADIENT_JOB_ID") is not None
 )
 
+# Setup Python path for src imports
+if IS_PAPERSPACE:
+    bot_path = "/notebooks/bot"
+else:
+    bot_path = str(Path(__file__).parent.parent)
+
+if bot_path not in sys.path:
+    sys.path.insert(0, bot_path)
+    print(f"✅ Added to Python path: {bot_path}")
+
 
 class PaperspaceOrchestrator:
     """Main orchestrator for automated training pipeline"""
