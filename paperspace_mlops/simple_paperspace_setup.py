@@ -60,34 +60,56 @@ def install_essentials():
 
 
 def setup_s3_credentials():
-    """Setup S3 credentials from Excel file"""
+    """Setup S3 credentials - check if already available as environment variables"""
 
-    logger.info("🔐 Setting up S3 credentials...")
+    logger.info("🔐 Checking S3 credentials...")
 
-    try:
-        # Import the S3 setup script
-        import os
-        import sys
+    import os
 
-        sys.path.append("..")
+    # Check if AWS credentials are available as environment variables
+    aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID")
+    aws_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    aws_region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 
-        from setup_s3_from_excel import main as setup_s3
+    if aws_access_key and aws_secret_key:
+        logger.info("✅ AWS credentials found in environment variables")
+        logger.info(f"✅ Using region: {aws_region}")
 
-        result = setup_s3()
+        # Try to setup S3 bucket
+        try:
+            import sys
 
-        if result == 0:
-            logger.info("✅ S3 setup completed successfully")
-            return True
-        else:
-            logger.error("❌ S3 setup failed")
-            return False
+            sys.path.append("..")
 
-    except Exception as e:
-        logger.error(f"❌ S3 setup error: {e}")
-        logger.info("📋 Manual S3 setup required:")
-        logger.info("1. Set AWS_ACCESS_KEY_ID environment variable")
-        logger.info("2. Set AWS_SECRET_ACCESS_KEY environment variable")
-        logger.info("3. Set AWS_DEFAULT_REGION=us-east-1")
+            # Try importing the S3 setup
+            try:
+                from setup_s3_storage import S3StorageSetup
+
+                logger.info("🏗️ Setting up S3 bucket...")
+                s3_setup = S3StorageSetup()
+                success = s3_setup.run_setup()
+
+                if success:
+                    logger.info("✅ S3 bucket setup completed successfully")
+                    return True
+                else:
+                    logger.warning("⚠️ S3 bucket setup failed, but credentials are available")
+                    return True  # Credentials are there, so pipeline can continue
+
+            except ImportError:
+                logger.warning("⚠️ S3 setup script not available, but credentials are set")
+                return True  # Credentials are there, so pipeline can continue
+
+        except Exception as e:
+            logger.warning(f"⚠️ S3 setup error: {e}, but credentials are available")
+            return True  # Credentials are there, so pipeline can continue
+
+    else:
+        logger.error("❌ AWS credentials not found in environment variables")
+        logger.info("📋 Make sure these are set in Paperspace:")
+        logger.info("1. AWS_ACCESS_KEY_ID (as secret)")
+        logger.info("2. AWS_SECRET_ACCESS_KEY (as secret)")
+        logger.info("3. AWS_DEFAULT_REGION=us-east-1")
         return False
 
 
