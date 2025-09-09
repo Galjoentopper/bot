@@ -119,6 +119,9 @@ class PaperspaceOrchestrator:
                     temp_dir.mkdir(parents=True, exist_ok=True)
                 break
 
+        # Clean old data and cache on startup
+        self._clean_old_data()
+
         self.logger.info(f"🚀 Paperspace Training Orchestrator initialized")
         self.logger.info(f"📁 Workspace: {self.workspace_dir}")
         self.logger.info(f"⏰ Max runtime: {self.max_runtime_hours} hours")
@@ -179,6 +182,53 @@ class PaperspaceOrchestrator:
 
         print(f"✅ Created basic config file: {config_path}")
         return config_path
+
+    def _clean_old_data(self):
+        """Clean old data and cache files to prevent interference"""
+        
+        self.logger.info("🧹 Cleaning old data and cache files...")
+        
+        try:
+            import shutil
+            
+            # Directories to clean
+            clean_dirs = [
+                self.data_dir,
+                self.data_dir / "cache",
+                self.models_dir / "metadata",
+                self.workspace_dir / "models" / "metadata",
+                Path("./data"),
+                Path("./models/metadata")
+            ]
+            
+            files_removed = 0
+            
+            for clean_dir in clean_dirs:
+                if clean_dir.exists():
+                    try:
+                        # Remove cache files
+                        cache_patterns = ["*.parquet", "*.pkl", "*_cache.csv", "*_metadata.json", "features_*.json"]
+                        
+                        for pattern in cache_patterns:
+                            for cache_file in clean_dir.rglob(pattern):
+                                if cache_file.is_file():
+                                    cache_file.unlink()
+                                    files_removed += 1
+                                    
+                        self.logger.debug(f"  Cleaned: {clean_dir}")
+                        
+                    except Exception as e:
+                        self.logger.warning(f"  Failed to clean {clean_dir}: {e}")
+            
+            self.logger.info(f"✅ Removed {files_removed} cache files")
+            
+            # Recreate essential directories
+            essential_dirs = [self.data_dir, self.data_dir / "cache", self.models_dir / "metadata"]
+            for essential_dir in essential_dirs:
+                essential_dir.mkdir(parents=True, exist_ok=True)
+                
+        except Exception as e:
+            self.logger.warning(f"⚠️ Data cleanup failed: {e}")
 
     def _setup_logging(self) -> logging.Logger:
         """Setup comprehensive logging"""
