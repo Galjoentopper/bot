@@ -117,33 +117,64 @@ def install_dependencies():
     # Upgrade pip
     run_command("pip install --upgrade pip")
 
-    # Install requirements if available
-    if Path("requirements.txt").exists():
-        logger.info("📋 Installing from requirements.txt")
-        run_command("pip install -r requirements.txt")
+    # Install Paperspace-compatible requirements
+    paperspace_requirements = Path("paperspace_mlops/requirements_paperspace.txt")
+    if paperspace_requirements.exists():
+        logger.info("📋 Installing from Paperspace-compatible requirements")
+        run_command(f"pip install -r {paperspace_requirements}")
+    elif Path("requirements.txt").exists():
+        logger.info("📋 Trying main requirements.txt (may have compatibility issues)")
+        result = run_command("pip install -r requirements.txt", check=False)
+        if result.returncode != 0:
+            logger.warning("⚠️ Main requirements.txt failed, falling back to essential packages")
+            # Install essential packages manually
+            logger.info("📦 Installing essential packages")
+            essential_packages = [
+                "torch>=1.12.0,<2.0.0",
+                "lightgbm>=3.3.0,<4.0.0",
+                "stable-baselines3>=1.6.0,<2.0.0",
+                "pandas>=1.5.0,<2.0.0",
+                "numpy>=1.21.0,<1.25.0",
+                "scikit-learn>=1.1.0,<1.3.0",
+                "yfinance>=0.2.0",
+                "python-binance>=1.0.15",
+                "mlflow>=2.0.0,<2.8.0",
+                "optuna>=3.0.0,<4.0.0",
+                "python-telegram-bot>=20.0",
+                "pyyaml>=6.0",
+                "psutil>=5.8.0",
+                "requests>=2.28.0",
+                "boto3>=1.26.0",
+                "ta>=0.10.0",  # Use ta instead of pandas-ta
+                "flask>=2.2.0",
+            ]
+
+            for package in essential_packages:
+                run_command(f"pip install '{package}'", check=False)
     else:
-        # Install essential packages manually
-        logger.info("📦 Installing essential packages")
+        logger.info("📦 Installing essential packages (no requirements file found)")
         essential_packages = [
-            "torch>=1.9.0",
-            "lightgbm>=3.3.0",
-            "stable-baselines3>=1.5.0",
-            "pandas>=1.3.0",
-            "numpy>=1.21.0",
-            "scikit-learn>=1.0.0",
-            "yfinance>=0.1.70",
+            "torch>=1.12.0,<2.0.0",
+            "lightgbm>=3.3.0,<4.0.0", 
+            "stable-baselines3>=1.6.0,<2.0.0",
+            "pandas>=1.5.0,<2.0.0",
+            "numpy>=1.21.0,<1.25.0",
+            "scikit-learn>=1.1.0,<1.3.0",
+            "yfinance>=0.2.0",
             "python-binance>=1.0.15",
-            "mlflow>=1.25.0",
-            "optuna>=2.10.0",
-            "telegram-bot>=13.0",
+            "mlflow>=2.0.0,<2.8.0",
+            "optuna>=3.0.0,<4.0.0",
+            "python-telegram-bot>=20.0",
             "pyyaml>=6.0",
             "psutil>=5.8.0",
-            "requests>=2.26.0",
-            "boto3>=1.20.0",  # For AWS S3 if needed
+            "requests>=2.28.0", 
+            "boto3>=1.26.0",
+            "ta>=0.10.0",
+            "flask>=2.2.0",
         ]
 
         for package in essential_packages:
-            run_command(f"pip install {package}", check=False)
+            run_command(f"pip install '{package}'", check=False)
 
     # Install package in editable mode if setup.py exists
     if Path("setup.py").exists():
