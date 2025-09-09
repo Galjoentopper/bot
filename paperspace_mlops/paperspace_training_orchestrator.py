@@ -38,12 +38,18 @@ IS_PAPERSPACE = (
 # Setup Python path for src imports
 if IS_PAPERSPACE:
     bot_path = "/notebooks/bot"
+    paperspace_path = "/notebooks/bot/paperspace_mlops"
 else:
     bot_path = str(Path(__file__).parent.parent)
+    paperspace_path = str(Path(__file__).parent)
 
 if bot_path not in sys.path:
     sys.path.insert(0, bot_path)
     print(f"✅ Added to Python path: {bot_path}")
+
+if paperspace_path not in sys.path:
+    sys.path.insert(0, paperspace_path)
+    print(f"✅ Added to Python path: {paperspace_path}")
 
 
 class PaperspaceOrchestrator:
@@ -121,7 +127,7 @@ class PaperspaceOrchestrator:
 
         # Clean old data and cache on startup
         self._clean_old_data()
-        
+
         # Install missing dependencies
         self._install_missing_dependencies()
 
@@ -188,17 +194,17 @@ class PaperspaceOrchestrator:
 
     def _clean_old_data(self):
         """Aggressively clean ALL old data and cache files to force fresh data"""
-        
+
         self.logger.info("🧹 AGGRESSIVE CLEANUP: Removing ALL cached data...")
-        
+
         try:
             import shutil
             import time
-            
+
             # More comprehensive directory cleaning
             clean_dirs = [
                 self.data_dir,
-                self.data_dir / "cache", 
+                self.data_dir / "cache",
                 self.models_dir / "metadata",
                 self.workspace_dir / "models" / "metadata",
                 Path("./data"),
@@ -208,17 +214,17 @@ class PaperspaceOrchestrator:
                 Path("/notebooks/data"),
                 Path("/notebooks/models"),
                 Path("/notebooks/bot/data"),
-                Path("/notebooks/bot/models")
+                Path("/notebooks/bot/models"),
             ]
-            
+
             files_removed = 0
             dirs_removed = 0
-            
+
             for clean_dir in clean_dirs:
                 if clean_dir.exists():
                     try:
                         self.logger.info(f"  🗑️ Cleaning directory: {clean_dir}")
-                        
+
                         # Remove ALL files in directory (more aggressive)
                         for item in clean_dir.rglob("*"):
                             if item.is_file():
@@ -230,9 +236,11 @@ class PaperspaceOrchestrator:
                                     files_removed += 1
                                 except Exception as e:
                                     self.logger.warning(f"    Failed to remove {item}: {e}")
-                        
+
                         # Remove empty subdirectories
-                        for item in list(clean_dir.rglob("*"))[::-1]:  # Reverse order for proper cleanup
+                        for item in list(clean_dir.rglob("*"))[
+                            ::-1
+                        ]:  # Reverse order for proper cleanup
                             if item.is_dir() and item != clean_dir:
                                 try:
                                     if not any(item.iterdir()):
@@ -240,60 +248,59 @@ class PaperspaceOrchestrator:
                                         dirs_removed += 1
                                 except Exception:
                                     pass  # Directory not empty, skip
-                                    
+
                     except Exception as e:
                         self.logger.warning(f"  Failed to clean {clean_dir}: {e}")
-            
-            self.logger.info(f"✅ AGGRESSIVE CLEANUP COMPLETE: {files_removed} files, {dirs_removed} directories removed")
-            
+
+            self.logger.info(
+                f"✅ AGGRESSIVE CLEANUP COMPLETE: {files_removed} files, {dirs_removed} directories removed"
+            )
+
             # Also clear any Python cache
             try:
                 import sys
-                if hasattr(sys, 'modules'):
+
+                if hasattr(sys, "modules"):
                     # Clear any cached data modules
-                    modules_to_clear = [k for k in sys.modules.keys() if 'data' in k or 'cache' in k]
+                    modules_to_clear = [
+                        k for k in sys.modules.keys() if "data" in k or "cache" in k
+                    ]
                     for module in modules_to_clear:
                         if module in sys.modules:
                             del sys.modules[module]
                     self.logger.info(f"✅ Cleared {len(modules_to_clear)} cached Python modules")
             except Exception as e:
                 self.logger.warning(f"⚠️ Python cache clear failed: {e}")
-            
+
             # Recreate essential directories
             essential_dirs = [
-                self.data_dir, 
-                self.data_dir / "cache", 
+                self.data_dir,
+                self.data_dir / "cache",
                 self.models_dir / "metadata",
                 self.workspace_dir / "data",
-                self.workspace_dir / "data" / "cache"
+                self.workspace_dir / "data" / "cache",
             ]
             for essential_dir in essential_dirs:
                 essential_dir.mkdir(parents=True, exist_ok=True)
                 self.logger.info(f"  📁 Created: {essential_dir}")
-                
+
             # Add timestamp verification
             cleanup_time = time.time()
             self.logger.info(f"🕒 Cleanup timestamp: {cleanup_time}")
-            
+
         except Exception as e:
             self.logger.error(f"❌ Aggressive cleanup failed: {e}")
             import traceback
+
             self.logger.error(traceback.format_exc())
 
     def _install_missing_dependencies(self):
         """Install missing dependencies that are commonly needed"""
-        
+
         self.logger.info("📦 Installing missing dependencies...")
-        
-        missing_packages = [
-            "structlog",
-            "schedule", 
-            "mlflow",
-            "optuna",
-            "psutil",
-            "tqdm"
-        ]
-        
+
+        missing_packages = ["structlog", "schedule", "mlflow", "optuna", "psutil", "tqdm"]
+
         for package in missing_packages:
             try:
                 __import__(package)
@@ -301,9 +308,12 @@ class PaperspaceOrchestrator:
             except ImportError:
                 try:
                     self.logger.info(f"📦 Installing {package}...")
-                    subprocess.run([
-                        sys.executable, "-m", "pip", "install", package
-                    ], check=True, capture_output=True, timeout=120)
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "install", package],
+                        check=True,
+                        capture_output=True,
+                        timeout=120,
+                    )
                     self.logger.info(f"✅ Installed {package}")
                 except Exception as e:
                     self.logger.warning(f"⚠️ Failed to install {package}: {e}")
@@ -573,21 +583,24 @@ class PaperspaceOrchestrator:
                 try:
                     self.logger.info(f"📊 Processing {symbol}...")
                     self.logger.info(f"  🔄 FORCING FRESH DATA (use_cache=False)")
-                    
+
                     import time
+
                     start_time = time.time()
 
                     dataset = dataset_builder.build_dataset(
                         symbol=symbol,
-                        interval=self.config.get('data_acquisition', {}).get('interval', '30m'),
-                        use_cache=False  # Force fresh data for Paperspace
+                        interval=self.config.get("data_acquisition", {}).get("interval", "30m"),
+                        use_cache=False,  # Force fresh data for Paperspace
                     )
-                    
+
                     fetch_time = time.time() - start_time
                     self.logger.info(f"  ⏱️ Data fetch took: {fetch_time:.2f} seconds")
-                    
+
                     if fetch_time < 2.0:
-                        self.logger.warning(f"  ⚠️ SUSPICIOUSLY FAST! ({fetch_time:.2f}s) - might be using cache!")
+                        self.logger.warning(
+                            f"  ⚠️ SUSPICIOUSLY FAST! ({fetch_time:.2f}s) - might be using cache!"
+                        )
 
                     # Check if dataset is valid (more lenient requirements for Paperspace)
                     if dataset is not None:
@@ -599,7 +612,9 @@ class PaperspaceOrchestrator:
                                 self.logger.info(f"✅ {symbol}: {len(X)} samples")
                             else:
                                 failed_symbols.append(symbol)
-                                self.logger.warning(f"⚠️ {symbol}: Only {len(X)} samples (need >100)")
+                                self.logger.warning(
+                                    f"⚠️ {symbol}: Only {len(X)} samples (need >100)"
+                                )
                         else:
                             failed_symbols.append(symbol)
                             self.logger.warning(f"⚠️ {symbol}: Invalid dataset format")
@@ -614,19 +629,19 @@ class PaperspaceOrchestrator:
             if not datasets:
                 self.logger.error("❌ No valid datasets could be created")
                 self.logger.info("🔧 Trying with reduced requirements...")
-                
+
                 # Try again with even more lenient requirements
                 for symbol in failed_symbols[:]:  # Copy list to modify during iteration
                     try:
                         self.logger.info(f"🔄 Retrying {symbol} with minimal requirements...")
                         dataset = dataset_builder.build_dataset(
                             symbol=symbol,
-                            interval='1h',  # Try hourly data
-                            use_cache=False  # Force fresh data
+                            interval="1h",  # Try hourly data
+                            use_cache=False,  # Force fresh data
                         )
-                        
+
                         if dataset and isinstance(dataset, tuple) and len(dataset) >= 2:
-                            X, y = dataset[0], dataset[1] 
+                            X, y = dataset[0], dataset[1]
                             if len(X) > 50:  # Very minimal requirement
                                 datasets[symbol] = dataset
                                 failed_symbols.remove(symbol)
@@ -634,61 +649,111 @@ class PaperspaceOrchestrator:
                                 break  # At least one symbol works
                     except Exception as e:
                         self.logger.warning(f"⚠️ {symbol} retry failed: {e}")
-                
+
                 # Final fallback: Use simple data fetcher for ALL symbols
                 if not datasets:
-                    self.logger.info("🔄 Final fallback: Using simple data fetcher for ALL symbols...")
+                    self.logger.info(
+                        "🔄 Final fallback: Using simple data fetcher for ALL symbols..."
+                    )
+                    fetcher = None
+
+                    # Try different import methods
                     try:
-                        from .simple_data_fetcher import SimpleDataFetcher
+                        from simple_data_fetcher import SimpleDataFetcher
+
                         fetcher = SimpleDataFetcher()
-                        
+                        self.logger.info("✅ Imported SimpleDataFetcher (direct import)")
+                    except ImportError:
+                        try:
+                            from .simple_data_fetcher import SimpleDataFetcher
+
+                            fetcher = SimpleDataFetcher()
+                            self.logger.info("✅ Imported SimpleDataFetcher (relative import)")
+                        except ImportError:
+                            try:
+                                # Try importing from the same directory
+                                import importlib.util
+
+                                fetcher_path = Path(__file__).parent / "simple_data_fetcher.py"
+                                if fetcher_path.exists():
+                                    spec = importlib.util.spec_from_file_location(
+                                        "simple_data_fetcher", fetcher_path
+                                    )
+                                    module = importlib.util.module_from_spec(spec)
+                                    spec.loader.exec_module(module)
+                                    fetcher = module.SimpleDataFetcher()
+                                    self.logger.info("✅ Imported SimpleDataFetcher (file import)")
+                            except Exception as e:
+                                self.logger.error(f"❌ Could not import SimpleDataFetcher: {e}")
+
+                    if fetcher:
                         # Try ALL 5 symbols with simple fetcher
                         all_symbols = ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
                         for symbol in all_symbols:
                             try:
                                 self.logger.info(f"🌐 Simple fetch for {symbol}...")
                                 dataset = fetcher.build_simple_dataset(symbol, interval="1h")
-                                
-                                if dataset and len(dataset[0]) > 20:  # Very low requirement
+
+                                if dataset and len(dataset[0]) > 15:  # Lowered threshold
                                     datasets[symbol] = dataset
-                                    self.logger.info(f"✅ Simple fetch {symbol}: {len(dataset[0])} samples")
+                                    self.logger.info(
+                                        f"✅ Simple fetch {symbol}: {len(dataset[0])} samples"
+                                    )
                                 else:
                                     self.logger.warning(f"⚠️ {symbol}: Dataset too small or None")
                             except Exception as e:
                                 self.logger.error(f"❌ Simple fetch {symbol} failed: {e}")
-                                
-                        self.logger.info(f"📊 Simple fetcher results: {len(datasets)}/5 symbols successful")
-                        
-                    except ImportError:
+
+                        self.logger.info(
+                            f"📊 Simple fetcher results: {len(datasets)}/5 symbols successful"
+                        )
+                    else:
                         self.logger.error("❌ Simple data fetcher not available")
-                        
+
                 # If simple fetcher got some but not all, try the failed ones again with different intervals
                 if len(datasets) > 0 and len(datasets) < 5:
-                    missing_symbols = [s for s in ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"] if s not in datasets]
-                    self.logger.info(f"🔄 Retrying {len(missing_symbols)} missing symbols with different approaches...")
-                    
+                    missing_symbols = [
+                        s
+                        for s in ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
+                        if s not in datasets
+                    ]
+                    self.logger.info(
+                        f"🔄 Retrying {len(missing_symbols)} missing symbols with different approaches..."
+                    )
+
                     try:
-                        from .simple_data_fetcher import SimpleDataFetcher
-                        fetcher = SimpleDataFetcher()
-                        
+                        # Use the fetcher variable if already available
+                        if "fetcher" not in locals() or fetcher is None:
+                            from simple_data_fetcher import SimpleDataFetcher
+
+                            fetcher = SimpleDataFetcher()
+
                         for symbol in missing_symbols:
                             # Try different intervals
                             for interval in ["1d", "4h", "2h"]:
                                 try:
-                                    self.logger.info(f"🔄 Trying {symbol} with {interval} interval...")
-                                    dataset = fetcher.build_simple_dataset(symbol, interval=interval)
-                                    
+                                    self.logger.info(
+                                        f"🔄 Trying {symbol} with {interval} interval..."
+                                    )
+                                    dataset = fetcher.build_simple_dataset(
+                                        symbol, interval=interval
+                                    )
+
                                     if dataset and len(dataset[0]) > 15:  # Even lower requirement
                                         datasets[symbol] = dataset
-                                        self.logger.info(f"✅ {symbol} ({interval}): {len(dataset[0])} samples")
+                                        self.logger.info(
+                                            f"✅ {symbol} ({interval}): {len(dataset[0])} samples"
+                                        )
                                         break
                                 except Exception as e:
                                     self.logger.warning(f"⚠️ {symbol} {interval}: {e}")
                     except Exception as e:
                         self.logger.error(f"❌ Retry failed: {e}")
-                
+
                 if not datasets:
-                    raise RuntimeError("No valid datasets could be created even with simple fetcher")
+                    raise RuntimeError(
+                        "No valid datasets could be created even with simple fetcher"
+                    )
 
             # Update config to only include successful symbols
             self.config["data_acquisition"]["symbols"] = list(datasets.keys())
