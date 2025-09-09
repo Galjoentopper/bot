@@ -432,9 +432,9 @@ class PaperspaceOrchestrator:
             from src.data_pipeline.dataset_builder import DatasetBuilder
 
             dataset_builder = DatasetBuilder(
+                data_dir=str(self.data_dir),
+                cache_dir=str(self.data_dir / "cache"),
                 config=self.config,
-                cache_dir=self.data_dir / "cache",
-                force_refresh=False,  # Use cache if available
             )
 
             # Build datasets for all symbols
