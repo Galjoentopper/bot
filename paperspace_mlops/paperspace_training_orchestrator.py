@@ -117,7 +117,7 @@ class PaperspaceOrchestrator:
         """Create a basic configuration file for Paperspace"""
 
         basic_config = {
-            "symbols": ["BTCEUR", "ETHEUR"],
+            "symbols": ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"],
             "interval": "30m",
             "lookback_days": 180,
             "model_weights": {"lightgbm": 0.55, "gru": 0.35, "ppo": 0.1},
@@ -125,6 +125,9 @@ class PaperspaceOrchestrator:
                 "per_symbol": {
                     "BTCEUR": {"buy": 0.6, "sell": 0.4},
                     "ETHEUR": {"buy": 0.6, "sell": 0.4},
+                    "ADAEUR": {"buy": 0.6, "sell": 0.4},
+                    "DOTEUR": {"buy": 0.6, "sell": 0.4},
+                    "LINKEUR": {"buy": 0.6, "sell": 0.4},
                 }
             },
             "models": {
