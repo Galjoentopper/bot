@@ -214,9 +214,14 @@ class LightGBMTrainer:
 
         # Start MLflow run (if available)
         if MLFLOW_AVAILABLE:
-            mlflow_context = mlflow.start_run(
-                run_name=f"lgbm_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            )
+            try:
+                mlflow_context = mlflow.start_run(
+                    run_name=f"lgbm_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to start MLflow run: {e}")
+                from contextlib import nullcontext
+                mlflow_context = nullcontext()
         else:
             from contextlib import nullcontext
 
@@ -225,20 +230,23 @@ class LightGBMTrainer:
         with mlflow_context:
             # Log parameters (if MLflow available)
             if MLFLOW_AVAILABLE:
-                mlflow.log_params(
-                    {
-                        "model_type": "LightGBM",
-                        "task_type": self.task_type,
-                        "num_leaves": self.num_leaves,
-                        "max_depth": self.max_depth,
-                        "learning_rate": self.learning_rate,
-                        "n_estimators": self.n_estimators,
-                        "boosting_type": self.boosting_type,
-                        "objective": self.objective,
-                        "metric": self.metric,
-                        "n_features": len(self.feature_names),
-                    }
-                )
+                try:
+                    mlflow.log_params(
+                        {
+                            "model_type": "LightGBM",
+                            "task_type": self.task_type,
+                            "num_leaves": self.num_leaves,
+                            "max_depth": self.max_depth,
+                            "learning_rate": self.learning_rate,
+                            "n_estimators": self.n_estimators,
+                            "boosting_type": self.boosting_type,
+                            "objective": self.objective,
+                            "metric": self.metric,
+                            "n_features": len(self.feature_names),
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to log parameters to MLflow: {e}")
 
             # Optionally convert targets for classification/direction tasks
             y_train_proc = y_train
@@ -294,9 +302,12 @@ class LightGBMTrainer:
 
             # Log feature importance (if MLflow available)
             if MLFLOW_AVAILABLE:
-                # Log top 20 feature importances
-                for idx, row in importance_df.head(20).iterrows():
-                    mlflow.log_metric(f"importance_{row['feature']}", row["importance"])
+                try:
+                    # Log top 20 feature importances
+                    for idx, row in importance_df.head(20).iterrows():
+                        mlflow.log_metric(f"importance_{row['feature']}", row["importance"])
+                except Exception as e:
+                    logger.warning(f"Failed to log feature importance to MLflow: {e}")
 
             # Evaluate on validation set if provided
             val_metrics = {}
@@ -322,8 +333,11 @@ class LightGBMTrainer:
                                     best_thr = thr
                             self.decision_threshold = float(best_thr)
                             if MLFLOW_AVAILABLE:
-                                mlflow.log_metric("val_decision_threshold", float(best_thr))
-                                mlflow.log_metric("val_decision_threshold_acc", float(best_acc))
+                                try:
+                                    mlflow.log_metric("val_decision_threshold", float(best_thr))
+                                    mlflow.log_metric("val_decision_threshold_acc", float(best_acc))
+                                except Exception as e:
+                                    logger.warning(f"Failed to log threshold metrics to MLflow: {e}")
                         except Exception:
                             # Keep default 0.5 if calibration fails
                             self.decision_threshold = self.decision_threshold or 0.5
@@ -344,8 +358,11 @@ class LightGBMTrainer:
 
                 # Log validation metrics (if MLflow available)
                 if MLFLOW_AVAILABLE:
-                    for metric_name, metric_value in val_metrics.items():
-                        mlflow.log_metric(f"val_{metric_name}", metric_value)
+                    try:
+                        for metric_name, metric_value in val_metrics.items():
+                            mlflow.log_metric(f"val_{metric_name}", metric_value)
+                    except Exception as e:
+                        logger.warning(f"Failed to log validation metrics to MLflow: {e}")
 
                 logger.info(f"Validation metrics: {val_metrics}")
 

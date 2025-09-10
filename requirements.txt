@@ -63,7 +63,7 @@ environs>=9.5.0
 
 # Time series and financial analysis
 ta>=0.10.2
-pandas-ta>=0.3.14b0
+# pandas-ta>=0.3.14b0  # Skip due to Python version compatibility issues
 statsmodels>=0.14.0
 arch>=5.0.0  # GARCH models for volatility estimation
 empyrical>=0.5.5  # Risk and performance metrics

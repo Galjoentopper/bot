@@ -1315,7 +1315,7 @@ class FeatureEngine:
             DataFrame with trading targets added
         """
         logger.info(f"Generating trading targets for {symbol}")
-        return self.target_engineer.create_trading_targets(df, symbol)
+        return self.target_engineer.create_trading_targets(df, "close")
 
     def generate_features_and_targets(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
         """

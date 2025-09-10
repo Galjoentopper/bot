@@ -20,9 +20,9 @@ import pandas as pd
 from ..data_pipeline.features import FeatureEngine
 from ..ensemble.trading_ensemble import TradingEnsemble
 from ..evaluation.trading_evaluator import TradingModelEvaluator
-from ..models.enhanced_ppo_trainer import EnhancedPPOTrainer
-from ..models.trading_gru_trainer import TradingGRUTrainer
-from ..models.trading_lgbm import TradingLightGBM
+from ..models.ppo_trainer import PPOTrainer as EnhancedPPOTrainer
+from ..models.gru_trainer import GRUTrainer as TradingGRUTrainer
+from ..models.lgbm_trainer import LightGBMTrainer as TradingLightGBM
 from ..utils.trading_metrics import TradingMetricsCalculator
 from ..validation.data_validator import TradingDataValidator
 from ..validation.ensemble_validator import EnsembleValidator

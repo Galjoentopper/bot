@@ -59,7 +59,7 @@ setup(
         # Data analysis and statistics
         "statsmodels>=0.14.0",
         "ta>=0.10.2",
-        "pandas-ta>=0.3.14b0",
+        # "pandas-ta>=0.3.14b0",  # Removed due to availability issues
         # Additional utilities for production
         "schedule>=1.2.0",
         # Configuration management

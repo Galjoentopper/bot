@@ -50,7 +50,11 @@ class DatasetBuilder:
 
         # Initialize components
         self.data_loader = DataLoader(data_dir)
-        self.feature_engine = FeatureEngine(self.config.get("features", {}))
+        # Pass both features and targets config to FeatureEngine
+        feature_config = self.config.get("features", {})
+        target_config = self.config.get("targets", {})
+        combined_config = {**feature_config, **target_config}
+        self.feature_engine = FeatureEngine(combined_config)
 
         # Create cache directory if it doesn't exist
         os.makedirs(cache_dir, exist_ok=True)
@@ -159,20 +163,27 @@ class DatasetBuilder:
         feature_names = self.feature_engine.get_feature_names(features_df)
         logger.info(f"Generated {len(feature_names)} enhanced trading features")
 
-        # Use trading-optimized target if available, otherwise fallback to original method
-        if "target_1h" in features_df.columns:
-            logger.info("Using trading-optimized 1h target")
-            y = features_df["target_1h"].values
+        # Use trading-optimized target if available, otherwise use first available target
+        target_columns = [col for col in features_df.columns if col.startswith('target_')]
+        if target_columns:
+            target_col = target_columns[0]  # Use first available target
+            logger.info(f"Using trading target: {target_col}")
+            y = features_df[target_col].values
         elif "target" in features_df.columns:
             logger.info("Using existing target column")
             y = features_df["target"].values
         else:
-            # Fallback to original target preparation
-            logger.info(f"Preparing fallback {target_type} target with horizon {target_horizon}")
-            preprocessor = DataPreprocessor()
-            y = preprocessor.prepare_target_variable(
-                features_df, target_type=target_type, horizon=target_horizon
-            )
+            # Create a simple return-based target from raw data
+            logger.info(f"Creating simple {target_type} target from original data")
+            if target_type == "return" and target_horizon == 1:
+                # Use simple 1-period return as fallback
+                prices = df['close']
+                y = prices.pct_change(target_horizon).shift(-target_horizon).fillna(0).values
+                # Align with features length
+                y = y[:len(features_df)]
+            else:
+                logger.warning("Fallback target creation failed, using zeros")
+                y = np.zeros(len(features_df))
 
         # Align features and target
         min_len = min(len(features_df), len(y))

@@ -259,6 +259,30 @@ class GRUTrainer:
             f"GRU Trainer initialized - Device: {self.device}, Mixed Precision: {self.mixed_precision}"
         )
 
+    def _create_sequences(self, data: np.ndarray, sequence_length: int) -> np.ndarray:
+        """
+        Create sequences from 2D time series data.
+        
+        Args:
+            data: 2D array of shape (n_samples, n_features)
+            sequence_length: Length of each sequence
+            
+        Returns:
+            3D array of shape (n_samples - sequence_length + 1, sequence_length, n_features)
+        """
+        if len(data) < sequence_length:
+            raise ValueError(f"Data length {len(data)} is less than sequence length {sequence_length}")
+            
+        n_samples = len(data) - sequence_length + 1
+        n_features = data.shape[1]
+        
+        sequences = np.zeros((n_samples, sequence_length, n_features), dtype=np.float32)
+        
+        for i in range(n_samples):
+            sequences[i] = data[i:i + sequence_length]
+            
+        return sequences
+
     def _set_seed(self, seed: int, deterministic: bool = False) -> None:
         """Set random seeds and cudnn flags for reproducibility/perf."""
         random.seed(seed)
@@ -683,6 +707,20 @@ class GRUTrainer:
             Training results dictionary
         """
         logger.info("Starting GRU model training")
+
+        # Handle 2D input by reshaping into sequences
+        if len(X_train.shape) == 2:
+            logger.info(f"Converting 2D input {X_train.shape} to 3D sequences with length {self.sequence_length}")
+            X_train = self._create_sequences(X_train, self.sequence_length)
+            X_val = self._create_sequences(X_val, self.sequence_length)
+            
+            # Adjust targets to match sequences
+            y_train = y_train[self.sequence_length-1:]
+            y_val = y_val[self.sequence_length-1:]
+            
+            logger.info(f"After sequence creation - X_train: {X_train.shape}, y_train: {y_train.shape}")
+        elif len(X_train.shape) != 3:
+            raise ValueError(f"Expected 2D or 3D input, got {len(X_train.shape)}D")
 
         # Store feature information for persistence
         self.input_size = X_train.shape[2]  # Features dimension

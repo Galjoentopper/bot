@@ -29,7 +29,10 @@ import zipfile
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.notifier.telegram import TelegramNotifier
 
 import numpy as np
 import psutil
@@ -47,6 +50,13 @@ except ImportError:
 # Add paths
 sys.path.append("/notebooks/bot" if Path("/notebooks").exists() else ".")
 sys.path.append("/notebooks/bot/src" if Path("/notebooks").exists() else "./src")
+
+# Telegram notifications
+try:
+    from src.notifier.telegram import TelegramNotifier
+    TELEGRAM_AVAILABLE = True
+except ImportError:
+    TELEGRAM_AVAILABLE = False
 
 # Setup logging
 logging.basicConfig(
@@ -85,6 +95,9 @@ class PaperspaceTraining:
         # Load configuration
         self.config = self._load_config(config_path)
         self._set_global_seeds()
+        
+        # Initialize Telegram notifications
+        self.telegram_notifier = self._init_telegram_notifier()
 
         # Training state
         self.pipeline_state = {
@@ -147,6 +160,36 @@ class PaperspaceTraining:
             logger.info(f"🎯 Set global random seed: {seed}")
         except Exception as e:
             logger.warning(f"⚠️ Failed to set global seeds: {e}")
+
+    def _init_telegram_notifier(self) -> Optional['TelegramNotifier']:
+        """Initialize Telegram notifier for training updates"""
+        if not TELEGRAM_AVAILABLE:
+            logger.info("📱 Telegram notifications disabled - library not available")
+            return None
+            
+        try:
+            # Get Telegram configuration from environment or config
+            bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+            chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+            
+            if not bot_token or not chat_id:
+                logger.info("📱 Telegram notifications disabled - missing credentials")
+                return None
+                
+            notifier = TelegramNotifier(
+                bot_token=bot_token,
+                chat_id=chat_id,
+                enabled=True,
+                rate_limit_per_sec=1.0,
+                max_retries=3
+            )
+            
+            logger.info("📱 Telegram notifications enabled")
+            return notifier
+            
+        except Exception as e:
+            logger.warning(f"📱 Failed to initialize Telegram notifier: {e}")
+            return None
 
     def verify_data_availability(self) -> Dict[str, int]:
         """Verify data files are available and get sample counts"""
@@ -404,34 +447,13 @@ class PaperspaceTraining:
 
             # Call train method with appropriate signature for each model type
             if model_type == "gru":
-                # GRU expects 3D data: (samples, sequence_length, features)
-                # Convert 2D features to 3D sequences
-                sequence_length = trainer.sequence_length  # Get from trainer config
-                logger.info(f"Reshaping data for GRU: sequence_length={sequence_length}")
+                # GRU trainer handles sequence creation internally
+                # Just pass 2D data and let the trainer handle reshaping
+                split_idx = int(len(X) * 0.8)
+                X_train, X_val = X[:split_idx], X[split_idx:]
+                y_train, y_val = y[:split_idx], y[split_idx:]
                 
-                # Create sliding windows
-                def create_sequences(data, seq_len):
-                    if len(data) < seq_len:
-                        # If not enough data, pad with zeros
-                        padded = np.zeros((seq_len, data.shape[1]))
-                        padded[-len(data):] = data
-                        return padded.reshape(1, seq_len, data.shape[1])
-                    
-                    sequences = []
-                    for i in range(seq_len, len(data) + 1):
-                        sequences.append(data[i-seq_len:i])
-                    return np.array(sequences)
-                
-                # Convert to sequences
-                X_sequences = create_sequences(X, sequence_length)
-                y_sequences = y[sequence_length-1:] if len(y) >= sequence_length else y[:len(X_sequences)]
-                
-                # Split train/validation
-                split_idx = int(len(X_sequences) * 0.8)
-                X_train, X_val = X_sequences[:split_idx], X_sequences[split_idx:]
-                y_train, y_val = y_sequences[:split_idx], y_sequences[split_idx:]
-                
-                logger.info(f"GRU data shapes - X_train: {X_train.shape}, y_train: {y_train.shape}")
+                logger.info(f"GRU input data shapes - X_train: {X_train.shape}, y_train: {y_train.shape}")
                 
                 result = trainer.train(
                     X_train=X_train,
@@ -460,45 +482,44 @@ class PaperspaceTraining:
                 # PPO expects DataFrame with proper columns including 'close'
                 import pandas as pd
                 
-                # Try to get runtime data with original columns first
-                runtime_data = task["dataset"]["metadata"].get("_runtime", {}).get("full_data")
+                # Create DataFrame from features with timestamps as index
+                features = task["dataset"]["features"]
+                logger.info(f"PPO input X shape: {X.shape}, expected features: {len(features)}")
                 
-                if runtime_data is not None:
-                    # Use runtime data which has original columns including 'close'
-                    logger.info(f"Using runtime data for PPO with {len(runtime_data.columns)} columns")
-                    df_data = runtime_data.copy()
-                    
-                    # Reset index to avoid datetime column issues
-                    if not isinstance(df_data.index, pd.RangeIndex):
-                        df_data = df_data.reset_index(drop=True)
-                    
-                    # Ensure all columns are numeric except target
-                    # First drop any datetime/string columns completely
-                    df_data = df_data.select_dtypes(include=[np.number])
-                    
-                    # Verify we still have 'close' column after filtering
-                    if 'close' not in df_data.columns:
-                        logger.warning("'close' column missing after numeric filtering, adding synthetic one")
-                        # Create synthetic close from first numeric column if available
-                        if len(df_data.columns) > 0:
-                            df_data['close'] = df_data.iloc[:, 0]  # Use first numeric column as proxy
-                        else:
-                            df_data['close'] = np.ones(len(df_data))  # Fallback constant values
-                    
-                    df_data['target'] = y[:len(df_data)]
-                else:
-                    # Fallback: create DataFrame from features and add synthetic 'close'
-                    logger.warning("No runtime data found, creating synthetic 'close' column for PPO")
-                    df_data = pd.DataFrame(X, columns=task["dataset"]["features"])
-                    df_data['target'] = y
-                    df_data.index = pd.to_datetime(timestamps)
-                    # Add synthetic close column from target shifts
-                    df_data['close'] = (1 + df_data['target'].shift(1).fillna(0)).cumprod()
+                # Ensure feature count matches
+                if X.shape[1] != len(features):
+                    logger.warning(f"Feature count mismatch: X has {X.shape[1]} features, but expected {len(features)}")
+                    # Use the minimum to avoid index errors
+                    min_features = min(X.shape[1], len(features))
+                    X = X[:, :min_features]
+                    features = features[:min_features]
+                    logger.info(f"Truncated to {min_features} features for consistency")
+                
+                df_data = pd.DataFrame(X, columns=features)
+                df_data.index = pd.to_datetime(timestamps)
+                
+                # Add target column
+                df_data['target'] = y[:len(df_data)]
+                
+                # Ensure we have a 'close' column - look for it in feature names first
+                if 'close' not in df_data.columns:
+                    # Look for close-related columns
+                    close_candidates = [col for col in df_data.columns if 'close' in col.lower()]
+                    if close_candidates:
+                        df_data['close'] = df_data[close_candidates[0]]
+                        logger.info(f"Using {close_candidates[0]} as close price for PPO")
+                    else:
+                        # Create synthetic close from cumulative returns of target
+                        df_data['close'] = (1 + df_data['target'].shift(1).fillna(0)).cumprod() * 50000  # Start at ~50k
+                        logger.info("Created synthetic close price from target returns for PPO")
                 
                 # Split train/eval
                 split_idx = int(len(df_data) * 0.8)
-                train_data = df_data[:split_idx]
-                eval_data = df_data[split_idx:]
+                train_data = df_data[:split_idx].copy()
+                eval_data = df_data[split_idx:].copy()
+                
+                logger.info(f"PPO data shapes - train: {train_data.shape}, eval: {eval_data.shape}")
+                logger.info(f"PPO columns: {list(train_data.columns)}")
                 
                 result = trainer.train(
                     train_data=train_data,
@@ -686,6 +707,77 @@ class PaperspaceTraining:
             logger.error(f"❌ S3 upload failed: {e}")
             return {"success": False, "error": str(e)}
 
+    def _send_success_notification(self, result: Dict[str, Any]) -> None:
+        """Send Telegram notification for successful training completion"""
+        if not self.telegram_notifier:
+            return
+            
+        try:
+            # Extract key information from result
+            training_result = result.get("training", {})
+            export_result = result.get("export", {})
+            s3_result = result.get("s3_upload", {})
+            runtime_hours = result.get("runtime_hours", 0)
+            
+            models_trained = []
+            for model_type, model_results in training_result.get("model_results", {}).items():
+                successful_symbols = [s for s, r in model_results.items() if r.get("success")]
+                if successful_symbols:
+                    models_trained.append(f"{model_type.upper()}: {len(successful_symbols)} symbols")
+            
+            message = f"""
+🎉 <b>MODEL TRAINING COMPLETED</b>
+
+<b>Runtime:</b> {runtime_hours:.1f} hours
+<b>Models Trained:</b>
+{chr(10).join(f'• {m}' for m in models_trained) if models_trained else '• No models completed'}
+
+<b>Export Status:</b> {'✅ Success' if export_result.get('success') else '❌ Failed'}
+<b>S3 Upload:</b> {'✅ Success' if s3_result.get('success') else '❌ Failed'}
+
+🤖 <b>Ready for deployment!</b>
+Type <code>/import</code> to import models in the cryptobot.
+
+<i>Training Server • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>
+"""
+            
+            self.telegram_notifier.send_message_sync(message)
+            logger.info("📱 Success notification sent to Telegram")
+            
+        except Exception as e:
+            logger.warning(f"📱 Failed to send success notification: {e}")
+
+    def _send_failure_notification(self, error: str, pipeline_state: Dict[str, Any]) -> None:
+        """Send Telegram notification for training failure"""
+        if not self.telegram_notifier:
+            return
+            
+        try:
+            current_stage = pipeline_state.get("current_stage", "unknown")
+            runtime_hours = (datetime.now() - self.start_time).total_seconds() / 3600
+            errors = pipeline_state.get("errors", [])
+            
+            message = f"""
+🚨 <b>MODEL TRAINING FAILED</b>
+
+<b>Stage:</b> {current_stage}
+<b>Runtime:</b> {runtime_hours:.1f} hours
+<b>Error:</b> {error}
+
+<b>Pipeline Errors:</b>
+{chr(10).join(f'• {e}' for e in errors[-3:]) if errors else '• No specific errors logged'}
+
+Please check the training logs for more details.
+
+<i>Training Server • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>
+"""
+            
+            self.telegram_notifier.send_message_sync(message)
+            logger.info("📱 Failure notification sent to Telegram")
+            
+        except Exception as e:
+            logger.warning(f"📱 Failed to send failure notification: {e}")
+
     def run_full_pipeline(
         self,
         model_types: Optional[List[str]] = None,
@@ -812,9 +904,16 @@ def main():
             logger.info("🎉 Training completed successfully!")
             if result.get("export", {}).get("success"):
                 logger.info(f"📦 Models exported to: {result['export']['export_path']}")
+            
+            # Send success notification
+            trainer._send_success_notification(result)
             sys.exit(0)
         else:
-            logger.error(f"❌ Training failed: {result.get('error', 'Unknown error')}")
+            error_msg = result.get('error', 'Unknown error')
+            logger.error(f"❌ Training failed: {error_msg}")
+            
+            # Send failure notification
+            trainer._send_failure_notification(error_msg, result.get('pipeline_state', {}))
             sys.exit(1)
 
     except KeyboardInterrupt:
@@ -825,6 +924,13 @@ def main():
         import traceback
 
         traceback.print_exc()
+        
+        # Send failure notification for unexpected errors
+        try:
+            trainer._send_failure_notification(str(e), trainer.pipeline_state)
+        except:
+            pass  # Don't fail on notification failure
+            
         sys.exit(1)
 
 

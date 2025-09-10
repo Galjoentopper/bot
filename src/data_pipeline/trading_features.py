@@ -168,7 +168,14 @@ class TradingFeatureEngine:
         df["gap_size"] = (df["open"] - df["close"].shift(1)) / df["close"].shift(1)
 
         # Multi-period price features
-        for period in self.config["price_periods"]:
+        try:
+            periods = self.config.get("price_periods", [5, 10, 20, 50, 100])
+            logger.debug(f"Using price_periods: {periods}")
+        except Exception as e:
+            logger.warning(f"Error accessing price_periods config: {e}")
+            periods = [5, 10, 20, 50, 100]  # fallback
+            
+        for period in periods:
             # Price momentum
             df[f"price_momentum_{period}"] = df["close"] / df["close"].shift(period) - 1
 
@@ -200,7 +207,8 @@ class TradingFeatureEngine:
         df["obv"] = (df["volume"] * df["obv_direction"]).cumsum()
 
         # Volume Rate of Change
-        for period in self.config["volume_periods"]:
+        volume_periods = self.config.get("volume_periods", [5, 10, 20, 50])
+        for period in volume_periods:
             df[f"volume_roc_{period}"] = df["volume"].pct_change(period)
             df[f"volume_sma_{period}"] = df["volume"].rolling(period).mean()
             df[f"volume_std_{period}"] = df["volume"].rolling(period).std()
@@ -220,7 +228,8 @@ class TradingFeatureEngine:
         """Add multi-timeframe momentum features."""
         logger.debug("Adding momentum features")
 
-        for period in self.config["momentum_periods"]:
+        momentum_periods = self.config.get("momentum_periods", [5, 10, 20, 50, 100, 200])
+        for period in momentum_periods:
             # Standard momentum
             df[f"momentum_{period}"] = df["close"].pct_change(period)
 
