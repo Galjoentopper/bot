@@ -11,21 +11,23 @@ This enhanced trainer extends the original trainer.py with:
 - Compatibility validation
 """
 
-import sys
-import os
 import argparse
-import yaml
 import json
+import logging
+import os
 import shutil
 import signal
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, Optional, List
-import logging
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 # Critical dependencies with error handling
 try:
     import numpy as np
+    import pandas as pd
 except ImportError as e:
     print(f"Error: NumPy is required but not installed: {e}")
     print("Please install numpy: pip install numpy")
@@ -35,49 +37,55 @@ except ImportError as e:
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from src.utils.logger import setup_logging, TradingBotLogger
-from src.utils.mlflow_init import initialize_mlflow_from_config
+from src.config.config_loader import ConfigLoader
 from src.data_pipeline.dataset_builder import DatasetBuilder
 from src.data_pipeline.loader import DataLoader
-from src.utils.cross_validation import PurgedTimeSeriesSplit
-from src.utils.metrics import TradingMetrics, optimize_threshold
-from src.utils.calibration import ProbabilityCalibrator
 from src.models.adapters import create_model_adapter
 from src.notifier.telegram import TelegramNotifier
-from src.config.config_loader import ConfigLoader
+from src.optimization.bayesian_optimizer import FinancialBayesianOptimizer
+
+# Import hyperparameter optimization modules
+from src.optimization.financial_hyperopt import (
+    AssetClass,
+    FinancialHyperparameterOptimizer,
+    MarketRegime,
+)
+from src.utils.calibration import ProbabilityCalibrator
+from src.utils.cross_validation import PurgedTimeSeriesSplit
+from src.utils.logger import TradingBotLogger, setup_logging
+from src.utils.metrics import TradingMetrics, optimize_threshold
+from src.utils.mlflow_init import initialize_mlflow_from_config
 
 # Import our new model packaging utilities
 from src.utils.model_packaging import ModelPackager
-from src.utils.training_checkpoint import TrainingCheckpoint, TrainingProgress, CheckpointMetadata
-
-# Import hyperparameter optimization modules
-from src.optimization.financial_hyperopt import FinancialHyperparameterOptimizer, AssetClass, MarketRegime
-from src.optimization.bayesian_optimizer import FinancialBayesianOptimizer
+from src.utils.training_checkpoint import CheckpointMetadata, TrainingCheckpoint, TrainingProgress
+from src.validation.data_validator import TradingDataValidator, validate_training_data
 
 # Global variables for checkpoint management
 checkpoint_manager = None
 shutdown_requested = False
 current_progress = None
 
+
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully"""
     global shutdown_requested, checkpoint_manager, current_progress
-    
+
     print("\n🛑 Shutdown signal received. Saving checkpoint...")
     shutdown_requested = True
-    
+
     if checkpoint_manager and current_progress:
         try:
             # Save current progress before shutdown
             checkpoint_manager.save_checkpoint(
                 progress=current_progress,
                 config={},  # Will be updated with actual config during training
-                partial_results={}
+                partial_results={},
             )
             print("✅ Checkpoint saved successfully. Training can be resumed later.")
         except Exception as e:
             print(f"❌ Failed to save checkpoint: {e}")
-    
+
     print("Exiting gracefully...")
     sys.exit(0)
 
@@ -95,7 +103,7 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
 def _make_jsonable(value: Any) -> Any:
     """Convert common non-JSON-serializable types into JSON-safe structures."""
     # Scalars
-    if hasattr(np, 'generic') and isinstance(value, np.generic):
+    if hasattr(np, "generic") and isinstance(value, np.generic):
         return value.item()
     if isinstance(value, (int, float, str, bool)) or value is None:
         return value
@@ -103,7 +111,7 @@ def _make_jsonable(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat()
     # Numpy arrays
-    if hasattr(np, 'ndarray') and isinstance(value, np.ndarray):
+    if hasattr(np, "ndarray") and isinstance(value, np.ndarray):
         # Be cautious with huge arrays; convert to list
         return value.tolist()
     # Lists / tuples
@@ -133,9 +141,14 @@ def _sanitize_results(res: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def package_and_export_models(output_dir: str, symbols: List[str], models: List[str], 
-                             config: Dict[str, Any], logger: logging.Logger,
-                             export_dir: Optional[str] = None) -> Dict[str, Any]:
+def package_and_export_models(
+    output_dir: str,
+    symbols: List[str],
+    models: List[str],
+    config: Dict[str, Any],
+    logger: logging.Logger,
+    export_dir: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Package trained models for easy transfer and deployment.
     This implementation is compatible with the current ModelPackager utility.
@@ -150,18 +163,14 @@ def package_and_export_models(output_dir: str, symbols: List[str], models: List[
     packager = ModelPackager(base_dir=output_dir)
 
     packaging_results = {
-        'packaged_models': [],
-        'failed_models': [],
-        'export_path': None,
-        'transfer_ready': False
+        "packaged_models": [],
+        "failed_models": [],
+        "export_path": None,
+        "transfer_ready": False,
     }
 
     # Mapping of expected model file extensions per model type
-    ext_map: Dict[str, List[str]] = {
-        'gru': ['.pt', '.pth'],
-        'lightgbm': ['.pkl'],
-        'ppo': ['.zip']
-    }
+    ext_map: Dict[str, List[str]] = {"gru": [".pt", ".pth"], "lightgbm": [".pkl"], "ppo": [".zip"]}
 
     def _find_model_file(model_type: str, symbol: str) -> Optional[str]:
         """Locate the most recent model file for a given model type and symbol.
@@ -174,8 +183,8 @@ def package_and_export_models(output_dir: str, symbols: List[str], models: List[
         candidates: List[Path] = []
 
         # 1) latest directory or pointer
-        latest_path = os.path.join(model_root, 'latest')
-        latest_pointer_path = os.path.join(model_root, 'latest_pointer.txt')
+        latest_path = os.path.join(model_root, "latest")
+        latest_pointer_path = os.path.join(model_root, "latest_pointer.txt")
         actual_dir: Optional[str] = None
 
         if os.path.exists(latest_path):
@@ -192,7 +201,7 @@ def package_and_export_models(output_dir: str, symbols: List[str], models: List[
 
         if actual_dir is None and os.path.exists(latest_pointer_path):
             try:
-                with open(latest_pointer_path, 'r') as f:
+                with open(latest_pointer_path, "r") as f:
                     pointer_target = f.read().strip()
                 if os.path.isdir(pointer_target):
                     actual_dir = pointer_target
@@ -203,7 +212,7 @@ def package_and_export_models(output_dir: str, symbols: List[str], models: List[
                 pass
 
         if actual_dir and os.path.isdir(actual_dir):
-            for ext in ext_map.get(model_type, ['.pkl', '.pt', '.zip']):
+            for ext in ext_map.get(model_type, [".pkl", ".pt", ".zip"]):
                 try:
                     files = list(Path(actual_dir).rglob(f"*{ext}"))
                     candidates.extend(files)
@@ -211,9 +220,9 @@ def package_and_export_models(output_dir: str, symbols: List[str], models: List[
                     pass
 
         # 2) metadata directory best-of artifacts
-        metadata_dir = os.path.join(output_dir, 'metadata')
+        metadata_dir = os.path.join(output_dir, "metadata")
         if os.path.isdir(metadata_dir):
-            for ext in ext_map.get(model_type, ['.pkl', '.pt', '.zip']):
+            for ext in ext_map.get(model_type, [".pkl", ".pt", ".zip"]):
                 try:
                     files = list(Path(metadata_dir).glob(f"*{symbol}*{ext}"))
                     candidates.extend(files)
@@ -222,7 +231,7 @@ def package_and_export_models(output_dir: str, symbols: List[str], models: List[
 
         # 3) Fallback recursive search under model_root
         if os.path.isdir(model_root):
-            for ext in ext_map.get(model_type, ['.pkl', '.pt', '.zip']):
+            for ext in ext_map.get(model_type, [".pkl", ".pt", ".zip"]):
                 try:
                     files = list(Path(model_root).rglob(f"*{ext}"))
                     candidates.extend(files)
@@ -247,50 +256,46 @@ def package_and_export_models(output_dir: str, symbols: List[str], models: List[
                         model_path=model_file,
                         model_type=model_type,
                         symbol=symbol,
-                        training_config=config
+                        training_config=config,
                     )
 
-                    packaging_results['packaged_models'].append({
-                        'symbol': symbol,
-                        'model_type': model_type,
-                        'package_path': package_path
-                    })
+                    packaging_results["packaged_models"].append(
+                        {"symbol": symbol, "model_type": model_type, "package_path": package_path}
+                    )
                     logger.info(f"Successfully packaged {model_type} model for {symbol}")
                 except Exception as e:
                     logger.error(f"Failed to package {model_type} model for {symbol}: {e}")
-                    packaging_results['failed_models'].append({
-                        'symbol': symbol,
-                        'model_type': model_type,
-                        'error': str(e)
-                    })
+                    packaging_results["failed_models"].append(
+                        {"symbol": symbol, "model_type": model_type, "error": str(e)}
+                    )
             else:
                 logger.warning(f"No trained model found for {model_type}/{symbol}")
 
     # Create transfer bundle if we have packaged models
-    if packaging_results['packaged_models']:
+    if packaging_results["packaged_models"]:
         try:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             # Default export directory under models/exports
             if export_dir is None:
-                export_dir = os.path.join(output_dir, 'exports')
+                export_dir = os.path.join(output_dir, "exports")
             os.makedirs(export_dir, exist_ok=True)
 
             bundle_path = os.path.join(export_dir, f"model_transfer_bundle_{timestamp}.zip")
 
             # Create a bundle containing the packaged models and import script
             packager.create_transfer_bundle(
-                model_types=models,
-                symbols=symbols,
-                output_path=bundle_path
+                model_types=models, symbols=symbols, output_path=bundle_path
             )
 
-            packaging_results['export_path'] = bundle_path
-            packaging_results['transfer_ready'] = True
+            packaging_results["export_path"] = bundle_path
+            packaging_results["transfer_ready"] = True
             logger.info(f"Models packaged and ready for transfer at: {bundle_path}")
-            logger.info(f"Transfer bundle includes: {len(packaging_results['packaged_models'])} models")
+            logger.info(
+                f"Transfer bundle includes: {len(packaging_results['packaged_models'])} models"
+            )
         except Exception as e:
             logger.error(f"Failed to create transfer bundle: {e}")
-            packaging_results['transfer_ready'] = False
+            packaging_results["transfer_ready"] = False
 
     return packaging_results
 
@@ -302,11 +307,11 @@ def run_hyperparameter_optimization(
     config: Dict[str, Any],
     n_trials: int = 50,
     timeout: int = 3600,
-    optimization_metric: str = 'sharpe_ratio'
+    optimization_metric: str = "sharpe_ratio",
 ) -> Dict[str, Any]:
     """
     Run hyperparameter optimization for a specific model and symbol.
-    
+
     Args:
         model_type: Type of model to optimize ('gru', 'lightgbm', 'ppo')
         symbol: Trading symbol
@@ -315,164 +320,173 @@ def run_hyperparameter_optimization(
         n_trials: Number of optimization trials
         timeout: Optimization timeout in seconds
         optimization_metric: Metric to optimize for
-        
+
     Returns:
         Dictionary with optimization results and best parameters
     """
     logger = logging.getLogger(__name__)
     logger.info(f"Starting hyperparameter optimization for {model_type} on {symbol}")
-    
+
     try:
         # Import optuna for optimization
         import optuna
-        
+
         # Initialize financial hyperparameter optimizer
         financial_optimizer = FinancialHyperparameterOptimizer(
             asset_class=AssetClass.CRYPTO,  # Assuming crypto for this dataset
             market_regime=None,  # Auto-detect or use default
         )
         financial_optimizer.set_model_type(model_type)
-        
+
         # Create Bayesian optimizer
         bayesian_optimizer = FinancialBayesianOptimizer(
             financial_optimizer=financial_optimizer,
             config_manager=None,  # Will use direct config
-            n_calls=n_trials
+            n_calls=n_trials,
         )
-        
+
         # Get training data
         X, y, timestamps, feature_names, metadata = dataset_builder.build_dataset(
             symbol=symbol,
-            interval='30m',  # Default to 30m interval
+            interval="30m",  # Default to 30m interval
             use_cache=True,
-            target_type='return',
-            target_horizon=1
+            target_type="return",
+            target_horizon=1,
         )
-        
+
         if X is None or y is None:
             logger.error(f"No data available for {symbol}")
-            return {'success': False, 'error': 'No data available'}
-        
+            return {"success": False, "error": "No data available"}
+
         # Split data for validation
         n = len(X)
         split_idx = int(n * 0.8)
         X_train, X_val = X[:split_idx], X[split_idx:]
         y_train, y_val = y[:split_idx], y[split_idx:]
-        
+
         # Define objective function
         def objective(trial):
             try:
                 # Suggest hyperparameters based on model type
-                if model_type == 'lightgbm':
+                if model_type == "lightgbm":
                     params = {
-                        'n_estimators': trial.suggest_categorical('n_estimators', [100, 200, 500, 1000]),
-                        'learning_rate': trial.suggest_loguniform('learning_rate', 0.001, 0.1),
-                        'num_leaves': trial.suggest_categorical('num_leaves', [20, 31, 50, 100]),
-                        'max_depth': trial.suggest_categorical('max_depth', [3, 5, 7, 10]),
-                        'feature_fraction': trial.suggest_uniform('feature_fraction', 0.7, 1.0),
-                        'bagging_fraction': trial.suggest_uniform('bagging_fraction', 0.7, 1.0),
-                        'min_data_in_leaf': trial.suggest_categorical('min_data_in_leaf', [10, 20, 50]),
-                        'reg_alpha': trial.suggest_loguniform('reg_alpha', 1e-6, 1e1),
-                        'reg_lambda': trial.suggest_loguniform('reg_lambda', 1e-6, 1e1),
+                        "n_estimators": trial.suggest_categorical(
+                            "n_estimators", [100, 200, 500, 1000]
+                        ),
+                        "learning_rate": trial.suggest_loguniform("learning_rate", 0.001, 0.1),
+                        "num_leaves": trial.suggest_categorical("num_leaves", [20, 31, 50, 100]),
+                        "max_depth": trial.suggest_categorical("max_depth", [3, 5, 7, 10]),
+                        "feature_fraction": trial.suggest_uniform("feature_fraction", 0.7, 1.0),
+                        "bagging_fraction": trial.suggest_uniform("bagging_fraction", 0.7, 1.0),
+                        "min_data_in_leaf": trial.suggest_categorical(
+                            "min_data_in_leaf", [10, 20, 50]
+                        ),
+                        "reg_alpha": trial.suggest_loguniform("reg_alpha", 1e-6, 1e1),
+                        "reg_lambda": trial.suggest_loguniform("reg_lambda", 1e-6, 1e1),
                     }
-                elif model_type == 'gru':
+                elif model_type == "gru":
                     params = {
-                        'learning_rate': trial.suggest_loguniform('learning_rate', 1e-5, 5e-4),
-                        'hidden_size': trial.suggest_categorical('hidden_size', [32, 64, 96, 128, 192]),
-                        'num_layers': trial.suggest_categorical('num_layers', [1, 2, 3]),
-                        'dropout': trial.suggest_uniform('dropout', 0.2, 0.6),
-                        'batch_size': trial.suggest_categorical('batch_size', [16, 32, 64]),
-                        'sequence_length': trial.suggest_categorical('sequence_length', [15, 30, 45, 60]),
-                        'weight_decay': trial.suggest_loguniform('weight_decay', 1e-6, 5e-3),
+                        "learning_rate": trial.suggest_loguniform("learning_rate", 1e-5, 5e-4),
+                        "hidden_size": trial.suggest_categorical(
+                            "hidden_size", [32, 64, 96, 128, 192]
+                        ),
+                        "num_layers": trial.suggest_categorical("num_layers", [1, 2, 3]),
+                        "dropout": trial.suggest_uniform("dropout", 0.2, 0.6),
+                        "batch_size": trial.suggest_categorical("batch_size", [16, 32, 64]),
+                        "sequence_length": trial.suggest_categorical(
+                            "sequence_length", [15, 30, 45, 60]
+                        ),
+                        "weight_decay": trial.suggest_loguniform("weight_decay", 1e-6, 5e-3),
                     }
-                elif model_type == 'ppo':
+                elif model_type == "ppo":
                     params = {
-                        'learning_rate': trial.suggest_loguniform('learning_rate', 1e-5, 1e-3),
-                        'n_steps': trial.suggest_categorical('n_steps', [1024, 2048, 4096]),
-                        'batch_size': trial.suggest_categorical('batch_size', [32, 64, 128]),
-                        'n_epochs': trial.suggest_categorical('n_epochs', [5, 10, 15]),
-                        'gamma': trial.suggest_uniform('gamma', 0.95, 0.999),
-                        'gae_lambda': trial.suggest_uniform('gae_lambda', 0.9, 0.99),
-                        'clip_range': trial.suggest_uniform('clip_range', 0.1, 0.3),
-                        'ent_coef': trial.suggest_loguniform('ent_coef', 1e-6, 1e-2),
+                        "learning_rate": trial.suggest_loguniform("learning_rate", 1e-5, 1e-3),
+                        "n_steps": trial.suggest_categorical("n_steps", [1024, 2048, 4096]),
+                        "batch_size": trial.suggest_categorical("batch_size", [32, 64, 128]),
+                        "n_epochs": trial.suggest_categorical("n_epochs", [5, 10, 15]),
+                        "gamma": trial.suggest_uniform("gamma", 0.95, 0.999),
+                        "gae_lambda": trial.suggest_uniform("gae_lambda", 0.9, 0.99),
+                        "clip_range": trial.suggest_uniform("clip_range", 0.1, 0.3),
+                        "ent_coef": trial.suggest_loguniform("ent_coef", 1e-6, 1e-2),
                     }
                 else:
                     raise ValueError(f"Unsupported model type: {model_type}")
-                
+
                 # Create model adapter with suggested parameters
                 model_config = config.copy()
-                model_config['model_parameters'] = model_config.get('model_parameters', {})
-                model_config['model_parameters'][model_type] = params
-                
-                adapter = create_model_adapter(model_type, model_config, 'regression')
-                
+                model_config["model_parameters"] = model_config.get("model_parameters", {})
+                model_config["model_parameters"][model_type] = params
+
+                adapter = create_model_adapter(model_type, model_config, "regression")
+
                 # Train model
                 train_idx = np.arange(len(X_train))
                 val_idx = np.arange(len(X_val))
-                
-                if model_type == 'ppo':
+
+                if model_type == "ppo":
                     # PPO needs special handling
                     full_data = np.vstack([X_train, X_val])
                     full_targets = np.hstack([y_train, y_val])
                     adapter.fit(X=full_data, y=full_targets, train_idx=train_idx, valid_idx=val_idx)
                 else:
                     adapter.fit(X=X_train, y=y_train, train_idx=train_idx, valid_idx=val_idx)
-                
+
                 # Evaluate model
                 y_pred = adapter.predict(X_val)
-                
+
                 # Calculate financial metrics
                 from src.utils.metrics import TradingMetrics
+
                 metrics_calc = TradingMetrics()
-                
+
                 # Calculate returns-based metrics
-                returns = y_pred.flatten() if hasattr(y_pred, 'flatten') else y_pred
-                actual_returns = y_val.flatten() if hasattr(y_val, 'flatten') else y_val
-                
+                returns = y_pred.flatten() if hasattr(y_pred, "flatten") else y_pred
+                actual_returns = y_val.flatten() if hasattr(y_val, "flatten") else y_val
+
                 # Simple Sharpe ratio calculation
                 if len(returns) > 1:
                     sharpe_ratio = np.mean(returns) / (np.std(returns) + 1e-8) * np.sqrt(252)
                 else:
                     sharpe_ratio = 0.0
-                
+
                 # Return the optimization metric
-                if optimization_metric == 'sharpe_ratio':
+                if optimization_metric == "sharpe_ratio":
                     return sharpe_ratio
                 else:
                     # For now, default to Sharpe ratio
                     return sharpe_ratio
-                    
+
             except Exception as e:
                 logger.warning(f"Trial failed: {e}")
                 return -np.inf
-        
+
         # Run optimization
-        study = optuna.create_study(direction='maximize')
+        study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=n_trials, timeout=timeout)
-        
+
         # Get best results
         best_params = study.best_params
         best_value = study.best_value
-        
+
         logger.info(f"Hyperparameter optimization completed for {model_type} on {symbol}")
         logger.info(f"Best {optimization_metric}: {best_value:.4f}")
         logger.info(f"Best parameters: {best_params}")
-        
+
         return {
-            'success': True,
-            'best_params': best_params,
-            'best_value': best_value,
-            'optimization_metric': optimization_metric,
-            'n_trials': len(study.trials),
-            'study': study
+            "success": True,
+            "best_params": best_params,
+            "best_value": best_value,
+            "optimization_metric": optimization_metric,
+            "n_trials": len(study.trials),
+            "study": study,
         }
-        
+
     except ImportError:
         logger.error("Optuna not available for hyperparameter optimization")
-        return {'success': False, 'error': 'Optuna not available'}
+        return {"success": False, "error": "Optuna not available"}
     except Exception as e:
         logger.error(f"Hyperparameter optimization failed: {e}")
-        return {'success': False, 'error': str(e)}
+        return {"success": False, "error": str(e)}
 
 
 def main() -> None:
@@ -482,51 +496,52 @@ def main() -> None:
             # Initialize ML runtime environment first
             try:
                 from startup_init import initialize_runtime
+
                 if not initialize_runtime(verbose=False):
                     print("Warning: ML runtime initialization failed, but continuing...")
             except Exception as e:
                 print(f"Warning: ML runtime initialization error: {e}")
-            
+
             # Load default config
-            config = load_config('src/config/config.yaml')
+            config = load_config("src/config/config.yaml")
             # Import early so names are bound before use
             from scripts.walk_forward_optuna import run_walk_forward_optuna  # type: ignore
+
             logger = setup_logging(config)
 
             # Determine available symbols
-            data_loader = DataLoader('./data')
+            data_loader = DataLoader("./data")
             availability = data_loader.check_data_availability()
             available_symbols = [s for s, ok in availability.items() if ok]
             if not available_symbols:
-                logger.error('No data available for training!')
+                logger.error("No data available for training!")
                 return
 
             # Symbols to optimize from config or all available
-            trainer_cfg = config.get('trainer', {}) if isinstance(config, dict) else {}
-            symbols_cfg = trainer_cfg.get('symbols') if isinstance(trainer_cfg.get('symbols'), list) else None
+            trainer_cfg = config.get("trainer", {}) if isinstance(config, dict) else {}
+            symbols_cfg = (
+                trainer_cfg.get("symbols") if isinstance(trainer_cfg.get("symbols"), list) else None
+            )
             symbols = symbols_cfg or available_symbols
             symbols = [s for s in symbols if s in available_symbols]
             if not symbols:
-                logger.error('No valid symbols found to optimize')
+                logger.error("No valid symbols found to optimize")
                 return
-            interval = (
-                trainer_cfg.get('interval')
-                or (config.get('data', {}) or {}).get('interval', '30m')
+            interval = trainer_cfg.get("interval") or (config.get("data", {}) or {}).get(
+                "interval", "30m"
             )
-            target_type = trainer_cfg.get('target_type', 'return')
-            target_horizon = int(trainer_cfg.get('default_target_horizon', 1))
-            n_splits = int(trainer_cfg.get('n_splits', 5))
-            embargo = int(trainer_cfg.get('embargo', 100))
-            fee_bps = float(trainer_cfg.get('fee_bps', 10.0))
-            trials = int(trainer_cfg.get('optuna_trials', 30))
-            
+            target_type = trainer_cfg.get("target_type", "return")
+            target_horizon = int(trainer_cfg.get("default_target_horizon", 1))
+            n_splits = int(trainer_cfg.get("n_splits", 5))
+            embargo = int(trainer_cfg.get("embargo", 100))
+            fee_bps = float(trainer_cfg.get("fee_bps", 10.0))
+            trials = int(trainer_cfg.get("optuna_trials", 30))
+
             # Build and optimize per symbol
             dataset_builder = DatasetBuilder(
-                data_dir='./data',
-                cache_dir='./models/metadata',
-                config=config
+                data_dir="./data", cache_dir="./models/metadata", config=config
             )
-            
+
             trained_models = []
             for symbol in symbols:
                 X, y, timestamps, feature_names, metadata = dataset_builder.build_dataset(
@@ -535,20 +550,20 @@ def main() -> None:
                     use_cache=True,
                     target_type=target_type,
                     target_horizon=target_horizon,
-                    start_date=trainer_cfg.get('start_date')
+                    start_date=trainer_cfg.get("start_date"),
                 )
                 is_valid, errors = dataset_builder.validate_dataset(X, y, metadata)
                 if not is_valid:
                     logger.error(f"Dataset invalid for {symbol}: {errors}")
                     continue
                 # Convert to arrays
-                X_arr = X.values if hasattr(X, 'values') else np.asarray(X)
+                X_arr = X.values if hasattr(X, "values") else np.asarray(X)
                 y_arr = np.asarray(y)
-                
+
                 # Train LightGBM
-                save_best = os.path.join('models', 'metadata', f'best_wf_lightgbm_{symbol}.pkl')
+                save_best = os.path.join("models", "metadata", f"best_wf_lightgbm_{symbol}.pkl")
                 res = run_walk_forward_optuna(
-                    model='lightgbm',
+                    model="lightgbm",
                     X=X_arr,
                     y=y_arr,
                     cfg=config,
@@ -558,90 +573,132 @@ def main() -> None:
                     fees_bps=fee_bps,
                     save_best=save_best,
                 )
-                logger.info(f"{symbol} best Sharpe: {res.get('best_sharpe')}, saved: {res.get('saved_path')}")
-                trained_models.append(('lightgbm', symbol))
-                
+                logger.info(
+                    f"{symbol} best Sharpe: {res.get('best_sharpe')}, saved: {res.get('saved_path')}"
+                )
+                trained_models.append(("lightgbm", symbol))
+
                 # Also run GRU auto by default
-                save_best_gru = os.path.join('models', 'metadata', f'best_wf_gru_{symbol}.pt')
+                save_best_gru = os.path.join("models", "metadata", f"best_wf_gru_{symbol}.pt")
                 res_gru = run_walk_forward_optuna(
-                    model='gru',
+                    model="gru",
                     X=X_arr,
                     y=y_arr,
                     cfg=config,
                     n_folds=n_splits,
                     embargo=embargo,
-                    trials=max(10, trials//2),  # fewer trials by default for GRU
+                    trials=max(10, trials // 2),  # fewer trials by default for GRU
                     fees_bps=fee_bps,
                     save_best=save_best_gru,
                 )
-                logger.info(f"{symbol} GRU best Sharpe: {res_gru.get('best_sharpe')}, saved: {res_gru.get('saved_path')}")
-                trained_models.append(('gru', symbol))
-            
+                logger.info(
+                    f"{symbol} GRU best Sharpe: {res_gru.get('best_sharpe')}, saved: {res_gru.get('saved_path')}"
+                )
+                trained_models.append(("gru", symbol))
+
             # Package and export models after training
             if trained_models:
                 symbols_trained = list(set([symbol for _, symbol in trained_models]))
                 models_trained = list(set([model for model, _ in trained_models]))
-                
+
                 packaging_results = package_and_export_models(
-                    output_dir='./models',
+                    output_dir="./models",
                     symbols=symbols_trained,
                     models=models_trained,
                     config=config,
-                    logger=logger
+                    logger=logger,
                 )
-                
-                if packaging_results['transfer_ready']:
-                    logger.info(f"✅ Models packaged and ready for transfer at: {packaging_results['export_path']}")
-                    logger.info("📦 Use the generated import_models.py script to transfer models to another machine")
+
+                if packaging_results["transfer_ready"]:
+                    logger.info(
+                        f"✅ Models packaged and ready for transfer at: {packaging_results['export_path']}"
+                    )
+                    logger.info(
+                        "📦 Use the generated import_models.py script to transfer models to another machine"
+                    )
                 else:
-                    logger.warning("⚠️ Model packaging completed but transfer bundle creation failed")
-            
+                    logger.warning(
+                        "⚠️ Model packaging completed but transfer bundle creation failed"
+                    )
+
             return
         except Exception as e:
             print(f"Default walk-forward harness failed: {e}")
             # Fall through to the regular trainer if default path fails
-    
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description='Enhanced Unified Trainer with Model Packaging',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        description="Enhanced Unified Trainer with Model Packaging",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument('--config', type=str, default=None)
-    parser.add_argument('--data-dir', type=str, default='./data')
-    parser.add_argument('--output-dir', type=str, default='./models')
-    parser.add_argument('--export-dir', type=str, default=None, help='Directory to export packaged models')
-    parser.add_argument('--models', type=str, nargs='+', choices=['gru','lightgbm','ppo','all'], default=None)
-    parser.add_argument('--symbols', type=str, nargs='+', default=None)
-    parser.add_argument('--interval', type=str, default=None)
-    parser.add_argument('--target-type', type=str, choices=['return','direction','price'], default=None)
-    parser.add_argument('--target-horizon', type=int, default=None)
-    parser.add_argument('--n-splits', type=int, default=None)
-    parser.add_argument('--embargo', type=int, default=None)
-    parser.add_argument('--fee-bps', type=float, default=None)
-    parser.add_argument('--slippage-bps', type=float, default=None)
-    parser.add_argument('--turnover-lambda', type=float, default=None)
-    parser.add_argument('--package-models', action='store_true', help='Package models after training')
-    parser.add_argument('--create-transfer-bundle', action='store_true', help='Create transfer bundle after training')
-    
+    parser.add_argument("--config", type=str, default=None)
+    parser.add_argument("--data-dir", type=str, default="./data")
+    parser.add_argument("--output-dir", type=str, default="./models")
+    parser.add_argument(
+        "--export-dir", type=str, default=None, help="Directory to export packaged models"
+    )
+    parser.add_argument(
+        "--models", type=str, nargs="+", choices=["gru", "lightgbm", "ppo", "all"], default=None
+    )
+    parser.add_argument("--symbols", type=str, nargs="+", default=None)
+    parser.add_argument("--interval", type=str, default=None)
+    parser.add_argument(
+        "--target-type", type=str, choices=["return", "direction", "price"], default=None
+    )
+    parser.add_argument("--target-horizon", type=int, default=None)
+    parser.add_argument("--n-splits", type=int, default=None)
+    parser.add_argument("--embargo", type=int, default=None)
+    parser.add_argument("--fee-bps", type=float, default=None)
+    parser.add_argument("--slippage-bps", type=float, default=None)
+    parser.add_argument("--turnover-lambda", type=float, default=None)
+    parser.add_argument(
+        "--package-models", action="store_true", help="Package models after training"
+    )
+    parser.add_argument(
+        "--create-transfer-bundle",
+        action="store_true",
+        help="Create transfer bundle after training",
+    )
+
     # Tri-state cache flag: None = use config, True/False if explicitly set
     parser.set_defaults(cache=None)
-    parser.add_argument('--cache', action='store_true')
-    parser.add_argument('--no-cache', dest='cache', action='store_false')
-    parser.add_argument('--max-workers', type=int, default=None)
-    parser.add_argument('--objective', type=str, choices=['sharpe_ratio','sortino_ratio','calmar_ratio','profit_factor'], default=None)
-    parser.add_argument('--seed', type=int, default=None)
-    parser.add_argument('--experiment-name', type=str, default=None)
-    parser.add_argument('--start-date', type=str, default=None)
-    parser.add_argument('--resume', action='store_true', help='Resume training from last checkpoint')
-    parser.add_argument('--checkpoint-dir', type=str, default='checkpoints', help='Directory for checkpoint files')
-    parser.add_argument('--verbose', action='store_true')
-    
+    parser.add_argument("--cache", action="store_true")
+    parser.add_argument("--no-cache", dest="cache", action="store_false")
+    parser.add_argument("--max-workers", type=int, default=None)
+    parser.add_argument(
+        "--objective",
+        type=str,
+        choices=["sharpe_ratio", "sortino_ratio", "calmar_ratio", "profit_factor"],
+        default=None,
+    )
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--experiment-name", type=str, default=None)
+    parser.add_argument("--start-date", type=str, default=None)
+    parser.add_argument(
+        "--resume", action="store_true", help="Resume training from last checkpoint"
+    )
+    parser.add_argument(
+        "--checkpoint-dir", type=str, default="checkpoints", help="Directory for checkpoint files"
+    )
+    parser.add_argument("--verbose", action="store_true")
+
     # Hyperparameter optimization flags
-    parser.add_argument('--tune-hyperparameters', action='store_true', help='Enable hyperparameter optimization')
-    parser.add_argument('--optuna-trials', type=int, default=50, help='Number of optimization trials')
-    parser.add_argument('--optuna-timeout', type=int, default=3600, help='Optimization timeout in seconds')
-    parser.add_argument('--optimization-metric', type=str, choices=['sharpe_ratio', 'sortino_ratio', 'calmar_ratio'], 
-                        default='sharpe_ratio', help='Metric to optimize for')
+    parser.add_argument(
+        "--tune-hyperparameters", action="store_true", help="Enable hyperparameter optimization"
+    )
+    parser.add_argument(
+        "--optuna-trials", type=int, default=50, help="Number of optimization trials"
+    )
+    parser.add_argument(
+        "--optuna-timeout", type=int, default=3600, help="Optimization timeout in seconds"
+    )
+    parser.add_argument(
+        "--optimization-metric",
+        type=str,
+        choices=["sharpe_ratio", "sortino_ratio", "calmar_ratio"],
+        default="sharpe_ratio",
+        help="Metric to optimize for",
+    )
 
     args = parser.parse_args()
 
@@ -653,7 +710,8 @@ def main() -> None:
     # Initialize ML runtime environment (create missing directories and MLflow experiments)
     try:
         from startup_init import initialize_runtime
-        if not initialize_runtime(verbose=args.verbose if 'verbose' in args else False):
+
+        if not initialize_runtime(verbose=args.verbose if "verbose" in args else False):
             print("Warning: ML runtime initialization failed, but continuing...")
     except Exception as e:
         print(f"Warning: ML runtime initialization error: {e}")
@@ -680,23 +738,23 @@ def main() -> None:
         notifier = None
 
     dataset_builder = DatasetBuilder(
-        data_dir=args.data_dir,
-        cache_dir="./models/metadata",
-        config=config
+        data_dir=args.data_dir, cache_dir="./models/metadata", config=config
     )
 
     data_loader = DataLoader(args.data_dir)
     availability = data_loader.check_data_availability()
     available_symbols = [s for s, ok in availability.items() if ok]
     if not available_symbols:
-        logger.error('No data available for training!')
+        logger.error("No data available for training!")
         return
-    
+
     # Resolve trainer defaults from config when CLI not provided
-    trainer_cfg = config.get('trainer', {}) if isinstance(config, dict) else {}
+    trainer_cfg = config.get("trainer", {}) if isinstance(config, dict) else {}
     # Also check 'training' section for additional config (the main section in training_config.yaml)
-    training_cfg = config.get('training', {}) if isinstance(config, dict) else {}
-    symbols_default = trainer_cfg.get('symbols') if isinstance(trainer_cfg.get('symbols'), list) else None
+    training_cfg = config.get("training", {}) if isinstance(config, dict) else {}
+    symbols_default = (
+        trainer_cfg.get("symbols") if isinstance(trainer_cfg.get("symbols"), list) else None
+    )
     symbols_to_train = args.symbols or symbols_default or available_symbols
     symbols_to_train = [s for s in symbols_to_train if s in available_symbols]
 
@@ -706,45 +764,68 @@ def main() -> None:
     # Resolve trainer defaults from config when CLI not provided (continued)
     interval = (
         args.interval
-        or trainer_cfg.get('interval')
-        or (config.get('data', {}) or {}).get('interval', '30m')
+        or trainer_cfg.get("interval")
+        or (config.get("data", {}) or {}).get("interval", "30m")
     )
-    target_type = args.target_type or trainer_cfg.get('target_type', 'return')
-    target_horizon = args.target_horizon if args.target_horizon is not None else int(trainer_cfg.get('default_target_horizon', 1))
-    n_splits = args.n_splits if args.n_splits is not None else int(trainer_cfg.get('n_splits', 5))
-    embargo = args.embargo if args.embargo is not None else int(trainer_cfg.get('embargo', 100))
-    fee_bps = args.fee_bps if args.fee_bps is not None else float(trainer_cfg.get('fee_bps', 10.0))
-    slippage_bps = args.slippage_bps if args.slippage_bps is not None else float(trainer_cfg.get('slippage_bps', 5.0))
-    turnover_lambda = args.turnover_lambda if args.turnover_lambda is not None else float(trainer_cfg.get('turnover_lambda', 0.05))
-    max_workers = args.max_workers if args.max_workers is not None else int(trainer_cfg.get('max_workers', 1))
-    objective = args.objective or trainer_cfg.get('objective', 'sharpe_ratio')
-    cache = args.cache if args.cache is not None else bool(trainer_cfg.get('cache', True))
-    seed = args.seed if args.seed is not None else int(trainer_cfg.get('seed', 42))
-    
+    target_type = args.target_type or trainer_cfg.get("target_type", "return")
+    target_horizon = (
+        args.target_horizon
+        if args.target_horizon is not None
+        else int(trainer_cfg.get("default_target_horizon", 1))
+    )
+    n_splits = args.n_splits if args.n_splits is not None else int(trainer_cfg.get("n_splits", 5))
+    embargo = args.embargo if args.embargo is not None else int(trainer_cfg.get("embargo", 100))
+    fee_bps = args.fee_bps if args.fee_bps is not None else float(trainer_cfg.get("fee_bps", 10.0))
+    slippage_bps = (
+        args.slippage_bps
+        if args.slippage_bps is not None
+        else float(trainer_cfg.get("slippage_bps", 5.0))
+    )
+    turnover_lambda = (
+        args.turnover_lambda
+        if args.turnover_lambda is not None
+        else float(trainer_cfg.get("turnover_lambda", 0.05))
+    )
+    max_workers = (
+        args.max_workers if args.max_workers is not None else int(trainer_cfg.get("max_workers", 1))
+    )
+    objective = args.objective or trainer_cfg.get("objective", "sharpe_ratio")
+    cache = args.cache if args.cache is not None else bool(trainer_cfg.get("cache", True))
+    seed = args.seed if args.seed is not None else int(trainer_cfg.get("seed", 42))
+
     # Auto-enable hyperparameter optimization based on config
     # If optuna_trials is configured and > 0, automatically enable hyperparameter optimization
-    configured_optuna_trials = training_cfg.get('optuna_trials') or trainer_cfg.get('optuna_trials')
-    configured_optuna_timeout = training_cfg.get('optuna_timeout') or trainer_cfg.get('optuna_timeout')
-    
-    if not args.tune_hyperparameters and configured_optuna_trials and int(configured_optuna_trials) > 0:
-        logger.info(f"Auto-enabling hyperparameter optimization: optuna_trials={configured_optuna_trials} configured in training_config.yaml")
+    configured_optuna_trials = training_cfg.get("optuna_trials") or trainer_cfg.get("optuna_trials")
+    configured_optuna_timeout = training_cfg.get("optuna_timeout") or trainer_cfg.get(
+        "optuna_timeout"
+    )
+
+    if (
+        not args.tune_hyperparameters
+        and configured_optuna_trials
+        and int(configured_optuna_trials) > 0
+    ):
+        logger.info(
+            f"Auto-enabling hyperparameter optimization: optuna_trials={configured_optuna_trials} configured in training_config.yaml"
+        )
         args.tune_hyperparameters = True
         # Use configured values if not overridden by command line
         if args.optuna_trials == 50:  # 50 is the default, so user didn't override
             args.optuna_trials = int(configured_optuna_trials)
         if args.optuna_timeout == 3600 and configured_optuna_timeout:  # 3600 is the default
             args.optuna_timeout = int(configured_optuna_timeout)
-    
+
     # Explicit start_date support
     start_date = (
         args.start_date
-        or trainer_cfg.get('start_date')
-        or (config.get('data', {}) or {}).get('start_date')
+        or trainer_cfg.get("start_date")
+        or (config.get("data", {}) or {}).get("start_date")
     )
 
     # Apply random seeds
     try:
         import random
+
         random.seed(seed)
     except Exception:
         pass
@@ -755,6 +836,7 @@ def main() -> None:
     # Optional: seed torch/lightgbm/sb3 if installed
     try:
         import torch
+
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.deterministic = True
@@ -763,34 +845,43 @@ def main() -> None:
         pass
     try:
         import lightgbm as lgb
+
         # LightGBM uses seed in params; adapters should pass this seed
-        os.environ.setdefault('LGBM_RAND_SEED', str(seed))
+        os.environ.setdefault("LGBM_RAND_SEED", str(seed))
     except Exception:
         pass
 
     # If using maker/taker fees and no CLI fee override, pick from order_type
     if args.fee_bps is None:
-        order_type = str(trainer_cfg.get('order_type', '')).lower()
-        maker_fee = float(trainer_cfg.get('maker_fee_bps', fee_bps))
-        taker_fee = float(trainer_cfg.get('taker_fee_bps', fee_bps))
-        if order_type in ('maker', 'taker'):
-            fee_bps = maker_fee if order_type == 'maker' else taker_fee
+        order_type = str(trainer_cfg.get("order_type", "")).lower()
+        maker_fee = float(trainer_cfg.get("maker_fee_bps", fee_bps))
+        taker_fee = float(trainer_cfg.get("taker_fee_bps", fee_bps))
+        if order_type in ("maker", "taker"):
+            fee_bps = maker_fee if order_type == "maker" else taker_fee
 
     # Read packaging settings from config if not provided via CLI
-    output_cfg = config.get('output', {}) if isinstance(config, dict) else {}
-    package_models = args.package_models or output_cfg.get('create_packages', False)
-    create_transfer_bundle = args.create_transfer_bundle or output_cfg.get('create_transfer_bundle', False)
-    
-    logger.info(f"Enhanced Trainer settings: interval={interval}, target={target_type}, splits={n_splits}, embargo={embargo}, fees={fee_bps}bps, slippage={slippage_bps}bps, turnover_lambda={turnover_lambda}, cache={cache}, objective={objective}, max_workers={max_workers}, start_date={start_date}")
-    logger.info(f"Model packaging: enabled={package_models or create_transfer_bundle} (CLI: {args.package_models or args.create_transfer_bundle}, Config: {output_cfg.get('create_packages', False) or output_cfg.get('create_transfer_bundle', False)})")
+    output_cfg = config.get("output", {}) if isinstance(config, dict) else {}
+    package_models = args.package_models or output_cfg.get("create_packages", False)
+    create_transfer_bundle = args.create_transfer_bundle or output_cfg.get(
+        "create_transfer_bundle", False
+    )
+
+    logger.info(
+        f"Enhanced Trainer settings: interval={interval}, target={target_type}, splits={n_splits}, embargo={embargo}, fees={fee_bps}bps, slippage={slippage_bps}bps, turnover_lambda={turnover_lambda}, cache={cache}, objective={objective}, max_workers={max_workers}, start_date={start_date}"
+    )
+    logger.info(
+        f"Model packaging: enabled={package_models or create_transfer_bundle} (CLI: {args.package_models or args.create_transfer_bundle}, Config: {output_cfg.get('create_packages', False) or output_cfg.get('create_transfer_bundle', False)})"
+    )
 
     # Determine model list before checkpoint initialization
-    default_models = trainer_cfg.get('default_models')
+    default_models = trainer_cfg.get("default_models")
     if args.models is None:
         # If not specified in CLI or config, include PPO by default alongside GRU and LightGBM
-        model_list = default_models if isinstance(default_models, list) else ['lightgbm','gru','ppo']
+        model_list = (
+            default_models if isinstance(default_models, list) else ["lightgbm", "gru", "ppo"]
+        )
     else:
-        model_list = ['gru','lightgbm','ppo'] if args.models == ['all'] else args.models
+        model_list = ["gru", "lightgbm", "ppo"] if args.models == ["all"] else args.models
 
     # Initialize checkpoint system
     global checkpoint_manager, shutdown_requested, current_progress
@@ -803,20 +894,22 @@ def main() -> None:
         total_symbols=len(symbols_to_train),
         total_models=len(model_list),
         total_folds=n_splits,
-        completed_models=[]
+        completed_models=[],
     )
-    
+
     # Set up signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     # Check for existing checkpoint and resume if requested
     if args.resume:
         try:
             progress, config, partial_results = checkpoint_manager.load_checkpoint()
             if progress:
                 current_progress = progress
-                logger.info(f"Resuming from checkpoint: Symbol {current_progress.current_symbol_index+1}/{current_progress.total_symbols}, Model {current_progress.current_model_index+1}/{current_progress.total_models}")
+                logger.info(
+                    f"Resuming from checkpoint: Symbol {current_progress.current_symbol_index+1}/{current_progress.total_symbols}, Model {current_progress.current_model_index+1}/{current_progress.total_models}"
+                )
                 logger.info(f"Completed models: {len(current_progress.completed_models)}")
             else:
                 logger.info("No valid checkpoint found, starting fresh training")
@@ -833,7 +926,7 @@ def main() -> None:
     metrics_calc = TradingMetrics(fee_bps=fee_bps, slippage_bps=slippage_bps)
 
     # Notify start of training (after model_list is known)
-    if notifier and getattr(notifier, 'enabled', False):
+    if notifier and getattr(notifier, "enabled", False):
         try:
             symbols_preview = ", ".join(symbols_to_train)
             models_preview = ", ".join(model_list)
@@ -844,25 +937,27 @@ def main() -> None:
         except Exception as e:
             logger.error(f"Failed to send Telegram start notification: {e}")
     else:
-        logger.warning(f"Telegram notifications disabled - notifier exists: {notifier is not None}, enabled: {getattr(notifier, 'enabled', False) if notifier else False}")
+        logger.warning(
+            f"Telegram notifications disabled - notifier exists: {notifier is not None}, enabled: {getattr(notifier, 'enabled', False) if notifier else False}"
+        )
 
     trained_models = []
-    
+
     # Restore trained_models from checkpoint if resuming
     if args.resume and current_progress.completed_models:
         for model_key in current_progress.completed_models:
-            if '_' in model_key:
-                symbol, model_type = model_key.rsplit('_', 1)
+            if "_" in model_key:
+                symbol, model_type = model_key.rsplit("_", 1)
                 trained_models.append((model_type, symbol))
         logger.info(f"Restored {len(trained_models)} completed models from checkpoint")
-    
+
     # Main training loop with checkpoint support
     for symbol_idx, symbol in enumerate(symbols_to_train):
         # Skip symbols that are already completed (resume logic)
         if symbol_idx < current_progress.current_symbol_index:
             logger.info(f"Skipping already completed symbol: {symbol}")
             continue
-            
+
         current_progress.current_symbol_index = symbol_idx
         logger.info(f"==== Training {symbol} ====")
         try:
@@ -872,8 +967,47 @@ def main() -> None:
                 use_cache=cache,
                 target_type=target_type,
                 target_horizon=target_horizon,
-                start_date=start_date
+                start_date=start_date,
             )
+
+            # 🔍 Enhanced data validation before training
+            logger.info(f"🔍 Validating data quality for {symbol}")
+            validator = TradingDataValidator()
+
+            # Create a DataFrame from the features for validation
+            if hasattr(X, "index"):
+                validation_df = X.copy()
+            else:
+                # If X is numpy array, create DataFrame with timestamps
+                validation_df = pd.DataFrame(X, columns=feature_names if feature_names else None)
+                if timestamps is not None and len(timestamps) == len(X):
+                    validation_df.index = pd.to_datetime(timestamps)
+
+            # Add basic price columns if available in metadata
+            if metadata and "price_data" in metadata:
+                price_data = metadata["price_data"]
+                for col in ["open", "high", "low", "close", "volume"]:
+                    if col in price_data.columns:
+                        validation_df[col] = price_data[col].iloc[: len(validation_df)]
+
+            validation_result = validator.validate_for_training(validation_df, symbol, "all")
+
+            if not validation_result["is_valid"]:
+                logger.error(f"❌ Data validation failed for {symbol}")
+                logger.error(f"Critical failures: {validation_result['critical_failures']}")
+                checkpoint.failed_datasets[symbol] = validation_result["critical_failures"]
+                current_progress.failed_symbols.append(symbol)
+                checkpoint.save()
+                continue
+            else:
+                logger.info(
+                    f"✅ Data validation passed for {symbol} ({validation_result['total_samples']} samples)"
+                )
+                if validation_result.get("warnings"):
+                    logger.warning(
+                        f"⚠️  Validation warnings for {symbol}: {validation_result['warnings']}"
+                    )
+
         except Exception as e:
             logger.error(f"Dataset build failed for {symbol}: {e}")
             continue
@@ -889,34 +1023,36 @@ def main() -> None:
             if model_key in current_progress.completed_models:
                 logger.info(f"Skipping already completed model: {model_type} for {symbol}")
                 continue
-                
+
             # Check for shutdown signal
             if shutdown_requested:
                 logger.info("Shutdown requested, saving checkpoint and exiting...")
                 checkpoint_manager.save_checkpoint(
                     progress=current_progress,
                     config={
-                        'symbols': symbols_to_train,
-                        'models': model_list,
-                        'interval': interval,
-                        'target_type': target_type,
-                        'target_horizon': target_horizon,
-                        'n_splits': n_splits,
-                        'embargo': embargo,
-                        'fee_bps': fee_bps,
-                        'slippage_bps': slippage_bps,
-                        'turnover_lambda': turnover_lambda,
-                        'cache': cache,
-                        'objective': objective,
-                        'seed': seed,
-                        'start_date': start_date
-                    }
+                        "symbols": symbols_to_train,
+                        "models": model_list,
+                        "interval": interval,
+                        "target_type": target_type,
+                        "target_horizon": target_horizon,
+                        "n_splits": n_splits,
+                        "embargo": embargo,
+                        "fee_bps": fee_bps,
+                        "slippage_bps": slippage_bps,
+                        "turnover_lambda": turnover_lambda,
+                        "cache": cache,
+                        "objective": objective,
+                        "seed": seed,
+                        "start_date": start_date,
+                    },
                 )
                 return
-                
+
             current_progress.current_model_index = model_idx
-            logger.info(f"Training {model_type} for {symbol} (Progress: {len(current_progress.completed_models)}/{len(symbols_to_train) * len(model_list)} models completed)")
-            
+            logger.info(
+                f"Training {model_type} for {symbol} (Progress: {len(current_progress.completed_models)}/{len(symbols_to_train) * len(model_list)} models completed)"
+            )
+
             try:
                 # Run hyperparameter optimization if requested
                 optimized_params = None
@@ -929,31 +1065,37 @@ def main() -> None:
                         config=config,
                         n_trials=args.optuna_trials,
                         timeout=args.optuna_timeout,
-                        optimization_metric=args.optimization_metric
+                        optimization_metric=args.optimization_metric,
                     )
-                    
-                    if optimization_result['success']:
-                        optimized_params = optimization_result['best_params']
-                        logger.info(f"Optimization successful! Best {optimization_result['optimization_metric']}: {optimization_result['best_value']:.4f}")
-                        
+
+                    if optimization_result["success"]:
+                        optimized_params = optimization_result["best_params"]
+                        logger.info(
+                            f"Optimization successful! Best {optimization_result['optimization_metric']}: {optimization_result['best_value']:.4f}"
+                        )
+
                         # Update config with optimized parameters
-                        if 'model_parameters' not in config:
-                            config['model_parameters'] = {}
-                        if model_type not in config['model_parameters']:
-                            config['model_parameters'][model_type] = {}
-                        config['model_parameters'][model_type].update(optimized_params)
-                        
+                        if "model_parameters" not in config:
+                            config["model_parameters"] = {}
+                        if model_type not in config["model_parameters"]:
+                            config["model_parameters"][model_type] = {}
+                        config["model_parameters"][model_type].update(optimized_params)
+
                         # Save optimization results
-                        optimization_dir = os.path.join(args.output_dir, 'optimization_results')
+                        optimization_dir = os.path.join(args.output_dir, "optimization_results")
                         os.makedirs(optimization_dir, exist_ok=True)
-                        opt_file = os.path.join(optimization_dir, f'{model_type}_{symbol}_optimization.json')
-                        with open(opt_file, 'w') as f:
+                        opt_file = os.path.join(
+                            optimization_dir, f"{model_type}_{symbol}_optimization.json"
+                        )
+                        with open(opt_file, "w") as f:
                             json.dump(optimization_result, f, indent=2, default=str)
                         logger.info(f"Optimization results saved to {opt_file}")
                     else:
-                        logger.warning(f"Hyperparameter optimization failed: {optimization_result.get('error', 'Unknown error')}")
-                
-                task_type = 'classification' if target_type == 'direction' else 'regression'
+                        logger.warning(
+                            f"Hyperparameter optimization failed: {optimization_result.get('error', 'Unknown error')}"
+                        )
+
+                task_type = "classification" if target_type == "direction" else "regression"
                 adapter = create_model_adapter(model_type, config, task_type)
 
                 cv_results = []
@@ -962,48 +1104,56 @@ def main() -> None:
 
                 for fold_idx, (train_idx, val_idx) in enumerate(cv_splitter.split(X, y)):
                     logger.info(f"{model_type} fold {fold_idx+1}/{n_splits}")
-                    if model_type == 'ppo':
+                    if model_type == "ppo":
                         # Use raw OHLCV data for PPO if available
-                        ppo_X = metadata.get('_runtime', {}).get('full_data', metadata.get('full_data', X))
+                        ppo_X = metadata.get("_runtime", {}).get(
+                            "full_data", metadata.get("full_data", X)
+                        )
                         fold_results = adapter.fit(
                             X=ppo_X,
                             y=y,
                             train_idx=train_idx,
                             valid_idx=val_idx,
-                            experiment_name=f"{args.experiment_name}_{symbol}_{model_type}_fold{fold_idx}"
+                            experiment_name=f"{args.experiment_name}_{symbol}_{model_type}_fold{fold_idx}",
                         )
-                        
+
                         # Clean up PPO trainer after each fold to prevent memory accumulation
                         try:
-                            if hasattr(adapter, 'trainer') and hasattr(adapter.trainer, 'cleanup'):
+                            if hasattr(adapter, "trainer") and hasattr(adapter.trainer, "cleanup"):
                                 adapter.trainer.cleanup()
-                                logger.info(f"PPO trainer cleanup completed for {symbol} fold {fold_idx+1}")
-                            elif hasattr(adapter, 'cleanup'):
+                                logger.info(
+                                    f"PPO trainer cleanup completed for {symbol} fold {fold_idx+1}"
+                                )
+                            elif hasattr(adapter, "cleanup"):
                                 adapter.cleanup()
-                                logger.info(f"PPO adapter cleanup completed for {symbol} fold {fold_idx+1}")
+                                logger.info(
+                                    f"PPO adapter cleanup completed for {symbol} fold {fold_idx+1}"
+                                )
                         except Exception as e:
-                            logger.warning(f"PPO cleanup failed for {symbol} fold {fold_idx+1}: {e}")
+                            logger.warning(
+                                f"PPO cleanup failed for {symbol} fold {fold_idx+1}: {e}"
+                            )
                     else:
                         fold_results = adapter.fit(
                             X=X,
                             y=y,
                             train_idx=train_idx,
                             valid_idx=val_idx,
-                            experiment_name=f"{args.experiment_name}_{symbol}_{model_type}_fold{fold_idx}"
+                            experiment_name=f"{args.experiment_name}_{symbol}_{model_type}_fold{fold_idx}",
                         )
 
                     # Threshold and calibration for classifiers
-                    if task_type == 'classification' and hasattr(adapter, 'predict_proba'):
-                        X_val = X.iloc[val_idx] if hasattr(X, 'iloc') else X[val_idx]
+                    if task_type == "classification" and hasattr(adapter, "predict_proba"):
+                        X_val = X.iloc[val_idx] if hasattr(X, "iloc") else X[val_idx]
                         y_val = y[val_idx]
                         y_prob = adapter.predict_proba(X_val)[:, 1]
 
-                        calibrator = ProbabilityCalibrator(method='isotonic')
+                        calibrator = ProbabilityCalibrator(method="isotonic")
                         calibrator.fit(y_val, y_prob)
                         calibrators.append(calibrator)
                         y_prob_cal = calibrator.transform(y_prob)
 
-                        prices = np.asarray(metadata.get('prices', []))
+                        prices = np.asarray(metadata.get("prices", []))
                         if prices.size == len(y_prob_cal):
                             best, by = optimize_threshold(
                                 y_true=y_val,
@@ -1012,10 +1162,10 @@ def main() -> None:
                                 metrics_calculator=metrics_calc,
                                 turnover_lambda=turnover_lambda,
                                 asymmetric=True,
-                                objective=objective
+                                objective=objective,
                             )
-                            fold_results['optimal_threshold'] = best
-                            fold_results['threshold_scan'] = by
+                            fold_results["optimal_threshold"] = best
+                            fold_results["threshold_scan"] = by
                             saved_threshold = best
 
                     cv_results.append(fold_results)
@@ -1023,21 +1173,23 @@ def main() -> None:
                 # Final fit on all data (simple 80/20 for monitoring)
                 final_adapter = create_model_adapter(model_type, config, task_type)
                 n = len(X)
-                train_idx_final = np.arange(int(n*0.8))
-                val_idx_final = np.arange(int(n*0.8), n)
+                train_idx_final = np.arange(int(n * 0.8))
+                val_idx_final = np.arange(int(n * 0.8), n)
 
                 # Bulletproof PPO training with guaranteed cleanup
                 saved_path = None
                 try:
                     # Training phase
-                    if model_type == 'ppo':
-                        ppo_X_final = metadata.get('_runtime', {}).get('full_data', metadata.get('full_data', X))
+                    if model_type == "ppo":
+                        ppo_X_final = metadata.get("_runtime", {}).get(
+                            "full_data", metadata.get("full_data", X)
+                        )
                         final_results = final_adapter.fit(
                             X=ppo_X_final,
                             y=y,
                             train_idx=train_idx_final,
                             valid_idx=val_idx_final,
-                            experiment_name=f"{args.experiment_name}_{symbol}_{model_type}_final"
+                            experiment_name=f"{args.experiment_name}_{symbol}_{model_type}_final",
                         )
                     else:
                         final_results = final_adapter.fit(
@@ -1045,71 +1197,86 @@ def main() -> None:
                             y=y,
                             train_idx=train_idx_final,
                             valid_idx=val_idx_final,
-                            experiment_name=f"{args.experiment_name}_{symbol}_{model_type}_final"
+                            experiment_name=f"{args.experiment_name}_{symbol}_{model_type}_final",
                         )
 
                     # Save phase - only if training succeeded
-                    run_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
                     model_dir = os.path.join(args.output_dir, model_type, symbol, run_id)
                     os.makedirs(model_dir, exist_ok=True)
-                    saved_path = final_adapter.save(os.path.join(args.output_dir, model_type, symbol), run_id=run_id)
+                    saved_path = final_adapter.save(
+                        os.path.join(args.output_dir, model_type, symbol), run_id=run_id
+                    )
 
                     # Extra artifacts
-                    with open(os.path.join(saved_path, 'features.json'), 'w') as f:
-                        json.dump({'feature_names': list(getattr(X, 'columns', [])), 'feature_count': int(getattr(X, 'shape', [0,0])[1])}, f, indent=2)
-                    with open(os.path.join(saved_path, 'cv_results.json'), 'w') as f:
+                    with open(os.path.join(saved_path, "features.json"), "w") as f:
+                        json.dump(
+                            {
+                                "feature_names": list(getattr(X, "columns", [])),
+                                "feature_count": int(getattr(X, "shape", [0, 0])[1]),
+                            },
+                            f,
+                            indent=2,
+                        )
+                    with open(os.path.join(saved_path, "cv_results.json"), "w") as f:
                         json.dump([_sanitize_results(r) for r in cv_results], f, indent=2)
                     if calibrators:
                         for i, cal in enumerate(calibrators):
-                            cal.save(os.path.join(saved_path, f'calibrator_fold{i}'))
+                            cal.save(os.path.join(saved_path, f"calibrator_fold{i}"))
                     if saved_threshold is not None:
-                        with open(os.path.join(saved_path, 'threshold.json'), 'w') as f:
+                        with open(os.path.join(saved_path, "threshold.json"), "w") as f:
                             json.dump(saved_threshold, f, indent=2)
 
                     # Update latest pointer - improved Windows behavior
-                    latest_path = os.path.join(args.output_dir, model_type, symbol, 'latest')
+                    latest_path = os.path.join(args.output_dir, model_type, symbol, "latest")
                     if os.path.exists(latest_path):
                         try:
-                            os.remove(latest_path) if os.path.islink(latest_path) else shutil.rmtree(latest_path)
+                            os.remove(latest_path) if os.path.islink(
+                                latest_path
+                            ) else shutil.rmtree(latest_path)
                         except Exception:
                             pass
-                    
+
                     # Try symlink first, fallback to atomic manifest
                     try:
                         os.symlink(saved_path, latest_path)
                     except Exception:
                         # Atomic manifest creation for Windows
                         manifest_data = {
-                            'symbol': symbol,
-                            'model': model_type,
-                            'run_id': run_id,
-                            'saved_path': saved_path,
-                            'timestamp': datetime.now().isoformat()
+                            "symbol": symbol,
+                            "model": model_type,
+                            "run_id": run_id,
+                            "saved_path": saved_path,
+                            "timestamp": datetime.now().isoformat(),
                         }
-                        manifest_path = os.path.join(args.output_dir, model_type, symbol, 'latest_manifest.json')
-                        temp_manifest = manifest_path + '.tmp'
-                        
-                        with open(temp_manifest, 'w') as f:
+                        manifest_path = os.path.join(
+                            args.output_dir, model_type, symbol, "latest_manifest.json"
+                        )
+                        temp_manifest = manifest_path + ".tmp"
+
+                        with open(temp_manifest, "w") as f:
                             json.dump(manifest_data, f, indent=2)
                         os.replace(temp_manifest, manifest_path)
-                        
+
                         # Keep backward compatibility with pointer file
-                        pointer_path = os.path.join(os.path.dirname(latest_path), 'latest_pointer.txt')
-                        temp_pointer = pointer_path + '.tmp'
-                        with open(temp_pointer, 'w') as f:
+                        pointer_path = os.path.join(
+                            os.path.dirname(latest_path), "latest_pointer.txt"
+                        )
+                        temp_pointer = pointer_path + ".tmp"
+                        with open(temp_pointer, "w") as f:
                             f.write(saved_path)
                         os.replace(temp_pointer, pointer_path)
 
                     logger.info(f"Saved {model_type} artifacts to {saved_path}")
                     trained_models.append((model_type, symbol))
-                    
+
                     # Checkpoint update
                     model_key = f"{symbol}_{model_type}"
                     current_progress.completed_models.append(model_key)
-                    
+
                 except Exception as e:
                     logger.error(f"Failed training/saving {model_type} for {symbol}: {e}")
-                    if notifier and getattr(notifier, 'enabled', False):
+                    if notifier and getattr(notifier, "enabled", False):
                         try:
                             notifier.send_message_sync(
                                 f"🚨 <b>Training/Save error</b>\n<b>Symbol:</b> {symbol}\n<b>Model:</b> {model_type}\n<b>Message:</b> {str(e)}"
@@ -1119,50 +1286,52 @@ def main() -> None:
                     # Continue to finally block for cleanup
                 finally:
                     # GUARANTEED cleanup for PPO - always runs regardless of success/failure
-                    if model_type == 'ppo':
+                    if model_type == "ppo":
                         try:
-                            if hasattr(final_adapter, 'trainer') and hasattr(final_adapter.trainer, 'cleanup'):
+                            if hasattr(final_adapter, "trainer") and hasattr(
+                                final_adapter.trainer, "cleanup"
+                            ):
                                 final_adapter.trainer.cleanup()
                                 logger.info(f"PPO trainer cleanup completed for {symbol}")
-                            elif hasattr(final_adapter, 'cleanup'):
+                            elif hasattr(final_adapter, "cleanup"):
                                 final_adapter.cleanup()
                                 logger.info(f"PPO adapter cleanup completed for {symbol}")
                         except Exception as e:
                             logger.warning(f"PPO cleanup failed for {symbol}: {e}")
-                
+
                 # Only proceed with checkpoint and notification if save was successful
                 if saved_path:
                     # Update checkpoint progress
                     model_key = f"{symbol}_{model_type}"
                     current_progress.completed_models.append(model_key)
-                
+
                     # Save checkpoint after each model completion
                     try:
                         checkpoint_manager.save_checkpoint(
                             progress=current_progress,
                             config={
-                                'symbols': symbols_to_train,
-                                'models': model_list,
-                                'interval': interval,
-                                'target_type': target_type,
-                                'target_horizon': target_horizon,
-                                'n_splits': n_splits,
-                                'embargo': embargo,
-                                'fee_bps': fee_bps,
-                                'slippage_bps': slippage_bps,
-                                'turnover_lambda': turnover_lambda,
-                                'cache': cache,
-                                'objective': objective,
-                                'seed': seed,
-                                'start_date': start_date
-                            }
+                                "symbols": symbols_to_train,
+                                "models": model_list,
+                                "interval": interval,
+                                "target_type": target_type,
+                                "target_horizon": target_horizon,
+                                "n_splits": n_splits,
+                                "embargo": embargo,
+                                "fee_bps": fee_bps,
+                                "slippage_bps": slippage_bps,
+                                "turnover_lambda": turnover_lambda,
+                                "cache": cache,
+                                "objective": objective,
+                                "seed": seed,
+                                "start_date": start_date,
+                            },
                         )
                         logger.debug(f"Checkpoint saved after completing {model_type} for {symbol}")
                     except Exception as e:
                         logger.error(f"Failed to save checkpoint: {e}")
-                    
+
                     # Notify model completion
-                    if notifier and getattr(notifier, 'enabled', False):
+                    if notifier and getattr(notifier, "enabled", False):
                         try:
                             notifier.send_message_sync(
                                 f"✅ <b>{model_type.upper()} trained</b> for <b>{symbol}</b>\nArtifacts: {os.path.basename(saved_path)}"
@@ -1172,7 +1341,7 @@ def main() -> None:
 
             except Exception as e:
                 logger.error(f"Failed training {model_type} for {symbol}: {e}")
-                if notifier and getattr(notifier, 'enabled', False):
+                if notifier and getattr(notifier, "enabled", False):
                     try:
                         notifier.send_message_sync(
                             f"🚨 <b>Training error</b>\n<b>Symbol:</b> {symbol}\n<b>Model:</b> {model_type}\n<b>Message:</b> {str(e)}"
@@ -1184,25 +1353,29 @@ def main() -> None:
     # Package and export models after training if requested (check both CLI and config)
     if (package_models or create_transfer_bundle) and trained_models:
         logger.info("Starting post-training model packaging...")
-        
+
         symbols_trained = list(set([symbol for _, symbol in trained_models]))
         models_trained = list(set([model for model, _ in trained_models]))
-        
+
         packaging_results = package_and_export_models(
             output_dir=args.output_dir,
             symbols=symbols_trained,
             models=models_trained,
             config=config,
             logger=logger,
-            export_dir=args.export_dir
+            export_dir=args.export_dir,
         )
-        
-        if packaging_results['transfer_ready']:
-            logger.info(f"✅ Models packaged and ready for transfer at: {packaging_results['export_path']}")
-            logger.info("📦 Use the generated import_models.py script to transfer models to another machine")
-            
+
+        if packaging_results["transfer_ready"]:
+            logger.info(
+                f"✅ Models packaged and ready for transfer at: {packaging_results['export_path']}"
+            )
+            logger.info(
+                "📦 Use the generated import_models.py script to transfer models to another machine"
+            )
+
             # Notify about packaging completion
-            if notifier and getattr(notifier, 'enabled', False):
+            if notifier and getattr(notifier, "enabled", False):
                 try:
                     notifier.send_message_sync(
                         f"📦 <b>Model packaging completed</b>\n<b>Export path:</b> {os.path.basename(packaging_results['export_path'])}\n<b>Models packaged:</b> {len(packaging_results['packaged_models'])}\n<b>Transfer ready:</b> ✅"
@@ -1211,7 +1384,7 @@ def main() -> None:
                     pass
         else:
             logger.warning("⚠️ Model packaging completed but transfer bundle creation failed")
-            if notifier and getattr(notifier, 'enabled', False):
+            if notifier and getattr(notifier, "enabled", False):
                 try:
                     notifier.send_message_sync(
                         f"⚠️ <b>Model packaging warning</b>\nPackaging completed but transfer bundle creation failed"
@@ -1225,14 +1398,14 @@ def main() -> None:
         logger.info("Training completed successfully, checkpoints cleaned up")
     except Exception as e:
         logger.error(f"Failed to cleanup checkpoints: {e}")
-    
+
     # Notify completion
-    if notifier and getattr(notifier, 'enabled', False):
+    if notifier and getattr(notifier, "enabled", False):
         try:
             notifier.send_message_sync("🏁 <b>Enhanced training run completed</b>")
         except Exception:
             pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

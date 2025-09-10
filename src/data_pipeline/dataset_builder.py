@@ -151,28 +151,37 @@ class DatasetBuilder:
 
         logger.info(f"Loaded {len(df)} raw data points")
 
-        # Generate features
-        logger.info("Generating features...")
-        features_df = self.feature_engine.generate_all_features(df)
+        # Generate features and trading targets
+        logger.info("Generating enhanced trading features and targets...")
+        features_df = self.feature_engine.generate_features_and_targets(df, symbol)
 
-        # Get feature names (excluding original OHLCV columns)
+        # Get feature names (excluding original OHLCV columns and target columns)
         feature_names = self.feature_engine.get_feature_names(features_df)
-        logger.info(f"Generated {len(feature_names)} features")
+        logger.info(f"Generated {len(feature_names)} enhanced trading features")
 
-        # Prepare target variable
-        logger.info(f"Preparing {target_type} target with horizon {target_horizon}")
-        preprocessor = DataPreprocessor()
-        y = preprocessor.prepare_target_variable(
-            features_df, target_type=target_type, horizon=target_horizon
-        )
+        # Use trading-optimized target if available, otherwise fallback to original method
+        if "target_1h" in features_df.columns:
+            logger.info("Using trading-optimized 1h target")
+            y = features_df["target_1h"].values
+        elif "target" in features_df.columns:
+            logger.info("Using existing target column")
+            y = features_df["target"].values
+        else:
+            # Fallback to original target preparation
+            logger.info(f"Preparing fallback {target_type} target with horizon {target_horizon}")
+            preprocessor = DataPreprocessor()
+            y = preprocessor.prepare_target_variable(
+                features_df, target_type=target_type, horizon=target_horizon
+            )
 
         # Align features and target
         min_len = min(len(features_df), len(y))
         features_df = features_df.iloc[:min_len]
         y = y[:min_len]
 
-        # Add target to dataframe for caching
-        features_df["target"] = y
+        # Add primary target to dataframe for caching (if not already present)
+        if "target" not in features_df.columns:
+            features_df["target"] = y
 
         # Extract components
         X = features_df[feature_names]

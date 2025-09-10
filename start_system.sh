@@ -13,9 +13,9 @@ cd "$SCRIPT_DIR"
 # Function to check dependencies
 check_dependencies() {
     local failed=0
-    
+
     echo "📋 Checking system dependencies..."
-    
+
     # Check if virtual environment exists
     if [ ! -f "venv/bin/activate" ]; then
         echo "❌ Virtual environment not found at venv/bin/activate"
@@ -24,7 +24,7 @@ check_dependencies() {
     else
         echo "✅ Virtual environment found"
     fi
-    
+
     # Check if models directory exists
     if [ ! -d "models" ]; then
         echo "❌ Models directory not found"
@@ -40,7 +40,7 @@ check_dependencies() {
             echo "✅ Models directory found with $model_count files"
         fi
     fi
-    
+
     # Check if configuration file exists
     if [ ! -f "training_config.yaml" ]; then
         echo "❌ Configuration file training_config.yaml not found"
@@ -48,7 +48,7 @@ check_dependencies() {
     else
         echo "✅ Configuration file found"
     fi
-    
+
     # Check if enhanced tmux manager exists
     if [ ! -f "scripts/enhanced_tmux_manager.sh" ]; then
         echo "❌ Enhanced tmux manager not found"
@@ -56,7 +56,7 @@ check_dependencies() {
     else
         echo "✅ Enhanced tmux manager found"
     fi
-    
+
     # Check available memory
     available_mem=$(free -m | awk 'NR==2{printf "%d", $7}')
     if [ $available_mem -lt 1000 ]; then
@@ -65,7 +65,7 @@ check_dependencies() {
     else
         echo "✅ Sufficient memory available: ${available_mem}MB"
     fi
-    
+
     # Check disk space
     disk_free=$(df . | awk 'NR==2{print $4}')
     disk_free_gb=$((disk_free / 1024 / 1024))
@@ -75,12 +75,12 @@ check_dependencies() {
     else
         echo "✅ Sufficient disk space: ${disk_free_gb}GB free"
     fi
-    
+
     if [ $failed -eq 1 ]; then
         echo "❌ Dependency check failed. Please fix the issues above."
         exit 1
     fi
-    
+
     echo "✅ All dependency checks passed!"
 }
 
@@ -149,7 +149,7 @@ echo "⏱️  Startup completed in $(date)"
 echo ""
 echo "📊 Available Telegram commands:"
 echo "  /status     - System status"
-echo "  /start      - Start trading"  
+echo "  /start      - Start trading"
 echo "  /stop       - Stop trading"
 echo "  /restart    - Restart system"
 echo "  /performance- Performance metrics"
@@ -159,6 +159,7 @@ echo "  /trades     - Recent trades"
 echo "  /logs       - View logs"
 echo "  /config     - Configuration"
 echo "  /help       - Command help"
+echo "  /database   - Rebuild databases"
 echo ""
 echo "📊 System management commands:"
 echo "  ./scripts/enhanced_tmux_manager.sh status    # Check status"

@@ -423,15 +423,23 @@ class EnhancedTelegramNotifier:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            await result.wait()
+            stdout, stderr = await result.communicate()
+            
+            stdout_text = stdout.decode().strip()
+            stderr_text = stderr.decode().strip()
+            
             logger.info(f"Start command completed with return code: {result.returncode}")
 
             if result.returncode == 0:
                 logger.info("Start command successful")
                 return "🚀 Trading system started successfully"
+            elif "Trading session already running" in stdout_text or "Trading session already running" in stderr_text:
+                logger.info("Trading session already running")
+                return "⚡ Trading system is already running"
             else:
-                logger.error(f"Start command failed with return code: {result.returncode}")
-                return "❌ Failed to start trading system"
+                error_msg = stderr_text or stdout_text
+                logger.error(f"Start command failed with return code: {result.returncode}: {error_msg}")
+                return f"❌ Failed to start trading system\n\nError: {error_msg}"
         except Exception as e:
             logger.error(f"Start command exception: {e}", exc_info=True)
             return f"❌ Start command failed: {str(e)}"

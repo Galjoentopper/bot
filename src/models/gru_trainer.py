@@ -863,8 +863,14 @@ class GRUTrainer:
 
         # Save model if path provided
         if save_path:
-            model_file = os.path.join(save_path, "model.pt")
-            self.save_model(model_file)
+            try:
+                import os
+
+                model_file = os.path.join(save_path, "model.pt")
+                self.save_model(model_file)
+            except Exception as e:
+                logger.error(f"Failed to save model: {e}")
+                # Continue without saving - don't fail the entire training
 
         return results
 
@@ -950,7 +956,13 @@ class GRUTrainer:
             raise ValueError("No model to save")
 
         # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        try:
+            import os
+
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        except Exception as e:
+            logger.error(f"Failed to create directory for {filepath}: {e}")
+            raise
 
         # Enhanced save with feature information
         save_data = {
@@ -994,6 +1006,8 @@ class GRUTrainer:
         Returns:
             Loaded GRUTrainer instance with restored feature information
         """
+        import os
+
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"Model file not found: {filepath}")
 

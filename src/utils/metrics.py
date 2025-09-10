@@ -13,6 +13,9 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
+# Import the new trading metrics
+from .trading_metrics import TradingMetricsCalculator, evaluate_trading_performance
+
 logger = logging.getLogger(__name__)
 
 
@@ -546,6 +549,47 @@ def calculate_classification_metrics(
         metrics["directional_accuracy"] = accuracy_score(y_true_dir, y_pred_dir)
 
     return metrics
+
+
+def calculate_enhanced_trading_metrics(
+    predictions: np.ndarray,
+    actual_prices: np.ndarray,
+    initial_balance: float = 10000.0,
+    transaction_cost: float = 0.001,
+    risk_free_rate: float = 0.02,
+) -> Dict[str, float]:
+    """
+    Calculate enhanced trading metrics using the new trading metrics framework.
+
+    Args:
+        predictions: Model predictions
+        actual_prices: Actual price series
+        initial_balance: Starting balance
+        transaction_cost: Transaction cost rate
+        risk_free_rate: Risk-free rate
+
+    Returns:
+        Dictionary of enhanced trading metrics
+    """
+    # Use the new comprehensive evaluation
+    enhanced_metrics = evaluate_trading_performance(
+        predictions=predictions,
+        actual_prices=actual_prices,
+        initial_balance=initial_balance,
+        transaction_cost=transaction_cost,
+    )
+
+    # Add risk-adjusted metrics using the calculator
+    metrics_calc = TradingMetricsCalculator(risk_free_rate=risk_free_rate)
+
+    if len(actual_prices) > 1:
+        returns = np.diff(actual_prices) / actual_prices[:-1]
+        comprehensive_metrics = metrics_calc.calculate_comprehensive_metrics(
+            actual_prices, predictions
+        )
+        enhanced_metrics.update(comprehensive_metrics)
+
+    return enhanced_metrics
 
 
 def calculate_portfolio_metrics(

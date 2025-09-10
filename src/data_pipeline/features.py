@@ -16,8 +16,10 @@ from scipy import stats
 
 warnings.filterwarnings("ignore")
 
-# Import the new feature selector
+# Import the new feature selector and trading features
 from .feature_selector import FeatureSelector
+from .target_engineering import TradingTargetEngine
+from .trading_features import TradingFeatureEngine
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +38,9 @@ class FeatureEngine:
         """
         self.config = config or self._get_default_config()
         self.feature_selector = FeatureSelector(config)
-        logger.info("FeatureEngine initialized with feature selector")
+        self.trading_features = TradingFeatureEngine(config)
+        self.target_engineer = TradingTargetEngine(config)
+        logger.info("FeatureEngine initialized with feature selector and trading features")
 
     def _get_default_config(self) -> Dict:
         """Get default feature engineering configuration."""
@@ -121,6 +125,11 @@ class FeatureEngine:
         # Advanced features for PPO compatibility (9 additional features)
         features_df = self._add_advanced_features(features_df)
         features_df = self._apply_intermediate_validation(features_df, "after advanced features")
+
+        # Trading-specific features (enhanced feature set for better trading performance)
+        logger.info("Adding trading-specific features")
+        features_df = self.trading_features.generate_trading_features(features_df)
+        features_df = self._apply_intermediate_validation(features_df, "after trading features")
 
         # CRITICAL: Apply final robust feature validation and cleaning
         features_df = self._apply_robust_feature_validation(features_df)
@@ -1293,3 +1302,39 @@ class FeatureEngine:
             )
 
         return features_df
+
+    def generate_trading_targets(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+        """
+        Generate trading-optimized targets using the TargetEngineer.
+
+        Args:
+            df: DataFrame with OHLCV data and features
+            symbol: Trading symbol for symbol-specific parameters
+
+        Returns:
+            DataFrame with trading targets added
+        """
+        logger.info(f"Generating trading targets for {symbol}")
+        return self.target_engineer.create_trading_targets(df, symbol)
+
+    def generate_features_and_targets(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+        """
+        Generate both features and trading targets in one call.
+
+        Args:
+            df: Input DataFrame with OHLCV data
+            symbol: Trading symbol
+
+        Returns:
+            DataFrame with features and trading targets
+        """
+        # Generate features first
+        features_df = self.generate_all_features(df)
+
+        # Add trading targets
+        final_df = self.generate_trading_targets(features_df, symbol)
+
+        logger.info(
+            f"Generated complete feature set with targets for {symbol}: {len(final_df.columns)} columns"
+        )
+        return final_df

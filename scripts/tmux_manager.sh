@@ -14,6 +14,12 @@ else
     echo "Warning: No .env file found"
 fi
 
+# Set default timeout if not set
+if [ -z "$TRADING_TIMEOUT" ]; then
+    TRADING_TIMEOUT="24h"
+    echo "Setting default TRADING_TIMEOUT to $TRADING_TIMEOUT"
+fi
+
 # Check if session exists
 session_exists() {
     tmux has-session -t "$SESSION_NAME" 2>/dev/null
