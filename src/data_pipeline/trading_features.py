@@ -16,6 +16,8 @@ import ta  # Technical Analysis library
 from scipy import stats
 from scipy.signal import find_peaks
 
+from .stable_math import StableMath
+
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
@@ -40,8 +42,20 @@ class TradingFeatureEngine:
         Args:
             config: Configuration dictionary with feature parameters
         """
-        self.config = config or self._get_default_config()
+        # Start with defaults and merge provided config
+        self.config = self._get_default_config()
+        if config:
+            # Merge config, handling nested dictionaries
+            self._merge_config(self.config, config)
         logger.info("TradingFeatureEngine initialized for cryptocurrency trading")
+
+    def _merge_config(self, base_config: Dict, new_config: Dict) -> None:
+        """Recursively merge configuration dictionaries."""
+        for key, value in new_config.items():
+            if key in base_config and isinstance(base_config[key], dict) and isinstance(value, dict):
+                self._merge_config(base_config[key], value)
+            else:
+                base_config[key] = value
 
     def _get_default_config(self) -> Dict:
         """Get trading-optimized feature configuration."""
@@ -260,7 +274,8 @@ class TradingFeatureEngine:
         # Returns for volatility calculation
         returns = df["close"].pct_change()
 
-        for period in self.config["volatility_periods"]:
+        volatility_periods = self.config.get("volatility_periods", [5, 10, 20, 50, 100])
+        for period in volatility_periods:
             # Standard volatility metrics
             df[f"volatility_{period}"] = returns.rolling(period).std()
             df[f"volatility_ann_{period}"] = df[f"volatility_{period}"] * np.sqrt(
@@ -316,11 +331,13 @@ class TradingFeatureEngine:
 
         returns = df["close"].pct_change()
 
-        for window in self.config["sharpe_windows"]:
-            # Sharpe ratio (assuming risk-free rate = 0 for crypto)
-            mean_return = returns.rolling(window).mean()
-            vol = returns.rolling(window).std()
-            df[f"sharpe_{window}"] = mean_return / (vol + 1e-8) * np.sqrt(24 * 365)
+        # Get sharpe windows with fallback
+        sharpe_windows = self.config.get("sharpe_windows", [20, 50, 100])
+        for window in sharpe_windows:
+            # Stable Sharpe ratio calculation
+            df[f"sharpe_{window}"] = StableMath.calculate_sharpe_ratio(
+                returns, window, annualize=True, periods_per_year=17520  # 30min periods/year
+            )
 
             # Sortino ratio (downside deviation)
             downside_returns = returns.where(returns < 0, 0)
@@ -335,12 +352,15 @@ class TradingFeatureEngine:
             df[f"calmar_{window}"] = (mean_return * 24 * 365) / (abs(max_drawdown) + 1e-8)
 
         # Value at Risk (VaR)
-        for window in self.config["var_windows"]:
-            df[f"var_{window}"] = returns.rolling(window).quantile(self.config["var_confidence"])
+        var_windows = self.config.get("var_windows", [20, 50])
+        var_confidence = self.config.get("var_confidence", 0.05)
+        for window in var_windows:
+            df[f"var_{window}"] = returns.rolling(window).quantile(var_confidence)
             df[f"cvar_{window}"] = returns[returns <= df[f"var_{window}"]].rolling(window).mean()
 
         # Maximum Drawdown
-        for window in self.config["max_drawdown_windows"]:
+        max_drawdown_windows = self.config.get("max_drawdown_windows", [20, 50, 100])
+        for window in max_drawdown_windows:
             cumulative_returns = (1 + returns).cumprod()
             rolling_max = cumulative_returns.rolling(window).max()
             drawdown = (cumulative_returns - rolling_max) / rolling_max
@@ -357,7 +377,8 @@ class TradingFeatureEngine:
         logger.debug("Adding technical indicators")
 
         # RSI for multiple periods
-        for period in self.config["rsi_periods"]:
+        rsi_periods = self.config.get("rsi_periods", [7, 14, 21])
+        for period in rsi_periods:
             df[f"rsi_{period}"] = ta.momentum.RSIIndicator(df["close"], window=period).rsi()
 
             # RSI divergence
@@ -368,7 +389,8 @@ class TradingFeatureEngine:
             df[f"rsi_divergence_{period}"] = 0  # Placeholder for more complex divergence logic
 
         # MACD for multiple configurations
-        for i, macd_config in enumerate(self.config["macd_configs"]):
+        macd_configs = self.config.get("macd_configs", [{"fast": 12, "slow": 26, "signal": 9}])
+        for i, macd_config in enumerate(macd_configs):
             macd = ta.trend.MACD(
                 df["close"],
                 window_fast=macd_config["fast"],
@@ -380,9 +402,11 @@ class TradingFeatureEngine:
             df[f"macd_histogram_{i}"] = macd.macd_diff()
 
         # Bollinger Bands
-        for period in self.config["bollinger_periods"]:
+        bollinger_periods = self.config.get("bollinger_periods", [20, 50])
+        bollinger_std = self.config.get("bollinger_std", 2.0)
+        for period in bollinger_periods:
             bb = ta.volatility.BollingerBands(
-                df["close"], window=period, window_dev=self.config["bollinger_std"]
+                df["close"], window=period, window_dev=bollinger_std
             )
             df[f"bb_upper_{period}"] = bb.bollinger_hband()
             df[f"bb_lower_{period}"] = bb.bollinger_lband()

@@ -104,6 +104,59 @@ features:
   max_features: 200
   selection_method: 'mutual_info'
 
+  # Risk metrics configuration
+  sharpe_windows: [20, 50, 100]
+  max_drawdown_windows: [20, 50, 100]
+  var_confidence: 0.05
+  var_windows: [20, 50]
+
+  # Technical analysis windows
+  sma_windows: [5, 10, 20, 50, 100, 200]
+  ema_windows: [5, 10, 20, 50, 100, 200]
+  rsi_windows: [14, 21, 28]
+  macd_windows:
+    fast: 12
+    slow: 26
+    signal: 7
+  bollinger_windows: [20, 50]
+  atr_windows: [14, 21, 28]
+
+  # Volume analysis
+  volume_profile_bins: 20
+  order_flow_window: 10
+
+# Target Engineering Configuration
+targets:
+  # Target horizons (in periods - for 30min candles)
+  horizons: [1, 3, 6, 12, 24]  # 30min to 12h prediction horizons
+
+  # Transaction costs
+  transaction_cost_bps: 10  # 0.1% per trade (typical for crypto)
+  slippage_bps: 5  # 0.05% slippage
+  funding_cost_bps: 1  # 0.01% funding cost per period
+
+  # Risk adjustment
+  risk_free_rate: 0.0  # Assume 0% risk-free rate for crypto
+  vol_adjustment: true  # Risk-adjust returns by volatility
+  vol_window: 20  # Window for volatility calculation
+
+  # Classification thresholds (returns)
+  buy_threshold: 0.005  # 0.5% minimum for buy signal
+  sell_threshold: -0.005  # -0.5% minimum for sell signal
+  strong_signal_multiplier: 2.0  # 2x threshold for strong signals
+  confidence_threshold: 0.6  # Minimum confidence for trades
+
+  # Market regime adjustment
+  regime_adjustment: true
+  bull_multiplier: 1.2  # Higher threshold in bull markets
+  bear_multiplier: 0.8  # Lower threshold in bear markets
+
+  # Multi-target configuration
+  include_magnitude: true  # Include return magnitude targets
+  include_direction: true  # Include direction classification
+  include_confidence: true  # Include confidence targets
+  include_risk_adjusted: true  # Include risk-adjusted targets
+
 # Model Export Configuration
 export:
   base_directory: './models'

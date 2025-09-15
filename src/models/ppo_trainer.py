@@ -269,7 +269,8 @@ class PPOTrainer:
 
         # Configs
         self.config = config
-        self.model_config = config.get("models", {}).get("ppo", {})
+        models_cfg = config.get("models") or config.get("model_parameters") or {}
+        self.model_config = models_cfg.get("ppo", {})
         self.training_config = config.get("training", {})
 
         # PPO parameters

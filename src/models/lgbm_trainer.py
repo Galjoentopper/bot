@@ -69,7 +69,8 @@ class LightGBMTrainer:
             task_type: Type of task ('regression' or 'classification')
         """
         self.config = config
-        self.model_config = config.get("models", {}).get("lightgbm", {})
+        models_cfg = config.get("models") or config.get("model_parameters") or {}
+        self.model_config = models_cfg.get("lightgbm", {})
         # Task can be driven by config, fallback to provided arg
         self.task_type = self.model_config.get("task_type", task_type)
         # Optional: treat target as direction labels
