@@ -77,6 +77,15 @@ class SystemCommandHandler:
             rate_limit=20,
         )
 
+        # Admin-only: rebuild SQLite databases and optionally push to GitHub
+        registry.register_command(
+            name="database",
+            handler=self.handle_database,
+            description="Rebuild 30m databases (1y) and push to GitHub",
+            admin_only=True,
+            rate_limit=1,
+        )
+
         self.logger.info("System commands registered")
 
     async def handle_health(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -180,6 +189,123 @@ class SystemCommandHandler:
         except Exception as e:
             self.logger.error(f"Error handling uptime command: {e}")
             await update.message.reply_text("❌ Error retrieving uptime information")
+
+    async def handle_database(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /database command.
+
+        Usage: /database [interval] [days] [--no-push]
+          - interval: e.g., 30m (default), 1h
+          - days: number of days history (default 365)
+          - --no-push: skip git push after rebuild
+        """
+        try:
+            args = list(context.args or [])
+            interval = "30m"
+            days = 365
+            do_push = True
+            # Parse flags
+            parsed = []
+            for a in args:
+                if a == "--no-push":
+                    do_push = False
+                else:
+                    parsed.append(a)
+            if parsed:
+                interval = parsed[0]
+            if len(parsed) > 1 and parsed[1].isdigit():
+                days = int(parsed[1])
+
+            await update.message.reply_text(
+                f"🗄️ Rebuilding databases: interval={interval}, days={days}, push={'yes' if do_push else 'no'}"
+            )
+
+            # Discover symbols from models directory
+            symbols = await self._discover_symbols()
+            if not symbols:
+                symbols = ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
+
+            # Import builder lazily to avoid heavy imports during normal ops
+            from src.data_pipeline.db_builder import rebuild_databases
+
+            async def log_cb(msg: str):
+                # Stream important messages selectively to Telegram to avoid spam
+                if any(k in msg.lower() for k in ("fetching", "built", "completed")):
+                    try:
+                        await update.message.reply_text(msg)
+                    except Exception:
+                        pass
+
+            # Rebuild
+            results = await rebuild_databases(symbols, interval, data_dir="data", days=days)
+
+            summary = "\n".join(
+                [f"• {r.symbol} {r.interval}: {r.rows} rows -> {r.db_path.name}" for r in results]
+            )
+            await update.message.reply_text(
+                f"✅ Rebuild complete ({len(results)} DBs)\n{summary}", parse_mode="HTML"
+            )
+
+            if do_push:
+                pushed = await self._git_push_databases([str(r.db_path) for r in results])
+                if pushed["success"]:
+                    await update.message.reply_text(
+                        f"📤 Git push completed: {pushed.get('commit', 'commit created')}"
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"⚠️ Git push skipped/failed: {pushed.get('error', 'unknown')}"
+                    )
+
+        except Exception as e:
+            self.logger.error(f"Error handling database command: {e}")
+            await update.message.reply_text(f"❌ Database rebuild failed: {e}", parse_mode="HTML")
+
+    async def _discover_symbols(self) -> list[str]:
+        """Discover symbols from installed models directory."""
+        try:
+            base = Path("models")
+            symbols = set()
+            for mtype in ("gru", "lightgbm", "ppo"):
+                p = base / mtype
+                if p.exists():
+                    for d in p.iterdir():
+                        if d.is_dir() and len(d.name) >= 5:
+                            symbols.add(d.name.upper())
+            return sorted(symbols)
+        except Exception:
+            return []
+
+    async def _git_push_databases(self, db_paths: list[str]) -> Dict[str, Any]:
+        """Stage, commit, and push rebuilt DBs to the Git remote.
+
+        Returns dict: {success: bool, commit?: str, error?: str}
+        """
+        import subprocess
+
+        try:
+            # Stage files explicitly to avoid shell globbing
+            for p in db_paths:
+                try:
+                    subprocess.run(["git", "add", p], check=True)
+                except subprocess.CalledProcessError:
+                    # Try relative to repo root
+                    rel = str(Path(p).as_posix())
+                    subprocess.run(["git", "add", rel], check=False)
+
+            msg = f"chore(data): update SQLite databases ({datetime.now(timezone.utc).isoformat()})"
+            # Commit (allow empty false)
+            commit = subprocess.run(["git", "commit", "-m", msg], capture_output=True, text=True)
+            if commit.returncode != 0 and "nothing to commit" in commit.stderr.lower():
+                return {"success": True, "commit": "no changes"}
+            if commit.returncode != 0:
+                return {"success": False, "error": commit.stderr.strip()}
+
+            push = subprocess.run(["git", "push", "origin", "main"], capture_output=True, text=True)
+            if push.returncode != 0:
+                return {"success": False, "error": push.stderr.strip()}
+            return {"success": True, "commit": msg}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     async def handle_resources(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /resources command."""

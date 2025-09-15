@@ -49,6 +49,7 @@ model_transfer_*.zip
 # Environment files
 .env
 .env.local
+.env.backup_with_real_creds
 env/
 venv/
 ENV/
