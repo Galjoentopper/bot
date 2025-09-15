@@ -53,23 +53,65 @@ class FinalDataFetcher:
         self.setup_directories()
 
     def load_config(self):
-        """Load configuration from training_config.yaml"""
-        config_path = "training_config.yaml"
-        if os.path.exists(config_path):
-            with open(config_path, "r") as f:
-                config = yaml.safe_load(f)
-                self.data_config = config.get("data_acquisition", {})
+        """Load configuration from common locations.
+
+        Search order (first existing is used):
+        - ENV TRAINING_CONFIG_PATH
+        - ./config.yaml (symlink to config/training_config.yaml in this repo)
+        - ./config/training_config.yaml
+        - ./training_config.yaml
+        """
+        candidates = []
+        env_path = os.environ.get("TRAINING_CONFIG_PATH")
+        if env_path:
+            candidates.append(env_path)
+        candidates.extend([
+            "config.yaml",
+            os.path.join("config", "training_config.yaml"),
+            "training_config.yaml",
+        ])
+
+        config = {}
+        used = None
+        for p in candidates:
+            try:
+                if os.path.exists(p):
+                    with open(p, "r") as f:
+                        config = yaml.safe_load(f) or {}
+                        used = p
+                        break
+            except Exception:
+                continue
+
+        if used:
+            logger.info(f"Loaded config from {used}")
         else:
-            logger.warning("training_config.yaml not found, using defaults")
-            self.data_config = {}
+            logger.warning("No training config found, using defaults for data acquisition")
+
+        # Accept several common layouts
+        data_block = (
+            config.get("data_acquisition")
+            or config.get("data")
+            or config.get("dataset")
+            or {}
+        )
+        trading_block = config.get("trading", {})
+
+        self.data_config = data_block
 
         # Configuration with proper 1-year defaults
-        self.symbols = self.data_config.get(
-            "symbols", ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
+        self.symbols = (
+            self.data_config.get("symbols")
+            or trading_block.get("symbols")
+            or ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
         )
-        self.interval = self.data_config.get("interval", "30m")
+        self.interval = self.data_config.get("interval", trading_block.get("interval", "30m"))
         self.lookback_days = 365  # Always 1 year
-        self.data_dir = Path(self.data_config.get("output_directory", "./data"))
+        self.data_dir = Path(
+            self.data_config.get("output_directory")
+            or config.get("data_dir")
+            or "./data"
+        )
 
         # Calculate expected samples for validation
         if self.interval == "30m":

@@ -188,6 +188,12 @@ async def rebuild_databases(
 
     out: List[BuildResult] = []
     fetcher = SimpleDataFetcher()
+    # Align fetcher configuration to requested interval/days if supported
+    try:
+        setattr(fetcher, "interval", interval)
+        setattr(fetcher, "lookback_days", int(days))
+    except Exception:
+        pass
     data_path = Path(data_dir)
     data_path.mkdir(parents=True, exist_ok=True)
 
@@ -197,8 +203,9 @@ async def rebuild_databases(
         log(f"Fetching data for {sym} ({interval}) …")
 
         # Fetch in thread to avoid blocking loop
+        # FinalDataFetcher.fetch_symbol_data expects only (symbol)
         df: Optional[pd.DataFrame] = await asyncio.to_thread(
-            fetcher.fetch_symbol_data, sym, interval, days
+            fetcher.fetch_symbol_data, sym
         )
         if df is None or len(df) < 20:
             raise RuntimeError(f"No/insufficient data for {sym} at {interval}")
