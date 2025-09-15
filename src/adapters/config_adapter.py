@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..config.config_loader import ConfigLoader
+from ..config.secure_env_manager import get_env_manager
 from ..core.base_service import BaseService
 from ..core.container import injectable
 from ..core.interfaces import IConfigurationManager, ValidationResult
@@ -22,6 +23,7 @@ class ConfigAdapter(BaseService, IConfigurationManager):
         super().__init__()
         self._config_loader = ConfigLoader(config_path)
         self._config_path = config_path
+        self._env_manager = get_env_manager()
 
     async def initialize(self) -> None:
         """Initialize the configuration adapter."""
@@ -183,3 +185,27 @@ class ConfigAdapter(BaseService, IConfigurationManager):
                 return key in self._config_loader.config
         except Exception:
             return False
+
+    def get_env_config(self, key: str, default: Any = None) -> Any:
+        """Get environment variable through secure manager.
+
+        Args:
+            key: Environment variable name
+            default: Default value if not found
+
+        Returns:
+            Environment variable value
+        """
+        return self._env_manager.get(key, default)
+
+    def get_telegram_config(self) -> Dict[str, str]:
+        """Get secure Telegram configuration."""
+        return self._env_manager.get_telegram_config()
+
+    def get_trading_env_config(self) -> Dict[str, Any]:
+        """Get secure trading environment configuration."""
+        return self._env_manager.get_trading_config()
+
+    def get_aws_config(self) -> Dict[str, Optional[str]]:
+        """Get secure AWS configuration."""
+        return self._env_manager.get_aws_config()

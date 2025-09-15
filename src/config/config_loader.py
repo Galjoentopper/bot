@@ -117,6 +117,15 @@ class ConfigLoader:
         self.config = merged
 
     # ------------------------------------------------------------------
+    def load_config(self) -> Dict[str, Any]:
+        """Load and return the configuration dictionary.
+
+        For compatibility with code expecting this method.
+        Since config is loaded in __init__, this just returns it.
+        """
+        return self.config
+
+    # ------------------------------------------------------------------
     def get(self, key: str, default: Any = None) -> Any:
         return self.config.get(key, default)
 

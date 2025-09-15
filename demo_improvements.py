@@ -161,7 +161,10 @@ def demonstrate_logging_features():
         )
 
         trading_logger.log_performance(
-            operation="model_inference", duration_ms=125.5, success=True, model_accuracy=0.92
+            operation="model_inference",
+            duration_ms=125.5,
+            success=True,
+            model_accuracy=0.92,
         )
 
     # System event logging
@@ -180,7 +183,10 @@ def demonstrate_logging_features():
         raise ValueError("Demo error for logging")
     except Exception as e:
         logger.error(
-            "Demonstration error occurred", error_code="DEMO_001", user_action="ignore", exception=e
+            "Demonstration error occurred",
+            error_code="DEMO_001",
+            user_action="ignore",
+            exception=e,
         )
 
 

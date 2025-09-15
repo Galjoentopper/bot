@@ -29,7 +29,7 @@ import zipfile
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from src.notifier.telegram import TelegramNotifier
@@ -54,6 +54,7 @@ sys.path.append("/notebooks/bot/src" if Path("/notebooks").exists() else "./src"
 # Telegram notifications
 try:
     from src.notifier.telegram import TelegramNotifier
+
     TELEGRAM_AVAILABLE = True
 except ImportError:
     TELEGRAM_AVAILABLE = False
@@ -95,7 +96,7 @@ class PaperspaceTraining:
         # Load configuration
         self.config = self._load_config(config_path)
         self._set_global_seeds()
-        
+
         # Initialize Telegram notifications
         self.telegram_notifier = self._init_telegram_notifier()
 
@@ -161,32 +162,32 @@ class PaperspaceTraining:
         except Exception as e:
             logger.warning(f"⚠️ Failed to set global seeds: {e}")
 
-    def _init_telegram_notifier(self) -> Optional['TelegramNotifier']:
+    def _init_telegram_notifier(self) -> Optional["TelegramNotifier"]:
         """Initialize Telegram notifier for training updates"""
         if not TELEGRAM_AVAILABLE:
             logger.info("📱 Telegram notifications disabled - library not available")
             return None
-            
+
         try:
             # Get Telegram configuration from environment or config
-            bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
-            chat_id = os.environ.get('TELEGRAM_CHAT_ID')
-            
+            bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+            chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+
             if not bot_token or not chat_id:
                 logger.info("📱 Telegram notifications disabled - missing credentials")
                 return None
-                
+
             notifier = TelegramNotifier(
                 bot_token=bot_token,
                 chat_id=chat_id,
                 enabled=True,
                 rate_limit_per_sec=1.0,
-                max_retries=3
+                max_retries=3,
             )
-            
+
             logger.info("📱 Telegram notifications enabled")
             return notifier
-            
+
         except Exception as e:
             logger.warning(f"📱 Failed to initialize Telegram notifier: {e}")
             return None
@@ -428,16 +429,16 @@ class PaperspaceTraining:
 
             # Prepare data
             X, y, timestamps = task["dataset"]["data"]
-            
+
             # Clean data: ensure X is numeric and handle any datetime issues
-            if hasattr(X, 'select_dtypes'):  # if X is DataFrame
+            if hasattr(X, "select_dtypes"):  # if X is DataFrame
                 # Keep only numeric columns
                 numeric_cols = X.select_dtypes(include=[np.number]).columns
                 X = X[numeric_cols].values
             elif isinstance(X, np.ndarray):
                 # Ensure array is numeric
                 X = np.asarray(X, dtype=np.float32)
-            
+
             # Ensure y is numeric
             y = np.asarray(y, dtype=np.float32)
 
@@ -452,9 +453,11 @@ class PaperspaceTraining:
                 split_idx = int(len(X) * 0.8)
                 X_train, X_val = X[:split_idx], X[split_idx:]
                 y_train, y_val = y[:split_idx], y[split_idx:]
-                
-                logger.info(f"GRU input data shapes - X_train: {X_train.shape}, y_train: {y_train.shape}")
-                
+
+                logger.info(
+                    f"GRU input data shapes - X_train: {X_train.shape}, y_train: {y_train.shape}"
+                )
+
                 result = trainer.train(
                     X_train=X_train,
                     y_train=y_train,
@@ -462,72 +465,109 @@ class PaperspaceTraining:
                     y_val=y_val,
                     save_path=str(model_path),
                     experiment_name=f"gru_{task['symbol'].lower()}",
-                    verbose=False
+                    verbose=False,
                 )
             elif model_type == "lightgbm":
                 # LightGBM expects train/validation split
                 split_idx = int(len(X) * 0.8)
                 X_train, X_val = X[:split_idx], X[split_idx:]
                 y_train, y_val = y[:split_idx], y[split_idx:]
-                
+
                 result = trainer.train(
                     X_train=X_train,
                     y_train=y_train,
                     X_val=X_val,
                     y_val=y_val,
                     experiment_name=f"lgbm_{task['symbol'].lower()}",
-                    save_path=str(model_path)
+                    save_path=str(model_path),
                 )
             elif model_type == "ppo":
                 # PPO expects DataFrame with proper columns including 'close'
                 import pandas as pd
-                
+
                 # Create DataFrame from features with timestamps as index
                 features = task["dataset"]["features"]
                 logger.info(f"PPO input X shape: {X.shape}, expected features: {len(features)}")
-                
+
                 # Ensure feature count matches
                 if X.shape[1] != len(features):
-                    logger.warning(f"Feature count mismatch: X has {X.shape[1]} features, but expected {len(features)}")
+                    logger.warning(
+                        f"Feature count mismatch: X has {X.shape[1]} features, but expected {len(features)}"
+                    )
                     # Use the minimum to avoid index errors
                     min_features = min(X.shape[1], len(features))
                     X = X[:, :min_features]
                     features = features[:min_features]
                     logger.info(f"Truncated to {min_features} features for consistency")
-                
+
                 df_data = pd.DataFrame(X, columns=features)
                 df_data.index = pd.to_datetime(timestamps)
-                
+
                 # Add target column
-                df_data['target'] = y[:len(df_data)]
-                
+                df_data["target"] = y[: len(df_data)]
+
                 # Ensure we have a 'close' column - look for it in feature names first
-                if 'close' not in df_data.columns:
+                if "close" not in df_data.columns:
                     # Look for close-related columns
-                    close_candidates = [col for col in df_data.columns if 'close' in col.lower()]
+                    close_candidates = [col for col in df_data.columns if "close" in col.lower()]
                     if close_candidates:
-                        df_data['close'] = df_data[close_candidates[0]]
+                        df_data["close"] = df_data[close_candidates[0]]
                         logger.info(f"Using {close_candidates[0]} as close price for PPO")
                     else:
                         # Create synthetic close from cumulative returns of target
-                        df_data['close'] = (1 + df_data['target'].shift(1).fillna(0)).cumprod() * 50000  # Start at ~50k
+                        df_data["close"] = (
+                            1 + df_data["target"].shift(1).fillna(0)
+                        ).cumprod() * 50000  # Start at ~50k
                         logger.info("Created synthetic close price from target returns for PPO")
-                
+
                 # Split train/eval
                 split_idx = int(len(df_data) * 0.8)
                 train_data = df_data[:split_idx].copy()
                 eval_data = df_data[split_idx:].copy()
-                
+
                 logger.info(f"PPO data shapes - train: {train_data.shape}, eval: {eval_data.shape}")
                 logger.info(f"PPO columns: {list(train_data.columns)}")
-                
+
                 result = trainer.train(
                     train_data=train_data,
                     eval_data=eval_data,
                     total_timesteps=50000 if task["fast_mode"] else 100000,
                     experiment_name=f"ppo_{task['symbol'].lower()}",
-                    save_path=str(model_path)
+                    save_path=str(model_path),
                 )
+
+                # Export per-symbol PPO feature index for deployment pinning
+                try:
+                    # Build a minimal OHLCV frame from available data
+                    import pandas as pd
+
+                    if "close" in train_data.columns:
+                        close = train_data["close"].astype(float)
+                    else:
+                        # Fallback: synthetic close from target
+                        tgt = train_data.get("target", pd.Series(0.0, index=train_data.index))
+                        close = (1 + tgt.shift(1).fillna(0)).cumprod() * 1000.0
+                    open_ = close.shift(1).fillna(close)
+                    high = pd.concat([open_, close], axis=1).max(axis=1)
+                    low = pd.concat([open_, close], axis=1).min(axis=1)
+                    volume = (
+                        train_data["volume"]
+                        if "volume" in train_data.columns
+                        else pd.Series(1.0, index=train_data.index)
+                    )
+                    ohlcv = pd.DataFrame(
+                        {
+                            "open": open_.values,
+                            "high": high.values,
+                            "low": low.values,
+                            "close": close.values,
+                            "volume": volume.values,
+                        },
+                        index=train_data.index,
+                    )
+                    trainer.export_feature_index(task["symbol"], ohlcv, output_dir=str(model_path))
+                except Exception as e:
+                    logger.warning(f"⚠️ PPO feature index export failed for {task['symbol']}: {e}")
             else:
                 raise ValueError(f"Unknown model type: {model_type}")
 
@@ -567,6 +607,7 @@ class PaperspaceTraining:
         try:
             with zipfile.ZipFile(export_path, "w", zipfile.ZIP_DEFLATED) as zipf:
                 models_added = 0
+                manifest_files: List[Dict[str, Any]] = []
 
                 # Add model files
                 for model_key, model_info in training_results["trained_models"].items():
@@ -578,6 +619,25 @@ class PaperspaceTraining:
                             if file_path.is_file():
                                 arc_path = f"models/{file_path.relative_to(self.models_dir)}"
                                 zipf.write(file_path, arc_path)
+                                # Compute checksum and metadata for manifest
+                                try:
+                                    import hashlib
+                                    import time as _t
+
+                                    h = hashlib.sha256()
+                                    with open(file_path, "rb") as f:
+                                        for chunk in iter(lambda: f.read(8192), b""):
+                                            h.update(chunk)
+                                    manifest_files.append(
+                                        {
+                                            "path": arc_path,
+                                            "sha256": h.hexdigest(),
+                                            "size": file_path.stat().st_size,
+                                            "mtime": int(file_path.stat().st_mtime),
+                                        }
+                                    )
+                                except Exception:
+                                    pass
                         models_added += 1
 
                 # Add metadata
@@ -598,6 +658,16 @@ class PaperspaceTraining:
                 }
 
                 zipf.writestr("metadata.json", json.dumps(metadata, indent=2))
+
+                # Write manifest.json with checksums and versions
+                manifest = {
+                    "created_at": datetime.now().isoformat(),
+                    "models_count": models_added,
+                    "files": manifest_files,
+                    "s3_prefix": "model_packages/",
+                    "version": timestamp,
+                }
+                zipf.writestr("manifest.json", json.dumps(manifest, indent=2))
 
                 # Add feature metadata if available
                 metadata_dir = self.models_dir / "metadata"
@@ -711,20 +781,22 @@ class PaperspaceTraining:
         """Send Telegram notification for successful training completion"""
         if not self.telegram_notifier:
             return
-            
+
         try:
             # Extract key information from result
             training_result = result.get("training", {})
             export_result = result.get("export", {})
             s3_result = result.get("s3_upload", {})
             runtime_hours = result.get("runtime_hours", 0)
-            
+
             models_trained = []
             for model_type, model_results in training_result.get("model_results", {}).items():
                 successful_symbols = [s for s, r in model_results.items() if r.get("success")]
                 if successful_symbols:
-                    models_trained.append(f"{model_type.upper()}: {len(successful_symbols)} symbols")
-            
+                    models_trained.append(
+                        f"{model_type.upper()}: {len(successful_symbols)} symbols"
+                    )
+
             message = f"""
 🎉 <b>MODEL TRAINING COMPLETED</b>
 
@@ -740,10 +812,10 @@ Type <code>/import</code> to import models in the cryptobot.
 
 <i>Training Server • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>
 """
-            
+
             self.telegram_notifier.send_message_sync(message)
             logger.info("📱 Success notification sent to Telegram")
-            
+
         except Exception as e:
             logger.warning(f"📱 Failed to send success notification: {e}")
 
@@ -751,12 +823,12 @@ Type <code>/import</code> to import models in the cryptobot.
         """Send Telegram notification for training failure"""
         if not self.telegram_notifier:
             return
-            
+
         try:
             current_stage = pipeline_state.get("current_stage", "unknown")
             runtime_hours = (datetime.now() - self.start_time).total_seconds() / 3600
             errors = pipeline_state.get("errors", [])
-            
+
             message = f"""
 🚨 <b>MODEL TRAINING FAILED</b>
 
@@ -771,10 +843,10 @@ Please check the training logs for more details.
 
 <i>Training Server • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>
 """
-            
+
             self.telegram_notifier.send_message_sync(message)
             logger.info("📱 Failure notification sent to Telegram")
-            
+
         except Exception as e:
             logger.warning(f"📱 Failed to send failure notification: {e}")
 
@@ -904,16 +976,16 @@ def main():
             logger.info("🎉 Training completed successfully!")
             if result.get("export", {}).get("success"):
                 logger.info(f"📦 Models exported to: {result['export']['export_path']}")
-            
+
             # Send success notification
             trainer._send_success_notification(result)
             sys.exit(0)
         else:
-            error_msg = result.get('error', 'Unknown error')
+            error_msg = result.get("error", "Unknown error")
             logger.error(f"❌ Training failed: {error_msg}")
-            
+
             # Send failure notification
-            trainer._send_failure_notification(error_msg, result.get('pipeline_state', {}))
+            trainer._send_failure_notification(error_msg, result.get("pipeline_state", {}))
             sys.exit(1)
 
     except KeyboardInterrupt:
@@ -924,13 +996,13 @@ def main():
         import traceback
 
         traceback.print_exc()
-        
+
         # Send failure notification for unexpected errors
         try:
             trainer._send_failure_notification(str(e), trainer.pipeline_state)
         except:
             pass  # Don't fail on notification failure
-            
+
         sys.exit(1)
 
 

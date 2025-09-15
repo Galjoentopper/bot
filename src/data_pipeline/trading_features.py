@@ -174,7 +174,7 @@ class TradingFeatureEngine:
         except Exception as e:
             logger.warning(f"Error accessing price_periods config: {e}")
             periods = [5, 10, 20, 50, 100]  # fallback
-            
+
         for period in periods:
             # Price momentum
             df[f"price_momentum_{period}"] = df["close"] / df["close"].shift(period) - 1
@@ -289,7 +289,7 @@ class TradingFeatureEngine:
             vol_67 = volatility_series.rolling(period * 2).quantile(0.67)
             vol_33_median = vol_33.median()
             vol_67_median = vol_67.median()
-            
+
             # Handle case where quantiles are identical (constant volatility)
             if pd.isna(vol_33_median) or pd.isna(vol_67_median) or vol_33_median == vol_67_median:
                 # Use simple binary regime based on median
@@ -305,7 +305,7 @@ class TradingFeatureEngine:
                         np.inf,
                     ],
                     labels=[0, 1, 2],  # Low, Medium, High
-                    duplicates='drop'
+                    duplicates="drop",
                 ).astype(float)
 
         return df

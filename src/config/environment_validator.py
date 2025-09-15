@@ -139,7 +139,12 @@ class EnvironmentValidator:
 
     def validate_permissions(self) -> bool:
         """Validate file system permissions."""
-        test_paths = [("logs", "write"), ("models", "read"), ("data", "write"), (".", "read")]
+        test_paths = [
+            ("logs", "write"),
+            ("models", "read"),
+            ("data", "write"),
+            (".", "read"),
+        ]
 
         success = True
         for path_str, operation in test_paths:
@@ -167,7 +172,15 @@ class EnvironmentValidator:
 
     def validate_python_environment(self) -> bool:
         """Validate Python environment and critical imports."""
-        critical_modules = ["pandas", "numpy", "torch", "lightgbm", "yaml", "requests", "aiohttp"]
+        critical_modules = [
+            "pandas",
+            "numpy",
+            "torch",
+            "lightgbm",
+            "yaml",
+            "requests",
+            "aiohttp",
+        ]
 
         success = True
         for module_name in critical_modules:
@@ -193,7 +206,10 @@ class EnvironmentValidator:
 
         test_urls = [
             ("Binance API", "https://api.binance.com/api/v3/ping"),
-            ("Yahoo Finance", "https://query1.finance.yahoo.com/v8/finance/chart/BTCEUR"),
+            (
+                "Yahoo Finance",
+                "https://query1.finance.yahoo.com/v8/finance/chart/BTCEUR",
+            ),
         ]
 
         success = True
@@ -276,13 +292,17 @@ class EnvironmentValidator:
             "errors": self.errors,
             "warnings": self.warnings,
             "environment_config": self.env_config.dict() if self.env_config else None,
-            "trading_config_summary": {
-                "symbols": self.trading_config.symbols if self.trading_config else [],
-                "interval": self.trading_config.interval if self.trading_config else None,
-                "paper_trading": self.trading_config.paper_trading if self.trading_config else True,
-            }
-            if self.trading_config
-            else None,
+            "trading_config_summary": (
+                {
+                    "symbols": (self.trading_config.symbols if self.trading_config else []),
+                    "interval": (self.trading_config.interval if self.trading_config else None),
+                    "paper_trading": (
+                        self.trading_config.paper_trading if self.trading_config else True
+                    ),
+                }
+                if self.trading_config
+                else None
+            ),
         }
 
 
@@ -292,7 +312,9 @@ def validate_startup_environment(config_path: str = "training_config.yaml") -> b
     return validator.run_full_validation(config_path)
 
 
-def get_startup_validation_report(config_path: str = "training_config.yaml") -> Dict[str, Any]:
+def get_startup_validation_report(
+    config_path: str = "training_config.yaml",
+) -> Dict[str, Any]:
     """Get startup validation report."""
     validator = EnvironmentValidator()
     validator.run_full_validation(config_path)

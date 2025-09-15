@@ -1,0 +1,224 @@
+# Feature Configuration for Enhanced Trading Bot
+# =============================================
+# Professional configuration for model-specific feature requirements
+
+models:
+  ppo:
+    expected_feature_count: 104
+    feature_groups:
+      - "core_technical"      # 15 features: RSI, MACD, Bollinger Bands, etc.
+      - "price_momentum"      # 20 features: Multi-timeframe momentum
+      - "volatility_risk"     # 15 features: Volatility and risk metrics
+      - "volume_analysis"     # 12 features: Volume-based indicators
+      - "market_microstructure" # 10 features: Spread, support/resistance
+      - "regime_detection"    # 8 features: Market regime indicators
+      - "time_features"       # 6 features: Time-based cyclical features
+      - "advanced_technical"  # 12 features: Advanced indicators (ADX, Ichimoku, etc.)
+      - "statistical_features" # 6 features: Skewness, kurtosis, autocorr
+    description: "PPO models require comprehensive feature set for reinforcement learning"
+
+  gru:
+    expected_feature_count: 100
+    feature_groups:
+      - "core_technical"      # 15 features
+      - "price_momentum"      # 20 features
+      - "volatility_risk"     # 15 features
+      - "volume_analysis"     # 12 features
+      - "market_microstructure" # 10 features
+      - "regime_detection"    # 8 features
+      - "time_features"       # 6 features
+      - "advanced_technical"  # 12 features
+      - "statistical_features" # 2 features (reduced for GRU)
+    description: "GRU models work well with temporal patterns and technical indicators"
+
+  lightgbm:
+    expected_feature_count: 100
+    feature_groups:
+      - "core_technical"      # 15 features
+      - "price_momentum"      # 20 features
+      - "volatility_risk"     # 15 features
+      - "volume_analysis"     # 12 features
+      - "market_microstructure" # 10 features
+      - "regime_detection"    # 8 features
+      - "time_features"       # 6 features
+      - "advanced_technical"  # 12 features
+      - "statistical_features" # 2 features (reduced for LightGBM)
+    description: "LightGBM excels with diverse feature types and non-linear relationships"
+
+feature_groups:
+  core_technical:
+    features:
+      - "rsi_14"
+      - "rsi_7"
+      - "rsi_21"
+      - "macd"
+      - "macd_signal"
+      - "macd_histogram"
+      - "bb_upper_20"
+      - "bb_lower_20"
+      - "bb_width_20"
+      - "bb_position_20"
+      - "atr_14"
+      - "atr_ratio_14"
+      - "cci_20"
+      - "adx_14"
+      - "stoch_k_14"
+    count: 15
+
+  price_momentum:
+    features:
+      - "momentum_5"
+      - "momentum_10"
+      - "momentum_20"
+      - "momentum_50"
+      - "price_momentum_5"
+      - "price_momentum_10"
+      - "price_momentum_20"
+      - "price_momentum_50"
+      - "price_acceleration_10"
+      - "price_acceleration_20"
+      - "roc_5"
+      - "roc_10"
+      - "roc_20"
+      - "williams_r_14"
+      - "williams_r_21"
+      - "efficiency_ratio_10"
+      - "efficiency_ratio_20"
+      - "efficiency_ratio_50"
+      - "sma_5_ratio"
+      - "ema_5_ratio"
+    count: 20
+
+  volatility_risk:
+    features:
+      - "volatility_10"
+      - "volatility_20"
+      - "volatility_50"
+      - "parkinson_vol_20"
+      - "gk_volatility_20"
+      - "vol_of_vol_20"
+      - "vol_regime_20"
+      - "sharpe_20"
+      - "sharpe_50"
+      - "sortino_20"
+      - "calmar_20"
+      - "var_20"
+      - "max_drawdown_20"
+      - "max_drawdown_50"
+      - "vol_ratio_10_20"
+    count: 15
+
+  volume_analysis:
+    features:
+      - "volume_ratio"
+      - "volume_roc_5"
+      - "volume_roc_10"
+      - "volume_zscore_20"
+      - "obv"
+      - "vwap_20"
+      - "vwap_distance"
+      - "vwap_deviation"
+      - "accumulation_distribution"
+      - "volume_price_trend"
+      - "price_volume_ratio"
+      - "high_volume"
+    count: 12
+
+  market_microstructure:
+    features:
+      - "spread_proxy"
+      - "spread_relative"
+      - "price_impact"
+      - "kyle_lambda"
+      - "support_distance"
+      - "resistance_distance"
+      - "price_position"
+      - "gap_size"
+      - "true_range"
+      - "hl_ratio"
+    count: 10
+
+  regime_detection:
+    features:
+      - "trend_strength"
+      - "bull_bear_regime"
+      - "volatility_regime"
+      - "mean_reversion_regime"
+      - "hurst_exponent"
+      - "trend_strength_index"
+      - "market_regime"
+      - "ichimoku_signal"
+    count: 8
+
+  time_features:
+    features:
+      - "hour_sin"
+      - "hour_cos"
+      - "day_sin"
+      - "day_cos"
+      - "is_weekend"
+      - "is_night"
+    count: 6
+
+  advanced_technical:
+    features:
+      - "ichimoku_tenkan"
+      - "ichimoku_kijun"
+      - "ichimoku_senkou_a"
+      - "bb_squeeze"
+      - "macd_bullish"
+      - "rsi_oversold"
+      - "rsi_overbought"
+      - "sma_cross"
+      - "ema_cross"
+      - "price_above_sma20"
+      - "price_above_ema20"
+      - "bb_breakout_upper"
+    count: 12
+
+  statistical_features:
+    features:
+      - "returns_skew_20"
+      - "returns_kurtosis_20"
+      - "returns_autocorr_lag1"
+      - "returns_autocorr_lag5"
+      - "momentum_persistence_20"
+      - "momentum_strength_20"
+    count: 6
+
+feature_engineering:
+  # Enhanced feature generation settings
+  enable_advanced_features: true
+  enable_statistical_features: true
+  enable_regime_detection: true
+
+  # Feature validation settings
+  remove_outliers: true
+  outlier_std_threshold: 5.0
+  min_periods_ratio: 0.7
+
+  # Feature scaling and preprocessing
+  scaling_method: "robust"  # robust, standard, minmax
+  handle_missing: "forward_fill"  # forward_fill, median, zero
+
+  # Performance settings
+  batch_processing: true
+  parallel_computation: false  # Set to true for large datasets
+  cache_features: true
+
+validation:
+  # Feature validation rules
+  max_correlation: 0.95  # Remove highly correlated features
+  min_variance: 1e-6     # Remove zero-variance features
+  max_missing_ratio: 0.3 # Remove features with too many missing values
+
+  # Quality checks
+  check_infinite_values: true
+  check_extreme_outliers: true
+  validate_feature_names: true
+
+logging:
+  level: "INFO"
+  log_feature_counts: true
+  log_processing_time: true
+  log_validation_results: true

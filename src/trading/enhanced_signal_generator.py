@@ -10,12 +10,13 @@ This module provides advanced signal generation that integrates:
 - Portfolio diversification
 """
 
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Optional, Tuple, Any
+import logging
 from dataclasses import dataclass
 from datetime import datetime
-import logging
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
 
 from .profit_optimizer import ProfitOptimizer, TradeSignal
 
@@ -113,6 +114,7 @@ class EnhancedSignalGenerator:
         """Generate enhanced trading signals with profit optimization."""
 
         all_signals = {}
+        cycle_diagnostics: Dict[str, Any] = {}
 
         try:
             # 1. Generate risk management signals (highest priority)
@@ -143,6 +145,64 @@ class EnhancedSignalGenerator:
             )
 
             logger.info(f"Generated {len(optimized_signals)} enhanced signals")
+
+            # Persist structured diagnostics for forensics
+            try:
+                for symbol, predictions in model_predictions.items():
+                    if not predictions or symbol not in market_data:
+                        continue
+
+                    market_context = self._analyze_market_context(symbol, market_data[symbol])
+                    thresholds = self.profit_optimizer.calculate_dynamic_thresholds(
+                        symbol, market_data[symbol], abs(self.base_buy_threshold)
+                    )
+
+                    per_model = [
+                        {
+                            "model": p.model_type,
+                            "prediction": float(p.prediction),
+                            "confidence": float(p.confidence),
+                            "features_used": int(p.features_used),
+                            "weight": float(self.model_weights.get(p.model_type, 1.0)),
+                        }
+                        for p in predictions
+                    ]
+
+                    diag_entry = {
+                        "per_model": per_model,
+                        "thresholds": {
+                            "buy": float(thresholds.get("buy", self.base_buy_threshold)),
+                            "sell": float(thresholds.get("sell", self.base_sell_threshold)),
+                        },
+                        "market_context": {
+                            "trend": market_context.price_trend,
+                            "volatility": float(market_context.volatility),
+                            "momentum": float(market_context.momentum),
+                            "volume_trend": float(market_context.volume_trend),
+                        },
+                    }
+
+                    if symbol in optimized_signals:
+                        s = optimized_signals[symbol]
+                        diag_entry["decision"] = {
+                            "action": s.action,
+                            "quantity_pct": float(s.quantity_pct),
+                            "confidence": float(s.confidence),
+                            "expected_return": float(s.expected_return),
+                            "reasoning": s.reasoning,
+                        }
+
+                    cycle_diagnostics[symbol] = diag_entry
+
+                ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+                out_dir = os.path.join("logs", "diagnostics")
+                os.makedirs(out_dir, exist_ok=True)
+                out_path = os.path.join(out_dir, f"{ts}.json")
+                with open(out_path, "w", encoding="utf-8") as f:
+                    json.dump(cycle_diagnostics, f, indent=2, ensure_ascii=False)
+            except Exception as de:
+                logger.debug(f"Diagnostics persistence skipped: {de}")
+
             return optimized_signals
 
         except Exception as e:
@@ -189,14 +249,33 @@ class EnhancedSignalGenerator:
         for symbol, predictions in model_predictions.items():
             try:
                 if not predictions or symbol not in market_data:
+                    if not predictions:
+                        logger.info(
+                            f"Skipping {symbol}: no model predictions available for this cycle"
+                        )
+                    elif symbol not in market_data:
+                        logger.info(f"Skipping {symbol}: no market data available for this cycle")
                     continue
 
                 # Analyze market context
-                market_context = self._analyze_market_context(
-                    symbol, market_data[symbol]
-                )
+                market_context = self._analyze_market_context(symbol, market_data[symbol])
 
                 # Combine model predictions
+                # Per-model diagnostics: raw preds, conf, weights
+                try:
+                    diag_parts = []
+                    for p in predictions:
+                        mw = self.model_weights.get(p.model_type, 1.0)
+                        cw = mw * max(0.0, min(1.0, p.confidence))
+                        diag_parts.append(
+                            f"{p.model_type}: pred={p.prediction:.6f} conf={p.confidence:.3f} w={mw:.2f} w*conf={cw:.3f} feat={p.features_used}"
+                        )
+                    if diag_parts:
+                        logger.info(f"Model diagnostics {symbol}: " + " | ".join(diag_parts))
+                except Exception:
+                    # Diagnostics are best-effort; do not impact flow
+                    pass
+
                 ensemble_prediction = self._combine_model_predictions(predictions)
 
                 # Get dynamic thresholds
@@ -220,15 +299,25 @@ class EnhancedSignalGenerator:
 
                 if signal:
                     signals[symbol] = signal
+                else:
+                    # Log diagnostic information to explain no-signal outcome
+                    logger.info(
+                        (
+                            f"Decision diagnostics {symbol}: pred={ensemble_prediction.prediction:.6f} "
+                            f"conf={ensemble_prediction.confidence:.3f} "
+                            f"thr_buy={thresholds.get('buy', self.base_buy_threshold):.6f} "
+                            f"thr_sell={thresholds.get('sell', self.base_sell_threshold):.6f} "
+                            f"trend={market_context.price_trend} vol={market_context.volatility:.3f} "
+                            f"momentum={thresholds.get('momentum', 0.0):.5f} vol_trend={thresholds.get('volume_trend', 1.0):.2f}"
+                        )
+                    )
 
             except Exception as e:
                 logger.error(f"Failed to generate model signal for {symbol}: {e}")
 
         return signals
 
-    def _analyze_market_context(
-        self, symbol: str, market_data: pd.DataFrame
-    ) -> MarketContext:
+    def _analyze_market_context(self, symbol: str, market_data: pd.DataFrame) -> MarketContext:
         """Analyze market context for enhanced signal generation."""
         try:
             if len(market_data) < 20:
@@ -240,17 +329,14 @@ class EnhancedSignalGenerator:
 
             # Calculate momentum
             momentum = (
-                market_data["close"].iloc[-1]
-                / market_data["close"].iloc[-self.momentum_lookback]
+                market_data["close"].iloc[-1] / market_data["close"].iloc[-self.momentum_lookback]
                 - 1
             )
 
             # Calculate volume trend
             recent_volume = market_data["volume"].tail(5).mean()
             baseline_volume = market_data["volume"].tail(self.volume_lookback).mean()
-            volume_trend = (
-                recent_volume / baseline_volume if baseline_volume > 0 else 1.0
-            )
+            volume_trend = recent_volume / baseline_volume if baseline_volume > 0 else 1.0
 
             # Determine price trend
             sma_short = market_data["close"].tail(5).mean()
@@ -282,9 +368,7 @@ class EnhancedSignalGenerator:
             logger.error(f"Failed to analyze market context for {symbol}: {e}")
             return MarketContext(symbol, 0.02, 0.0, 1.0, "sideways")
 
-    def _combine_model_predictions(
-        self, predictions: List[ModelPrediction]
-    ) -> ModelPrediction:
+    def _combine_model_predictions(self, predictions: List[ModelPrediction]) -> ModelPrediction:
         """Combine multiple model predictions into ensemble prediction."""
         try:
             if not predictions:
@@ -365,18 +449,14 @@ class EnhancedSignalGenerator:
 
             # Keep only recent history
             if len(history["predictions"]) > self.performance_window:
-                history["predictions"] = history["predictions"][
-                    -self.performance_window :
-                ]
+                history["predictions"] = history["predictions"][-self.performance_window :]
                 history["actuals"] = history["actuals"][-self.performance_window :]
                 history["profitable_trades"] = history["profitable_trades"][
                     -self.performance_window :
                 ]
 
             # Calculate performance metrics
-            if (
-                len(history["predictions"]) >= 10
-            ):  # Minimum samples for reliable metrics
+            if len(history["predictions"]) >= 10:  # Minimum samples for reliable metrics
                 # Directional accuracy
                 pred_directions = [1 if p > 0 else -1 for p in history["predictions"]]
                 actual_directions = [1 if a > 0 else -1 for a in history["actuals"]]
@@ -397,9 +477,7 @@ class EnhancedSignalGenerator:
                     self._update_adaptive_weights()
 
         except Exception as e:
-            logger.error(
-                f"Failed to update model performance for {symbol}_{model_type}: {e}"
-            )
+            logger.error(f"Failed to update model performance for {symbol}_{model_type}: {e}")
 
     def _update_adaptive_weights(self) -> None:
         """Update model weights based on recent performance."""
@@ -419,13 +497,9 @@ class EnhancedSignalGenerator:
                         "sample_counts": [],
                     }
 
-                model_scores[model_type]["accuracy_scores"].append(
-                    history["accuracy_score"]
-                )
+                model_scores[model_type]["accuracy_scores"].append(history["accuracy_score"])
                 model_scores[model_type]["profit_rates"].append(history["profit_rate"])
-                model_scores[model_type]["sample_counts"].append(
-                    len(history["predictions"])
-                )
+                model_scores[model_type]["sample_counts"].append(len(history["predictions"]))
 
             if not model_scores:
                 return
@@ -440,17 +514,11 @@ class EnhancedSignalGenerator:
                 total_samples = sum(scores["sample_counts"])
                 weights = [count / total_samples for count in scores["sample_counts"]]
 
-                avg_accuracy = sum(
-                    acc * w for acc, w in zip(scores["accuracy_scores"], weights)
-                )
-                avg_profit_rate = sum(
-                    pr * w for pr, w in zip(scores["profit_rates"], weights)
-                )
+                avg_accuracy = sum(acc * w for acc, w in zip(scores["accuracy_scores"], weights))
+                avg_profit_rate = sum(pr * w for pr, w in zip(scores["profit_rates"], weights))
 
                 # Composite score: 60% accuracy, 40% profitability
-                composite_scores[model_type] = (
-                    0.6 * avg_accuracy + 0.4 * avg_profit_rate
-                )
+                composite_scores[model_type] = 0.6 * avg_accuracy + 0.4 * avg_profit_rate
 
             if len(composite_scores) < 2:
                 return  # Need at least 2 models to adjust weights
@@ -467,9 +535,8 @@ class EnhancedSignalGenerator:
 
                         # Gradual adaptation
                         new_weight = (
-                            (1 - self.weight_adaptation_rate) * current_weight
-                            + self.weight_adaptation_rate * performance_weight
-                        )
+                            1 - self.weight_adaptation_rate
+                        ) * current_weight + self.weight_adaptation_rate * performance_weight
                         new_weights[model_type] = new_weight
                     else:
                         # Keep base weight if no performance data
@@ -478,9 +545,7 @@ class EnhancedSignalGenerator:
                 # Normalize weights to sum to 1
                 total_weight = sum(new_weights.values())
                 if total_weight > 0:
-                    self.model_weights = {
-                        k: v / total_weight for k, v in new_weights.items()
-                    }
+                    self.model_weights = {k: v / total_weight for k, v in new_weights.items()}
 
                     logger.info(f"Updated adaptive model weights: {self.model_weights}")
                     logger.info(f"Performance scores: {composite_scores}")
@@ -556,25 +621,29 @@ class EnhancedSignalGenerator:
 
             # Lower confidence threshold for strong predictions
             if context_adjusted_prediction > buy_threshold * 2:
-                confidence_check = prediction.confidence > (
-                    self.confidence_threshold * 0.8
-                )
+                confidence_check = prediction.confidence > (self.confidence_threshold * 0.8)
 
             if context_adjusted_prediction > buy_threshold and confidence_check:
                 # Check if we should buy (not over-concentrated)
-                optimal_position_size = (
-                    self.profit_optimizer.calculate_optimal_position_size(
-                        symbol,
-                        context_adjusted_prediction,
-                        prediction.confidence,
-                        current_balance,
-                        current_positions,
-                        current_prices,
-                        market_data,
-                    )
+                optimal_position_size = self.profit_optimizer.calculate_optimal_position_size(
+                    symbol,
+                    context_adjusted_prediction,
+                    prediction.confidence,
+                    current_balance,
+                    current_positions,
+                    current_prices,
+                    market_data,
                 )
 
                 if optimal_position_size > 0.005:  # Reduced minimum to 0.5% position
+                    logger.info(
+                        (
+                            f"Signal BUY {symbol}: adj_pred={context_adjusted_prediction:.6f} "
+                            f"raw_pred={prediction.prediction:.6f} conf={prediction.confidence:.3f} "
+                            f"thr_buy={buy_threshold:.6f} pos_size={optimal_position_size:.3f} "
+                            f"trend={market_context.price_trend} vol={market_context.volatility:.3f}"
+                        )
+                    )
                     return TradeSignal(
                         symbol=symbol,
                         action="BUY",
@@ -594,9 +663,7 @@ class EnhancedSignalGenerator:
                 # Strong negative prediction - sell most of position
                 if context_adjusted_prediction < sell_threshold:
                     sell_quantity_pct = 0.8
-                    sell_reason = (
-                        f"Strong negative prediction {context_adjusted_prediction:.6f}"
-                    )
+                    sell_reason = f"Strong negative prediction {context_adjusted_prediction:.6f}"
 
                 # Moderate negative prediction - partial sell
                 elif context_adjusted_prediction < sell_threshold * 0.5:
@@ -627,11 +694,17 @@ class EnhancedSignalGenerator:
                 # Stagnant prediction - partial exit
                 elif abs(context_adjusted_prediction) < buy_threshold * 0.2:
                     sell_quantity_pct = 0.2
-                    sell_reason = (
-                        f"Stagnant prediction {context_adjusted_prediction:.6f}"
-                    )
+                    sell_reason = f"Stagnant prediction {context_adjusted_prediction:.6f}"
 
                 if sell_quantity_pct > 0:
+                    logger.info(
+                        (
+                            f"Signal SELL {symbol}: adj_pred={context_adjusted_prediction:.6f} "
+                            f"raw_pred={prediction.prediction:.6f} conf={prediction.confidence:.3f} "
+                            f"thr_sell={sell_threshold:.6f} qty_pct={sell_quantity_pct:.2f} "
+                            f"trend={market_context.price_trend} vol={market_context.volatility:.3f} reason={sell_reason}"
+                        )
+                    )
                     return TradeSignal(
                         symbol=symbol,
                         action="SELL",
@@ -648,9 +721,7 @@ class EnhancedSignalGenerator:
             logger.error(f"Failed to generate signal from prediction for {symbol}: {e}")
             return None
 
-    def _apply_market_context_adjustment(
-        self, prediction: float, context: MarketContext
-    ) -> float:
+    def _apply_market_context_adjustment(self, prediction: float, context: MarketContext) -> float:
         """Apply market context adjustments to the raw prediction."""
         try:
             adjusted_prediction = prediction
@@ -743,9 +814,7 @@ class EnhancedSignalGenerator:
             )
 
             current_cash_pct = (
-                current_balance / total_portfolio_value
-                if total_portfolio_value > 0
-                else 1.0
+                current_balance / total_portfolio_value if total_portfolio_value > 0 else 1.0
             )
 
             for symbol, signal in sorted_signals:
@@ -765,9 +834,7 @@ class EnhancedSignalGenerator:
                         factor = 1.0 - (over / span) * (1.0 - self.correlation_min_scale)
                         factor = max(self.correlation_min_scale, min(1.0, factor))
                         signal.quantity_pct *= factor
-                        signal.reasoning += (
-                            f" (scaled for correlation risk: {correlation_risk:.2f} -> x{factor:.2f})"
-                        )
+                        signal.reasoning += f" (scaled for correlation risk: {correlation_risk:.2f} -> x{factor:.2f})"
 
                     # Cash availability scaling
                     if current_cash_pct < self.cash_min_pct:

@@ -342,7 +342,7 @@ class PerformanceTracker:
                         metric.metric_value,
                         metric.data_period,
                         metric.sample_size,
-                        json.dumps(metric.additional_info) if metric.additional_info else None,
+                        (json.dumps(metric.additional_info) if metric.additional_info else None),
                     ),
                 )
         except Exception as e:
@@ -422,7 +422,11 @@ class PerformanceTracker:
             return None  # No alert needed
 
     def _format_alert_message(
-        self, metric: PerformanceMetric, baseline: float, degradation_pct: float, severity: str
+        self,
+        metric: PerformanceMetric,
+        baseline: float,
+        degradation_pct: float,
+        severity: str,
     ) -> str:
         """Format alert message"""
         return (
@@ -590,7 +594,7 @@ class PerformanceTracker:
             "metrics": summary_metrics,
             "alerts": alerts_data,
             "status": self._determine_model_status(summary_metrics, alerts_data),
-            "last_updated": max(row[2] for row in metrics_data) if metrics_data else None,
+            "last_updated": (max(row[2] for row in metrics_data) if metrics_data else None),
         }
 
     def _calculate_trend(self, values: List[float]) -> str:

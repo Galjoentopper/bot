@@ -55,6 +55,27 @@ repos:
 
   - repo: local
     hooks:
+      - id: python-syntax-check
+        name: Python Syntax Check
+        entry: python -m py_compile
+        language: python
+        files: \.py$
+        exclude: ^(venv|__pycache__|\.git)/
+
+      - id: python-import-check
+        name: Python Import Check
+        entry: python -c "import ast, sys; [ast.parse(open(f).read()) for f in sys.argv[1:]]"
+        language: python
+        files: \.py$
+        exclude: ^(venv|__pycache__|\.git)/
+
+      - id: telegram-system-validation
+        name: Telegram System Validation
+        entry: python -c "from src.notifier.telegram import TelegramNotifier; from src.notifications.telegram_service import TelegramService; print('Telegram system imports OK')"
+        language: python
+        files: ^src/(notifier|notifications)/.*\.py$
+        pass_filenames: false
+
       - id: pytest-check
         name: pytest-check
         entry: pytest

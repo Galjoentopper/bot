@@ -1,0 +1,168 @@
+# Trading Bot Enhanced Logging Configuration
+# ============================================
+#
+# This configuration file defines logging behavior for the production trading bot.
+# Different log levels and file management based on environment and usage patterns.
+#
+# IMPORTANT: This does NOT affect Paperspace training, which uses simple console logging.
+
+logging:
+  # Global settings
+  version: 1
+  disable_existing_loggers: false
+
+  # Environment-based configuration
+  environment:
+    # Current environment (development, testing, production)
+    current: ${TRADING_ENV:-development}
+
+    # Debug mode override
+    debug_mode: ${DEBUG_MODE:-false}
+
+  # Log file management
+  file_management:
+    # Base directory for all log files
+    logs_directory: "logs"
+
+    # File rotation settings
+    rotation:
+      # Trading logs - never rotate, always preserve
+      trading:
+        type: "preserve"  # Never delete trading data
+        max_size: "100MB" # Rotate when large, but keep all
+
+      # Model logs - daily rotation
+      model:
+        type: "time"
+        when: "midnight"
+        interval: 1
+        backup_count: 7  # Keep 1 week
+
+      # System logs - size-based rotation
+      system:
+        type: "size"
+        max_size: "10MB"
+        backup_count: 5
+
+      # Performance logs
+      performance:
+        type: "size"
+        max_size: "5MB"
+        backup_count: 3
+
+      # Debug logs - minimal retention
+      debug:
+        type: "size"
+        max_size: "2MB"
+        backup_count: 2
+
+  # Log levels per environment
+  levels:
+    development:
+      default: "INFO"
+      trading: "INFO"
+      model: "INFO"
+      system: "INFO"
+      debug: "DEBUG"
+      performance: "INFO"
+
+    testing:
+      default: "INFO"
+      trading: "INFO"
+      model: "INFO"
+      system: "WARNING"
+      debug: "WARNING"
+      performance: "INFO"
+
+    production:
+      default: "INFO"
+      trading: "INFO"      # Always log trading operations
+      model: "INFO"        # Always log model predictions
+      system: "WARNING"    # Only warnings/errors for system
+      debug: "ERROR"       # Only errors in production
+      performance: "INFO"
+
+  # Special logging features
+  features:
+    # Structured logging with JSON support
+    structured_logging:
+      enabled: true
+      include_metadata: true
+
+    # Trade-specific CSV logging
+    csv_logging:
+      enabled: true
+      preserve_format: true  # Maintain current CSV format
+
+    # Performance monitoring
+    performance_monitoring:
+      enabled: true
+      log_slow_operations: true
+      threshold_ms: 1000  # Log operations slower than 1s
+
+    # Correlation IDs for request tracking
+    correlation_tracking:
+      enabled: true
+      auto_generate: true
+
+  # Integration settings
+  integrations:
+    # Telegram logging integration
+    telegram:
+      log_critical_errors: true
+      log_trade_summaries: true
+      daily_reports: true
+
+    # File cleanup automation
+    cleanup:
+      enabled: true
+      schedule: "daily"  # Run cleanup daily
+      retention_days: 30  # Keep logs for 30 days (except trading)
+
+# Usage examples and migration guide
+usage_examples:
+  basic_usage: |
+    # Import the new logging system
+    from src.core.logging_manager import get_trading_logger, get_model_logger, get_system_logger
+
+    # Get appropriate logger
+    trade_logger = get_trading_logger("trader")
+    model_logger = get_model_logger("ensemble")
+    system_logger = get_system_logger("startup")
+
+    # Use structured logging
+    trade_logger.info("TRADE_EXEC | BTCEUR | BUY | 0.001 | 95000 | SUCCESS")
+    model_logger.info("MODEL_PRED | lightgbm | ETHEUR | 0.75 | conf: 0.82")
+    system_logger.info("System startup completed successfully")
+
+  structured_trade_logging: |
+    # Use the enhanced trade logger
+    from src.core.logging_manager import StructuredTradeLogger
+
+    trade_logger = StructuredTradeLogger()
+    trade_logger.log_trade_execution(
+        trade_id="abc123",
+        symbol="BTCEUR",
+        action="BUY",
+        quantity=0.001,
+        price=95000,
+        success=True,
+        reason="Strong ensemble signal",
+        confidence=0.85,
+        portfolio_value=10500
+    )
+
+  performance_logging: |
+    # Log performance metrics
+    from src.core.logging_manager import PerformanceLogger
+
+    perf_logger = PerformanceLogger()
+    perf_logger.log_operation_time("model_prediction", 150.5, success=True)
+    perf_logger.log_system_metrics({"cpu": 45.2, "memory": 2048, "disk": 85})
+
+  legacy_compatibility: |
+    # Existing code continues to work
+    from src.utils.logger import Logger  # Old import
+
+    logger = Logger("my_component")
+    logger.logger.info("This still works")  # .logger.info pattern preserved

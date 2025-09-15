@@ -1,0 +1,849 @@
+#!/bin/bash
+
+# Enhanced Linux Model Import Script
+# ==================================
+# This script extracts and configures imported models into the proper directory structure
+# with robust error handling, progress indicators, and automatic dependency checking
+
+set -e  # Exit on any error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo
+echo "========================================"
+echo "   Enhanced Model Import System"
+echo "   Linux Deployment Configuration"
+echo "========================================"
+echo
+
+# Logging functions
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check system dependencies
+check_dependencies() {
+    log_info "Checking system dependencies..."
+
+    # Check if Python is available
+    if ! command -v python3 &> /dev/null; then
+        if ! command -v python &> /dev/null; then
+            log_error "Python is not installed or not in PATH"
+            echo "  Please install Python 3.8+ from your distribution's package manager"
+            echo "  Example: sudo apt-get install python3 python3-pip"
+            exit 1
+        else
+            PYTHON_CMD="python"
+        fi
+    else
+        PYTHON_CMD="python3"
+    fi
+
+    # Check Python version
+    PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | awk '{print $2}')
+    log_info "Python version: $PYTHON_VERSION"
+
+    # Check if pip is available
+    if ! command -v pip3 &> /dev/null && ! command -v pip &> /dev/null; then
+        log_error "pip is not available"
+        echo "  pip should be included with Python 3.8+"
+        echo "  Try: sudo apt-get install python3-pip"
+        exit 1
+    fi
+
+    # Determine pip command
+    if command -v pip3 &> /dev/null; then
+        PIP_CMD="pip3"
+    else
+        PIP_CMD="pip"
+    fi
+
+    # Install/check required packages
+    log_info "Checking/installing required packages..."
+    $PIP_CMD install --quiet --upgrade pyyaml pathlib2 boto3 > /dev/null 2>&1 || {
+        log_warning "Failed to install some packages, continuing anyway..."
+    }
+
+    # Check for unzip utility
+    if ! command -v unzip &> /dev/null; then
+        log_error "unzip utility is not installed"
+        echo "  Please install unzip: sudo apt-get install unzip"
+        exit 1
+    fi
+
+    log_success "Dependencies validated"
+}
+
+# Load environment (.env and optional S3 config)
+load_environment() {
+    log_info "Loading environment variables..."
+    # Preserve any pre-existing AWS credentials from the environment
+    PRE_AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
+    PRE_AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}"
+
+    # Source .env first (general app settings & secrets)
+    if [ -f .env ]; then
+        set -a
+        # shellcheck disable=SC1091
+        . ./.env
+        set +a
+        log_info ".env loaded"
+        # If environment already had non-placeholder AWS creds, restore them (don't let .env override)
+        case "$PRE_AWS_ACCESS_KEY_ID" in ""|"your_aws_access_key_here"|"CHANGEME"|"REDACTED") : ;; *) export AWS_ACCESS_KEY_ID="$PRE_AWS_ACCESS_KEY_ID" ;; esac
+        case "$PRE_AWS_SECRET_ACCESS_KEY" in ""|"your_aws_secret_key_here"|"CHANGEME"|"REDACTED") : ;; *) export AWS_SECRET_ACCESS_KEY="$PRE_AWS_SECRET_ACCESS_KEY" ;; esac
+    fi
+    # Source S3 config exports (bucket/region only)
+    if [ -f s3_config.env ]; then
+        # shellcheck disable=SC1091
+        . ./s3_config.env
+        log_info "s3_config.env loaded"
+    fi
+    # Carefully process .env.s3; avoid overriding real creds with placeholders
+    if [ -f .env.s3 ]; then
+        while IFS='=' read -r key val; do
+            # Trim quotes and whitespace
+            key="${key%%[[:space:]]*}"
+            val="${val%\r}"
+            val="${val%\n}"
+            val="${val%\t}"
+            val="${val%\"}"
+            val="${val#\"}"
+            case "$key" in
+                ''|'#'*) continue ;;
+                AWS_MODELS_BUCKET|AWS_DEFAULT_REGION)
+                    export "$key"="$val" ;;
+                AWS_ACCESS_KEY_ID)
+                    if [ "$val" = "your-access-key-here" ] || [ -z "$val" ]; then
+                        [ -n "$AWS_ACCESS_KEY_ID" ] && log_info "Keeping existing AWS_ACCESS_KEY_ID; skipping placeholder from .env.s3"
+                        :
+                    else
+                        export AWS_ACCESS_KEY_ID="$val"
+                    fi ;;
+                AWS_SECRET_ACCESS_KEY)
+                    if [ "$val" = "your-secret-key-here" ] || [ -z "$val" ]; then
+                        [ -n "$AWS_SECRET_ACCESS_KEY" ] && log_info "Keeping existing AWS_SECRET_ACCESS_KEY; skipping placeholder from .env.s3"
+                        :
+                    else
+                        export AWS_SECRET_ACCESS_KEY="$val"
+                    fi ;;
+                *) : ;;
+            esac
+        done < .env.s3
+        log_info ".env.s3 processed"
+        # Normalize placeholders from .env.s3 if any slipped through
+        if [ "${AWS_ACCESS_KEY_ID:-}" = "your-access-key-here" ]; then unset AWS_ACCESS_KEY_ID; fi
+        if [ "${AWS_SECRET_ACCESS_KEY:-}" = "your-secret-key-here" ]; then unset AWS_SECRET_ACCESS_KEY; fi
+    fi
+
+    # Also sanitize common placeholder values possibly coming from .env
+    case "${AWS_ACCESS_KEY_ID:-}" in
+        ""|"your_aws_access_key_here"|"CHANGEME"|"REDACTED") unset AWS_ACCESS_KEY_ID ;; esac
+    case "${AWS_SECRET_ACCESS_KEY:-}" in
+        ""|"your_aws_secret_key_here"|"CHANGEME"|"REDACTED") unset AWS_SECRET_ACCESS_KEY ;; esac
+}
+
+# Validate environment
+validate_environment() {
+    log_info "Validating environment structure..."
+
+    # Check if we're in the correct directory
+    if [ ! -d "scripts" ]; then
+        log_error "Please run this script from the Bot_kilo root directory"
+        echo "  Current directory: $(pwd)"
+        echo "  Expected to find 'scripts' folder here"
+        exit 1
+    fi
+
+    # Create necessary directories
+    mkdir -p models/packages
+    mkdir -p models/imported
+    mkdir -p models/metadata
+    mkdir -p processed_packages
+    mkdir -p logs
+
+    log_success "Environment structure validated"
+}
+
+# Remove old models before import
+clear_old_models() {
+    log_info "Removing existing models (old artifacts)..."
+    if [ -d "models" ]; then
+        rm -rf models/* || true
+        log_info "Cleared models directory"
+    fi
+}
+
+# Fetch latest model package(s) from S3 into current directory
+fetch_models_from_s3() {
+    # Require bucket name to proceed
+    AWS_MODELS_BUCKET_ENV="${AWS_MODELS_BUCKET:-}"
+    AWS_REGION_ENV="${AWS_DEFAULT_REGION:-}"
+    AWS_PREFIX_ENV="${AWS_MODELS_PREFIX:-model_packages/}"
+
+    if [ -z "$AWS_MODELS_BUCKET_ENV" ]; then
+        log_warning "AWS_MODELS_BUCKET not set; skipping S3 download. Place model .zip here manually."
+        return 0
+    fi
+
+    # Registry-aware fetch: if MODELS_REGISTRY_JSON points to a local JSON file, honor it
+    if [ -n "${MODELS_REGISTRY_JSON:-}" ] && [ -f "$MODELS_REGISTRY_JSON" ]; then
+        log_info "Using registry pointer from $MODELS_REGISTRY_JSON"
+        $PYTHON_CMD - "$MODELS_REGISTRY_JSON" << 'PYREG'
+import os, sys, json
+from urllib.parse import urlparse
+
+reg_path = sys.argv[1]
+try:
+    reg = json.loads(open(reg_path,'r',encoding='utf-8').read())
+except Exception as e:
+    print(f"WARNING: Failed to read registry json: {e}")
+    sys.exit(0)
+
+bucket = reg.get('s3_bucket')
+key = reg.get('s3_key')
+url = reg.get('download_url')
+
+if url:
+    # Download via requests
+    try:
+        import requests
+        name = os.path.basename(urlparse(url).path) or 'models_bundle.zip'
+        r = requests.get(url, timeout=60)
+        r.raise_for_status()
+        with open(name,'wb') as f:
+            f.write(r.content)
+        print(f"SUCCESS: Downloaded registry bundle to {name}")
+    except Exception as e:
+        print(f"WARNING: Registry URL download failed: {e}")
+    sys.exit(0)
+
+if bucket and key:
+    try:
+        import boto3
+        s3 = boto3.client('s3', region_name=os.environ.get('AWS_DEFAULT_REGION') or 'us-east-1')
+        name = os.path.basename(key)
+        s3.download_file(bucket, key, name)
+        print(f"SUCCESS: Downloaded registry {bucket}/{key} -> {name}")
+    except Exception as e:
+        print(f"WARNING: Registry S3 download failed: {e}")
+sys.exit(0)
+PYREG
+        return 0
+    fi
+
+    log_info "Fetching latest model package from s3://$AWS_MODELS_BUCKET_ENV/$AWS_PREFIX_ENV"
+
+    $PYTHON_CMD - "$AWS_MODELS_BUCKET_ENV" "$AWS_PREFIX_ENV" "$AWS_REGION_ENV" << 'PYCODE'
+import os, sys
+from datetime import datetime, timezone
+
+bucket = sys.argv[1]
+prefix = sys.argv[2] or 'model_packages/'
+region = sys.argv[3] or os.environ.get('AWS_DEFAULT_REGION') or 'us-east-1'
+
+try:
+    import boto3
+    from botocore.exceptions import ClientError, NoCredentialsError, EndpointConnectionError
+except Exception as e:
+    print(f"ERROR: boto3 not available: {e}")
+    sys.exit(0)
+
+s3 = boto3.client('s3', region_name=region)
+
+def list_zip_objects():
+    paginator = s3.get_paginator('list_objects_v2')
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get('Contents', []):
+            key = obj['Key']
+            if key.lower().endswith('.zip'):
+                yield {
+                    'Key': key,
+                    'LastModified': obj.get('LastModified', datetime.now(timezone.utc)),
+                    'Size': obj.get('Size', 0),
+                }
+
+try:
+    objs = list(list_zip_objects())
+except (NoCredentialsError, EndpointConnectionError) as e:
+    print(f"WARNING: S3 access unavailable ({e.__class__.__name__}); skipping S3 download.")
+    sys.exit(0)
+except ClientError as e:
+    code = e.response.get('Error', {}).get('Code')
+    if code in ('InvalidAccessKeyId', 'SignatureDoesNotMatch', 'AccessDenied'):
+        print(f"WARNING: AWS access error ({code}); skipping S3 download.")
+        sys.exit(0)
+    raise
+
+if not objs:
+    print(f"WARNING: No .zip packages found under s3://{bucket}/{prefix}")
+    sys.exit(0)
+
+# Pick the most recent package
+objs.sort(key=lambda x: x['LastModified'], reverse=True)
+latest = objs[0]
+key = latest['Key']
+filename = os.path.basename(key)
+
+print(f"INFO: Latest package: {key} ({latest['Size']} bytes)")
+
+if os.path.exists(filename):
+    print(f"INFO: {filename} already exists locally; will overwrite")
+
+try:
+    s3.download_file(bucket, key, filename)
+    print(f"SUCCESS: Downloaded to {filename}")
+except (ClientError, NoCredentialsError, EndpointConnectionError) as e:
+    print(f"WARNING: Download failed/unavailable: {e}; skipping S3 download.")
+    sys.exit(0)
+PYCODE
+
+    return 0
+}
+
+# Process model packages
+process_model_packages() {
+    log_info "Scanning for model transfer packages..."
+
+    found_packages=0
+    successful_imports=0
+    cleared_once=0
+
+    # Process all ZIP files in current directory
+    for zip_file in *.zip; do
+        if [ -f "$zip_file" ]; then
+            found_packages=1
+            log_info "Found package: $zip_file"
+            if [ $cleared_once -eq 0 ] && [ "${KEEP_OLD_MODELS:-0}" = "0" ]; then
+                clear_old_models
+                cleared_once=1
+            fi
+
+            if process_single_package "$zip_file"; then
+                ((successful_imports++))
+            fi
+        fi
+    done
+
+    if [ $found_packages -eq 0 ]; then
+        log_warning "No transfer packages found in current directory; skipping package import"
+        echo "  If you intended to import, place the .zip here or set S3 env vars."
+        return 0
+    fi
+
+    if [ $successful_imports -eq 0 ]; then
+        log_error "No packages were successfully imported"
+        exit 1
+    fi
+
+    log_success "Processed $successful_imports package(s) successfully"
+}
+
+# Process single package
+process_single_package() {
+    local package_file="$1"
+    log_info "Processing package: $package_file"
+
+    # Create temporary extraction directory
+    local temp_dir="temp_import_$$"
+    if [ -d "$temp_dir" ]; then
+        rm -rf "$temp_dir"
+    fi
+    mkdir "$temp_dir"
+
+    # Extract package
+    log_info "Extracting package..."
+    if ! unzip -q "$package_file" -d "$temp_dir"; then
+        log_error "Failed to extract package: $package_file"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+
+    # Optional: validate manifest before import
+    if [ -f "$temp_dir/manifest.json" ]; then
+        log_info "Validating manifest.json checksums..."
+        $PYTHON_CMD - "$temp_dir" << 'PYMAN'
+import os, sys, json, hashlib
+root = sys.argv[1]
+man = os.path.join(root,'manifest.json')
+try:
+    data = json.loads(open(man,'r',encoding='utf-8').read())
+except Exception as e:
+    print(f"WARNING: Failed to parse manifest: {e}")
+    sys.exit(0)
+errors = 0
+for f in data.get('files', []):
+    path = os.path.join(root, f.get('path',''))
+    if not os.path.isfile(path):
+        print(f"ERROR: Missing file from manifest: {f.get('path')}")
+        errors += 1
+        continue
+    try:
+        h = hashlib.sha256()
+        with open(path,'rb') as fh:
+            for chunk in iter(lambda: fh.read(8192), b''):
+                h.update(chunk)
+        if f.get('sha256') and f['sha256'] != h.hexdigest():
+            print(f"ERROR: Checksum mismatch: {f.get('path')}")
+            errors += 1
+    except Exception as e:
+        print(f"WARNING: Checksum failed: {f.get('path')}: {e}")
+if errors:
+    print(f"ERROR: Manifest validation failed: {errors} issue(s)")
+    sys.exit(2)
+print("SUCCESS: Manifest validated")
+sys.exit(0)
+PYMAN
+        if [ $? -ne 0 ]; then
+            log_error "Manifest validation failed"
+            rm -rf "$temp_dir"
+            return 1
+        fi
+    else
+        log_warning "No manifest.json found; proceeding without checksum validation"
+    fi
+
+    # Check package contents and import
+    local import_result=1
+    if [ -d "$temp_dir/models" ]; then
+        # Required files check for PPO per-symbol
+        if [ -d "$temp_dir/models/ppo" ]; then
+            missing_required=0
+            for sym in "$temp_dir"/models/ppo/*; do
+                [ -d "$sym" ] || continue
+                if [ ! -f "$sym/model.zip" ]; then
+                    log_warning "Missing PPO file: $(basename "$sym")/model.zip"
+                    missing_required=1
+                fi
+                if [ ! -f "$sym/feature_index.json" ]; then
+                    log_warning "Missing PPO file: $(basename "$sym")/feature_index.json"
+                    missing_required=1
+                fi
+            done
+            # Determine strict import default based on environment if not set
+            if [ -z "${STRICT_IMPORT:-}" ]; then
+                case "${ENVIRONMENT:-${APP_ENV:-}}" in
+                    prod|production|Prod|PRODUCTION)
+                        STRICT_IMPORT=1 ;;
+                    *) STRICT_IMPORT=0 ;;
+                esac
+            fi
+            if [ $missing_required -ne 0 ] && [ "${STRICT_IMPORT:-0}" = "1" ]; then
+                log_error "Strict import enabled: required PPO files missing; aborting import"
+                rm -rf "$temp_dir"
+                return 1
+            fi
+        fi
+        import_models_from_package "$temp_dir"
+        import_result=$?
+    elif [ -f "$temp_dir/bundle_info.json" ]; then
+        import_bundle_package "$temp_dir"
+        import_result=$?
+    else
+        # Check if this is a training models package with files directly in root
+        log_info "Checking for training models package format..."
+        local has_model_files=0
+
+        # Check for model files in root
+        if ls "$temp_dir"/*.pkl >/dev/null 2>&1 || \
+           ls "$temp_dir"/*.pt >/dev/null 2>&1 || \
+           ls "$temp_dir"/*.joblib >/dev/null 2>&1; then
+            has_model_files=1
+        fi
+
+        # Check for model files in subdirectories
+        for dir in "$temp_dir"/*; do
+            if [ -d "$dir" ]; then
+                if ls "$dir"/*.pkl >/dev/null 2>&1 || \
+                   ls "$dir"/*.pt >/dev/null 2>&1 || \
+                   ls "$dir"/*.joblib >/dev/null 2>&1; then
+                    has_model_files=1
+                    break
+                fi
+            fi
+        done
+
+        if [ $has_model_files -eq 1 ]; then
+            log_info "Found training models package format"
+            import_training_package "$temp_dir"
+            import_result=$?
+        else
+            log_error "Unknown package format: $package_file"
+            log_info "Package contents:"
+            ls -la "$temp_dir"
+            log_info "Temp directory path: $temp_dir"
+            log_info "Checking if temp directory exists:"
+            if [ -d "$temp_dir" ]; then
+                log_info "Temp directory exists"
+                log_info "Detailed directory listing:"
+                find "$temp_dir" -type f | head -10
+            else
+                log_info "Temp directory does not exist"
+            fi
+            import_result=1
+        fi
+    fi
+
+    # Cleanup and move processed package
+    rm -rf "$temp_dir"
+
+    if [ $import_result -eq 0 ]; then
+        log_success "Successfully imported: $package_file"
+        mv "$package_file" "processed_packages/" 2>/dev/null || {
+            log_warning "Could not move processed package to processed_packages folder"
+        }
+    else
+        log_error "Failed to import: $package_file"
+    fi
+
+    return $import_result
+}
+
+# Import training package
+import_training_package() {
+    local source_dir="$1"
+    log_info "Importing training package format..."
+
+    # Copy all model files and directories to models folder
+    if ! cp -r "$source_dir/"* "models/" 2>/dev/null; then
+        log_error "Failed to copy training models"
+        return 1
+    fi
+
+    log_success "Training package imported successfully"
+    return 0
+}
+
+# Import models from package
+import_models_from_package() {
+    local source_dir="$1"
+    log_info "Importing standard model package..."
+
+    # Copy models to appropriate directories
+    if [ -d "$source_dir/models" ]; then
+        cp -r "$source_dir/models/"* "models/" 2>/dev/null || {
+            log_error "Failed to copy models"
+            return 1
+        }
+    fi
+
+    # Copy configuration if present
+    if [ -f "$source_dir/training_config.yaml" ]; then
+        cp "$source_dir/training_config.yaml" "." 2>/dev/null
+        log_info "Configuration file imported"
+    fi
+
+    return 0
+}
+
+# Import bundle package
+import_bundle_package() {
+    local source_dir="$1"
+    log_info "Importing bundle package format..."
+
+    # Check for Python import script first
+    if [ -f "$source_dir/import_models.py" ]; then
+        pushd "$source_dir" > /dev/null
+        log_info "Running Python import script..."
+        if $PYTHON_CMD import_models.py; then
+            popd > /dev/null
+
+            # Copy results to main directory
+            if [ -d "$source_dir/models" ]; then
+                cp -r "$source_dir/models/"* "models/" 2>/dev/null
+                log_success "Python import script completed successfully"
+                return 0
+            fi
+        else
+            popd > /dev/null
+            log_warning "Python import script failed, trying manual extraction..."
+        fi
+    fi
+
+    # Fallback: Manual extraction of nested ZIP files
+    log_info "Attempting manual extraction of nested model ZIPs..."
+
+    # Create proper directory structure
+    mkdir -p models/{gru,lightgbm,ppo}/{BTCEUR,ETHEUR,ADAEUR,DOTEUR,LINKEUR}
+
+    # Extract each model type to correct location
+    local extraction_success=0
+
+    # Extract GRU models
+    for gru_zip in "$source_dir"/gru_*_v*.zip; do
+        if [ -f "$gru_zip" ]; then
+            local symbol=$(basename "$gru_zip" | sed 's/gru_\(.*\)_v.*/\1/')
+            log_info "Extracting GRU model for $symbol..."
+            if unzip -q "$gru_zip" -d "models/gru/$symbol/"; then
+                extraction_success=1
+            fi
+        fi
+    done
+
+    # Extract LightGBM models
+    for lgb_zip in "$source_dir"/lightgbm_*_v*.zip; do
+        if [ -f "$lgb_zip" ]; then
+            local symbol=$(basename "$lgb_zip" | sed 's/lightgbm_\(.*\)_v.*/\1/')
+            log_info "Extracting LightGBM model for $symbol..."
+            if unzip -q "$lgb_zip" -d "models/lightgbm/$symbol/"; then
+                extraction_success=1
+            fi
+        fi
+    done
+
+    # Extract PPO models
+    for ppo_zip in "$source_dir"/ppo_*_v*.zip; do
+        if [ -f "$ppo_zip" ]; then
+            local symbol=$(basename "$ppo_zip" | sed 's/ppo_\(.*\)_v.*/\1/')
+            log_info "Extracting PPO model for $symbol..."
+            if unzip -q "$ppo_zip" -d "models/ppo/$symbol/"; then
+                extraction_success=1
+            fi
+        fi
+    done
+
+    if [ $extraction_success -eq 1 ]; then
+        log_success "Manual extraction completed successfully"
+        return 0
+    else
+        log_error "Bundle import failed - no models extracted"
+        return 1
+    fi
+}
+
+# Validate imported models
+validate_imported_models() {
+    log_info "Validating imported models..."
+
+    # Count imported model files
+    model_count=$(find models -name "*.pkl" -o -name "*.pt" -o -name "*.joblib" -o -name "*.zip" 2>/dev/null | wc -l)
+
+    if [ $model_count -eq 0 ]; then
+        log_error "No model files found after import"
+        echo "  Expected file types: .pkl, .pt, .joblib, .zip"
+        exit 1
+    fi
+
+    log_success "Found $model_count model files"
+
+    # Check for required model types
+    has_gru=0
+    has_lightgbm=0
+    has_ppo=0
+
+    if [ -d "models/gru" ]; then has_gru=1; fi
+    if [ -d "models/lightgbm" ]; then has_lightgbm=1; fi
+    if [ -d "models/ppo" ]; then has_ppo=1; fi
+
+    log_info "Model availability check:"
+    if [ $has_gru -eq 1 ]; then
+        log_info "  ✓ GRU models found"
+    else
+        log_warning "  ✗ GRU models not found"
+    fi
+
+    if [ $has_lightgbm -eq 1 ]; then
+        log_info "  ✓ LightGBM models found"
+    else
+        log_warning "  ✗ LightGBM models not found"
+    fi
+
+    if [ $has_ppo -eq 1 ]; then
+        log_info "  ✓ PPO models found"
+        # Check for feature_index.json per PPO symbol
+        missing_index=0
+        for sym in models/ppo/*; do
+            [ -d "$sym" ] || continue
+            if [ ! -f "$sym/feature_index.json" ]; then
+                log_warning "  ⚠️ Missing feature_index.json in $sym"
+                missing_index=1
+            fi
+        done
+        if [ $missing_index -eq 1 ]; then
+            log_warning "Some PPO symbols missing feature_index.json; inference will auto-create if enabled, but trainer should provide it."
+        fi
+    else
+        log_warning "  ✗ PPO models not found"
+    fi
+}
+
+# Configure for Linux deployment
+configure_for_linux() {
+    log_info "Configuring models for Linux deployment..."
+
+    # Create Linux-specific configuration
+    if [ -f "training_config.yaml" ]; then
+        log_info "Creating Linux deployment configuration..."
+
+        # Create simplified trading config for Linux (notifications disabled)
+        cat > "config_trading.yaml" << EOF
+# Linux Trading Configuration
+# Generated automatically by import_models.sh
+trading:
+  initial_balance: 10000
+  max_position_size: 0.1
+  transaction_fee: 0.001
+  slippage: 0.0005
+  model_weights:
+    gru: 0.45
+    lightgbm: 0.45
+    ppo: 0.1
+models:
+  lightgbm:
+    enabled: true
+  gru:
+    enabled: true
+  ppo:
+    enabled: true
+notifications:
+  telegram:
+    enabled: false
+    # Provide bot_token and chat_id via environment in production
+EOF
+
+        log_info "Linux trading configuration created"
+    fi
+
+    # Set proper file permissions
+    log_info "Setting file permissions for Linux..."
+    chmod +x *.sh 2>/dev/null || true
+
+    log_success "Linux configuration complete"
+}
+
+# Main execution
+main() {
+    log_info "Starting Linux model import process..."
+
+    # Check system requirements
+    check_dependencies
+
+    # Load env for S3 settings
+    load_environment
+
+    # Validate environment
+    validate_environment
+
+    # Fetch latest model package(s) from S3
+    fetch_models_from_s3
+
+    # Process model packages
+    process_model_packages
+
+    # Validate imported models
+    validate_imported_models
+
+    # Post-import PPO health check
+    log_info "Running post-import PPO health check..."
+    $PYTHON_CMD - << 'PYHEALTH'
+import os, glob, sys
+try:
+    from stable_baselines3 import PPO
+    import numpy as np
+except Exception as e:
+    print(f"WARNING: SB3 not available; skipping PPO health check: {e}")
+    sys.exit(0)
+
+errors = 0
+for sym_dir in glob.glob('models/ppo/*'):
+    model_path = os.path.join(sym_dir, 'model.zip')
+    if not os.path.isfile(model_path):
+        continue
+    try:
+        model = PPO.load(model_path, device='cpu')
+        obs = np.random.random((1, 104)).astype(np.float32)
+        _ = model.predict(obs)
+        print(f"SUCCESS: PPO health OK for {model_path}")
+    except Exception as e:
+        print(f"ERROR: PPO health failed for {model_path}: {e}")
+        errors += 1
+if errors:
+    sys.exit(2)
+sys.exit(0)
+PYHEALTH
+    if [ $? -ne 0 ]; then
+        log_error "PPO health check failed"
+        exit 1
+    fi
+
+    # S3 retention: keep only 5 most recent bundles under model_packages/
+    log_info "Applying S3 retention policy (keep 5 most recent bundles)..."
+    if [ -n "${AWS_MODELS_BUCKET:-}" ]; then
+        $PYTHON_CMD - "$AWS_MODELS_BUCKET" "${AWS_MODELS_PREFIX:-model_packages/}" << 'PYRET'
+import os, sys
+bucket = sys.argv[1]
+prefix = sys.argv[2] or 'model_packages/'
+try:
+    import boto3
+    from botocore.exceptions import ClientError
+except Exception as e:
+    print(f"WARNING: boto3 not available for retention: {e}")
+    sys.exit(0)
+
+s3 = boto3.client('s3', region_name=os.environ.get('AWS_DEFAULT_REGION') or 'us-east-1')
+objs = []
+try:
+    paginator = s3.get_paginator('list_objects_v2')
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for o in page.get('Contents', []):
+            key = o['Key']
+            if key.lower().endswith('.zip'):
+                objs.append({'Key': key, 'LastModified': o.get('LastModified')})
+except Exception as e:
+    print(f"WARNING: Failed to list S3 objects for retention: {e}")
+    sys.exit(0)
+
+if len(objs) <= 5:
+    print("INFO: Retention not needed; 5 or fewer bundles present")
+    sys.exit(0)
+
+objs.sort(key=lambda x: x['LastModified'] or 0)
+to_delete = objs[:-5]
+for o in to_delete:
+    try:
+        s3.delete_object(Bucket=bucket, Key=o['Key'])
+        print(f"INFO: Deleted old bundle {o['Key']}")
+    except ClientError as e:
+        print(f"WARNING: Failed to delete {o['Key']}: {e}")
+PYRET
+    else
+        log_warning "AWS_MODELS_BUCKET not set; skipping S3 retention"
+    fi
+
+    # Configure for Linux deployment
+    configure_for_linux
+
+    log_success "Model import completed successfully!"
+    echo
+    echo "========================================"
+    echo "   Import Process Complete!"
+    echo "   Ready for trading deployment"
+    echo "========================================"
+    echo
+    echo "Next step: Run ./deploy_trading.sh"
+    echo "Press Enter to continue..."
+    # Avoid non-interactive failure under set -e
+    read -r || true
+}
+
+# Handle script interruption
+trap 'log_warning "Import process interrupted by user"; exit 1' INT TERM
+
+# Run main function
+main "$@"

@@ -444,7 +444,9 @@ class TradingDataValidator:
 
 
 def validate_training_data(
-    datasets: Dict[str, pd.DataFrame], model_type: str = "all", config: Optional[Dict] = None
+    datasets: Dict[str, pd.DataFrame],
+    model_type: str = "all",
+    config: Optional[Dict] = None,
 ) -> Tuple[Dict[str, Dict], Dict]:
     """
     Convenience function to validate multiple datasets for training.

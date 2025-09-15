@@ -208,7 +208,11 @@ class ModelPerformanceMonitor:
                             )
 
                             ab_results.append(
-                                {"test_id": test_id, "variant": variant, "recorded": True}
+                                {
+                                    "test_id": test_id,
+                                    "variant": variant,
+                                    "recorded": True,
+                                }
                             )
 
             monitoring_results["ab_testing"] = ab_results

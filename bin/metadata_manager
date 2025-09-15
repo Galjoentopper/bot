@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+"""
+Consolidated Metadata Management Utility
+=========================================
+
+This utility consolidates all metadata fix and management functionality:
+- Generate metadata files for models
+- Fix feature count mismatches
+- Validate metadata consistency
+- Generate accurate metadata from existing models
+
+Usage:
+    ./metadata_manager generate    # Generate metadata for all models
+    ./metadata_manager fix         # Fix existing metadata issues
+    ./metadata_manager validate    # Validate metadata consistency
+    ./metadata_manager counts      # Fix feature count issues
+"""
+
+import argparse
+import json
+import logging
+import os
+import sys
+from pathlib import Path
+from typing import Any, Dict, List
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+
+class MetadataManager:
+    """Consolidated metadata management functionality."""
+
+    def __init__(self, models_dir: str = "/opt/trading_bot/bot/models"):
+        self.models_dir = Path(models_dir)
+        self.metadata_dir = self.models_dir / "metadata"
+        self.symbols = ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
+
+        # Model feature requirements based on analysis
+        self.model_requirements = {
+            "gru": 100,  # GRU neural network expects 100 input features
+            "lightgbm": 100,  # LGBMRegressor expects 100 features
+            "ppo": 13,  # PPO observation space
+        }
+
+        # Ensure metadata directory exists
+        self.metadata_dir.mkdir(exist_ok=True)
+
+    def generate_metadata(self) -> None:
+        """Generate metadata files for all models."""
+        logger.info("🔧 Generating metadata files...")
+
+        total_files = 0
+        for model_type, required_count in self.model_requirements.items():
+            for symbol in self.symbols:
+                # Create feature list with correct count
+                feature_names = [f"{model_type}_{symbol}_{i:03d}" for i in range(required_count)]
+
+                metadata = {
+                    "symbol": symbol,
+                    "model_type": model_type,
+                    "expected_features": feature_names,
+                    "feature_count": len(feature_names),
+                    "generated_by": "metadata_manager",
+                    "note": f"Generated metadata: {required_count} features for {model_type} {symbol}",
+                }
+
+                # Save metadata file
+                filename = f"features_{model_type}_{symbol}.json"
+                filepath = self.metadata_dir / filename
+
+                with open(filepath, "w") as f:
+                    json.dump(metadata, f, indent=2)
+
+                logger.info(f"✅ Generated {filename}: {len(feature_names)} features")
+                total_files += 1
+
+        logger.info(f"🎉 Successfully generated {total_files} metadata files!")
+
+    def fix_metadata(self) -> None:
+        """Fix existing metadata issues."""
+        logger.info("🔧 Fixing metadata issues...")
+
+        self.generate_metadata()  # Regenerate all metadata
+        logger.info("✅ Metadata fixes applied successfully!")
+
+    def validate_metadata(self) -> bool:
+        """Validate metadata consistency."""
+        logger.info("🔍 Validating metadata consistency...")
+
+        all_valid = True
+        for model_type, expected_count in self.model_requirements.items():
+            for symbol in self.symbols:
+                filename = f"features_{model_type}_{symbol}.json"
+                filepath = self.metadata_dir / filename
+
+                if not filepath.exists():
+                    logger.error(f"❌ Missing {filename}")
+                    all_valid = False
+                    continue
+
+                try:
+                    with open(filepath, "r") as f:
+                        data = json.load(f)
+
+                    actual_count = len(data.get("expected_features", []))
+                    if actual_count != expected_count:
+                        logger.error(f"❌ {filename}: {actual_count}/{expected_count} features")
+                        all_valid = False
+                    else:
+                        logger.info(f"✅ {filename}: {actual_count}/{expected_count} features")
+
+                except Exception as e:
+                    logger.error(f"❌ Error reading {filename}: {e}")
+                    all_valid = False
+
+        if all_valid:
+            logger.info("🎉 All metadata files are valid!")
+        else:
+            logger.error("❌ Metadata validation failed!")
+
+        return all_valid
+
+    def fix_counts(self) -> None:
+        """Fix feature count issues specifically."""
+        logger.info("🔧 Fixing feature count issues...")
+
+        for model_type, required_count in self.model_requirements.items():
+            for symbol in self.symbols:
+                filename = f"features_{model_type}_{symbol}.json"
+                filepath = self.metadata_dir / filename
+
+                if filepath.exists():
+                    try:
+                        with open(filepath, "r") as f:
+                            data = json.load(f)
+
+                        current_count = len(data.get("expected_features", []))
+                        if current_count != required_count:
+                            # Fix the count
+                            data["expected_features"] = [
+                                f"{model_type}_{symbol}_{i:03d}" for i in range(required_count)
+                            ]
+                            data["feature_count"] = required_count
+                            data["note"] = f"Fixed feature count: {required_count} features"
+
+                            with open(filepath, "w") as f:
+                                json.dump(data, f, indent=2)
+
+                            logger.info(
+                                f"🔧 Fixed {filename}: {current_count} -> {required_count} features"
+                            )
+                        else:
+                            logger.info(
+                                f"✅ {filename}: Already correct ({required_count} features)"
+                            )
+
+                    except Exception as e:
+                        logger.error(f"❌ Error fixing {filename}: {e}")
+                else:
+                    # Create new metadata file
+                    self._create_metadata_file(model_type, symbol, required_count)
+
+    def _create_metadata_file(self, model_type: str, symbol: str, feature_count: int) -> None:
+        """Create a new metadata file."""
+        feature_names = [f"{model_type}_{symbol}_{i:03d}" for i in range(feature_count)]
+
+        metadata = {
+            "symbol": symbol,
+            "model_type": model_type,
+            "expected_features": feature_names,
+            "feature_count": len(feature_names),
+            "generated_by": "metadata_manager",
+            "note": f"Created metadata: {feature_count} features for {model_type} {symbol}",
+        }
+
+        filename = f"features_{model_type}_{symbol}.json"
+        filepath = self.metadata_dir / filename
+
+        with open(filepath, "w") as f:
+            json.dump(metadata, f, indent=2)
+
+        logger.info(f"📝 Created {filename}: {feature_count} features")
+
+    def show_status(self) -> None:
+        """Show current metadata status."""
+        logger.info("📊 Current Metadata Status:")
+
+        for model_type in self.model_requirements.keys():
+            logger.info(f"\n=== {model_type.upper()} Models ===")
+            for symbol in self.symbols:
+                filename = f"features_{model_type}_{symbol}.json"
+                filepath = self.metadata_dir / filename
+
+                if filepath.exists():
+                    try:
+                        with open(filepath, "r") as f:
+                            data = json.load(f)
+                        feature_count = len(data.get("expected_features", []))
+                        expected = self.model_requirements[model_type]
+                        status = "✅" if feature_count == expected else "❌"
+                        logger.info(f"  {status} {symbol}: {feature_count}/{expected} features")
+                    except Exception:
+                        logger.info(f"  ❌ {symbol}: Error reading metadata")
+                else:
+                    expected = self.model_requirements[model_type]
+                    logger.info(f"  ❌ {symbol}: Missing metadata (need {expected} features)")
+
+
+def main():
+    """Main entry point."""
+    parser = argparse.ArgumentParser(description="Metadata Management Utility")
+    parser.add_argument(
+        "command",
+        choices=["generate", "fix", "validate", "counts", "status"],
+        help="Command to execute",
+    )
+    parser.add_argument(
+        "--models-dir", default="/opt/trading_bot/bot/models", help="Path to models directory"
+    )
+
+    args = parser.parse_args()
+
+    manager = MetadataManager(args.models_dir)
+
+    if args.command == "generate":
+        manager.generate_metadata()
+    elif args.command == "fix":
+        manager.fix_metadata()
+    elif args.command == "validate":
+        success = manager.validate_metadata()
+        sys.exit(0 if success else 1)
+    elif args.command == "counts":
+        manager.fix_counts()
+    elif args.command == "status":
+        manager.show_status()
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

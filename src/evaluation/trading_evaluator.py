@@ -59,13 +59,19 @@ class TradingModelEvaluator:
 
         # Metrics calculator
         self.metrics_calc = TradingMetricsCalculator(
-            risk_free_rate=self.risk_free_rate, trading_days=365  # Crypto trades 365 days
+            risk_free_rate=self.risk_free_rate,
+            trading_days=365,  # Crypto trades 365 days
         )
 
         logger.info("Trading model evaluator initialized")
 
     def walk_forward_validation(
-        self, model: Any, X: np.ndarray, y: np.ndarray, prices: np.ndarray, symbol: str = "Unknown"
+        self,
+        model: Any,
+        X: np.ndarray,
+        y: np.ndarray,
+        prices: np.ndarray,
+        symbol: str = "Unknown",
     ) -> Dict[str, Any]:
         """
         Perform walk-forward validation for trading models.
@@ -239,9 +245,9 @@ class TradingModelEvaluator:
         if len(prices) >= len(predictions):
             trading_perf = evaluate_trading_performance(
                 predictions=predictions,
-                actual_prices=prices[: len(predictions)]
-                if len(prices) > len(predictions)
-                else prices,
+                actual_prices=(
+                    prices[: len(predictions)] if len(prices) > len(predictions) else prices
+                ),
                 initial_balance=self.initial_balance,
                 transaction_cost=self.transaction_cost,
             )
@@ -285,9 +291,11 @@ class TradingModelEvaluator:
             if np.any(high_vol_mask) and len(predictions) == len(high_vol_mask):
                 high_vol_metrics = self._calculate_regime_metrics(
                     predictions[high_vol_mask],
-                    actuals[high_vol_mask]
-                    if len(actuals) == len(high_vol_mask)
-                    else actuals[: np.sum(high_vol_mask)],
+                    (
+                        actuals[high_vol_mask]
+                        if len(actuals) == len(high_vol_mask)
+                        else actuals[: np.sum(high_vol_mask)]
+                    ),
                 )
                 regime_analysis["high_volatility"] = high_vol_metrics
 
@@ -296,9 +304,11 @@ class TradingModelEvaluator:
             if np.any(low_vol_mask) and len(predictions) == len(low_vol_mask):
                 low_vol_metrics = self._calculate_regime_metrics(
                     predictions[low_vol_mask],
-                    actuals[low_vol_mask]
-                    if len(actuals) == len(low_vol_mask)
-                    else actuals[: np.sum(low_vol_mask)],
+                    (
+                        actuals[low_vol_mask]
+                        if len(actuals) == len(low_vol_mask)
+                        else actuals[: np.sum(low_vol_mask)]
+                    ),
                 )
                 regime_analysis["low_volatility"] = low_vol_metrics
 
@@ -316,9 +326,11 @@ class TradingModelEvaluator:
             if np.any(bull_mask) and len(predictions) == len(bull_mask):
                 bull_metrics = self._calculate_regime_metrics(
                     predictions[bull_mask],
-                    actuals[bull_mask]
-                    if len(actuals) == len(bull_mask)
-                    else actuals[: np.sum(bull_mask)],
+                    (
+                        actuals[bull_mask]
+                        if len(actuals) == len(bull_mask)
+                        else actuals[: np.sum(bull_mask)]
+                    ),
                 )
                 regime_analysis["bull_market"] = bull_metrics
 
@@ -327,9 +339,11 @@ class TradingModelEvaluator:
             if np.any(bear_mask) and len(predictions) == len(bear_mask):
                 bear_metrics = self._calculate_regime_metrics(
                     predictions[bear_mask],
-                    actuals[bear_mask]
-                    if len(actuals) == len(bear_mask)
-                    else actuals[: np.sum(bear_mask)],
+                    (
+                        actuals[bear_mask]
+                        if len(actuals) == len(bear_mask)
+                        else actuals[: np.sum(bear_mask)]
+                    ),
                 )
                 regime_analysis["bear_market"] = bear_metrics
 
@@ -370,7 +384,12 @@ class TradingModelEvaluator:
         return metrics
 
     def evaluate_model_stability(
-        self, model: Any, X: np.ndarray, y: np.ndarray, prices: np.ndarray, num_runs: int = 10
+        self,
+        model: Any,
+        X: np.ndarray,
+        y: np.ndarray,
+        prices: np.ndarray,
+        num_runs: int = 10,
     ) -> Dict[str, Any]:
         """
         Evaluate model stability across multiple runs.
@@ -403,9 +422,9 @@ class TradingModelEvaluator:
                     "run": run,
                     "mse": mean_squared_error(y, predictions),
                     "mae": mean_absolute_error(y, predictions),
-                    "correlation": np.corrcoef(y, predictions)[0, 1]
-                    if np.std(predictions) > 1e-8
-                    else 0.0,
+                    "correlation": (
+                        np.corrcoef(y, predictions)[0, 1] if np.std(predictions) > 1e-8 else 0.0
+                    ),
                 }
 
                 # Trading metrics

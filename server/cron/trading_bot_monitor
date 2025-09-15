@@ -1,8 +1,0 @@
-# Trading Bot Monitoring
-*/5 * * * * trader /opt/trading_bot/bot/scripts/health_check.sh >> /var/log/trading_bot/health_$(date +\%Y\%m\%d).log 2>&1
-
-# Performance reports every hour
-0 * * * * trader /opt/trading_bot/bot/scripts/generate_performance_report.sh >> /var/log/trading_bot/performance_$(date +\%Y\%m\%d).log 2>&1
-
-# Log rotation daily
-0 2 * * * trader /opt/trading_bot/bot/scripts/rotate_logs.sh

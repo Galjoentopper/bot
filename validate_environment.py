@@ -28,7 +28,15 @@ def validate_python_environment():
         )
 
     # Check critical modules
-    critical_modules = ["pandas", "numpy", "torch", "lightgbm", "yaml", "requests", "aiohttp"]
+    critical_modules = [
+        "pandas",
+        "numpy",
+        "torch",
+        "lightgbm",
+        "yaml",
+        "requests",
+        "aiohttp",
+    ]
 
     for module_name in critical_modules:
         try:

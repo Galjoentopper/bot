@@ -222,9 +222,9 @@ class DrawdownProtector:
             "trading_suspended": self.trading_suspended,
             "position_reduction_active": self.position_reduction_active,
             "emergency_stop_active": self.emergency_stop_active,
-            "drawdown_event": self.current_drawdown_event.__dict__
-            if self.current_drawdown_event
-            else None,
+            "drawdown_event": (
+                self.current_drawdown_event.__dict__ if self.current_drawdown_event else None
+            ),
         }
 
         return response
@@ -280,7 +280,10 @@ class DrawdownProtector:
                         severity = (
                             "critical"
                             if rule.action
-                            in [ProtectionAction.EMERGENCY_STOP, ProtectionAction.FULL_LIQUIDATION]
+                            in [
+                                ProtectionAction.EMERGENCY_STOP,
+                                ProtectionAction.FULL_LIQUIDATION,
+                            ]
                             else "high"
                         )
                         self.notification_callback(action_result["description"], severity)
@@ -482,7 +485,11 @@ class DrawdownProtector:
             }
 
         # All checks passed
-        return {"allowed": True, "reason": "No protection restrictions apply", "severity": "low"}
+        return {
+            "allowed": True,
+            "reason": "No protection restrictions apply",
+            "severity": "low",
+        }
 
     def get_protection_status(self) -> Dict[str, Any]:
         """Get current protection status summary"""
@@ -584,7 +591,7 @@ class DrawdownProtector:
                 "duration_days": event.duration_days,
                 "actions_taken": event.actions_taken,
                 "is_active": event.is_active,
-                "recovery_date": event.recovery_date.isoformat() if event.recovery_date else None,
+                "recovery_date": (event.recovery_date.isoformat() if event.recovery_date else None),
             }
             for event in self.drawdown_history
             if event.start_date >= cutoff_date
@@ -615,7 +622,10 @@ class DrawdownProtector:
         completed_events = [event for event in self.drawdown_history if not event.is_active]
 
         if not completed_events:
-            return {"status": "insufficient_data", "message": "No completed drawdown events"}
+            return {
+                "status": "insufficient_data",
+                "message": "No completed drawdown events",
+            }
 
         # Calculate statistics
         max_drawdowns = [event.max_drawdown_pct for event in completed_events]
@@ -629,7 +639,7 @@ class DrawdownProtector:
             "avg_duration_days": np.mean(durations),
             "longest_duration_days": np.max(durations),
             "shortest_duration_days": np.min(durations),
-            "events_per_year": len(completed_events) / (max(durations) / 365) if durations else 0,
+            "events_per_year": (len(completed_events) / (max(durations) / 365) if durations else 0),
         }
 
         # Recovery statistics

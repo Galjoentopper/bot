@@ -315,11 +315,13 @@ class EnhancedTradingSystem:
                 drift_status=monitoring_result.get("status", "unknown"),
                 model_health=monitoring_result.get("status", "unknown"),
                 ab_test_variant=self._get_ab_test_variant(user_id, symbol),
-                protection_constraints=trading_allowed.get("reason", "").split(", ")
-                if not trading_allowed["allowed"]
-                else [],
+                protection_constraints=(
+                    trading_allowed.get("reason", "").split(", ")
+                    if not trading_allowed["allowed"]
+                    else []
+                ),
                 risk_adjusted_size=sizing_result.risk_adjusted_size,
-                final_size=sizing_result.recommended_size if trading_allowed["allowed"] else 0.0,
+                final_size=(sizing_result.recommended_size if trading_allowed["allowed"] else 0.0),
                 execution_approved=trading_allowed["allowed"] and trading_action["execute"],
                 execution_reason=trading_action["reason"],
             )
@@ -445,9 +447,11 @@ class EnhancedTradingSystem:
                 "active_monitoring": monitoring_status["monitoring_active"],
             },
             "risk_management": {
-                "portfolio_risk_status": portfolio_analysis["overall_risk_status"]
-                if portfolio_analysis
-                else "no_positions",
+                "portfolio_risk_status": (
+                    portfolio_analysis["overall_risk_status"]
+                    if portfolio_analysis
+                    else "no_positions"
+                ),
                 "risk_limit_breaches": len(
                     [
                         l
@@ -525,20 +529,35 @@ class EnhancedTradingSystem:
         }
 
     def _determine_trading_action(
-        self, prediction: float, monitoring_result: Dict[str, Any], trading_allowed: Dict[str, bool]
+        self,
+        prediction: float,
+        monitoring_result: Dict[str, Any],
+        trading_allowed: Dict[str, bool],
     ) -> Dict[str, Any]:
         """Determine final trading action based on all inputs"""
 
         if not trading_allowed["allowed"]:
-            return {"action": "hold", "execute": False, "reason": trading_allowed["reason"]}
+            return {
+                "action": "hold",
+                "execute": False,
+                "reason": trading_allowed["reason"],
+            }
 
         # Check model health
         if monitoring_result.get("status") in ["critical", "error"]:
-            return {"action": "hold", "execute": False, "reason": "Model health issues detected"}
+            return {
+                "action": "hold",
+                "execute": False,
+                "reason": "Model health issues detected",
+            }
 
         # Determine action based on prediction
         if abs(prediction) < 0.005:  # Less than 0.5% predicted move
-            return {"action": "hold", "execute": False, "reason": "Prediction signal too weak"}
+            return {
+                "action": "hold",
+                "execute": False,
+                "reason": "Prediction signal too weak",
+            }
         elif prediction > 0.005:
             return {
                 "action": "buy",
@@ -657,4 +676,8 @@ class EnhancedTradingSystem:
 
         except Exception as e:
             self.logger.error(f"Error stopping trading session: {e}")
-            return {"status": "error", "error": str(e), "message": "Error stopping trading session"}
+            return {
+                "status": "error",
+                "error": str(e),
+                "message": "Error stopping trading session",
+            }

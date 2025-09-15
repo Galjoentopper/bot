@@ -1,0 +1,167 @@
+# Unified Telegram System Configuration
+# ===================================
+#
+# This configuration file defines the behavior and settings for the
+# new unified Telegram notification system.
+
+telegram:
+  # Service Configuration
+  service:
+    enabled: true
+    max_retries: 3
+    retry_delay: 5  # seconds
+    connection_timeout: 30  # seconds
+    health_check_interval: 60  # seconds
+
+  # Security Settings
+  security:
+    # Chat IDs are loaded from environment variables for security
+    # TELEGRAM_CHAT_ID should contain the authorized chat ID
+    # Additional authorized chats can be added via commands
+    auth_required: true
+    admin_commands_enabled: true
+    command_rate_limiting: true
+    max_unauthorized_attempts: 5
+
+  # Message Queue Configuration
+  queue:
+    enabled: true
+    persistence: true
+    max_size: 1000
+    persistence_file: "logs/telegram_queue.json"
+    dead_letter_max_size: 100
+    cleanup_interval: 3600  # seconds (1 hour)
+
+  # Rate Limiting
+  rate_limits:
+    # Messages per minute limits
+    messages_per_minute: 20
+    commands_per_user_per_minute: 10
+    admin_commands_per_minute: 20
+
+    # Burst limits (short-term spikes)
+    burst_messages: 5
+    burst_window: 10  # seconds
+
+  # Notification Settings
+  notifications:
+    # Trading Notifications
+    trade_notifications: true
+    signal_notifications: true
+    position_notifications: true
+    risk_notifications: true
+    system_notifications: true
+    performance_reports: true
+
+    # Filtering Thresholds
+    min_trade_confidence: 0.6
+    min_trade_amount: 100.0
+    min_pnl_threshold: 10.0
+
+    # Rate limiting for different notification types
+    max_trades_per_minute: 10
+    max_signals_per_minute: 15
+    max_risk_alerts_per_minute: 5
+
+  # Message Formatting
+  formatting:
+    parse_mode: "HTML"
+    include_timestamps: true
+    use_emojis: true
+    truncate_long_messages: true
+    max_message_length: 4096
+
+    # Custom formatting options
+    currency_format: "${:.4f}"
+    percentage_format: "{:.1f}%"
+    datetime_format: "%Y-%m-%d %H:%M:%S UTC"
+
+  # Command Configuration
+  commands:
+    # Default rate limits for commands
+    default_rate_limit: 10
+    admin_rate_limit: 20
+
+    # Command aliases
+    aliases:
+      pos: positions
+      perf: performance
+      q: queue
+      res: resources
+
+    # Command help text customization
+    help_sections:
+      - name: "Trading Commands"
+        commands: ["portfolio", "positions", "performance", "trades", "signals", "risk"]
+      - name: "System Commands"
+        commands: ["status", "health", "uptime", "resources", "logs"]
+      - name: "Admin Commands"
+        commands: ["restart", "shutdown", "maintenance", "backup", "auth", "debug"]
+
+  # Health Monitoring
+  monitoring:
+    enabled: true
+    health_check_commands: true
+    performance_tracking: true
+    error_reporting: true
+
+    # Health thresholds
+    max_consecutive_failures: 5
+    max_queue_size_warning: 800
+    max_memory_usage_warning: 85  # percentage
+    max_response_time_warning: 5000  # milliseconds
+
+  # Logging Configuration
+  logging:
+    level: "INFO"
+    file_logging: true
+    console_logging: true
+    log_rotation: true
+    max_log_files: 10
+    max_log_size: "10MB"
+
+    # Specific loggers
+    telegram_client_level: "INFO"
+    command_registry_level: "INFO"
+    message_queue_level: "DEBUG"
+
+# Development and Testing Settings
+development:
+  # Mock mode for testing without actual Telegram API
+  mock_mode: false
+  test_chat_id: null
+
+  # Debug features
+  verbose_logging: false
+  save_raw_updates: false
+  simulate_errors: false
+
+# Production Settings
+production:
+  # Security hardening
+  strict_auth: true
+  log_sensitive_info: false
+  enable_metrics: true
+
+  # Performance optimization
+  connection_pooling: true
+  message_batching: true
+  async_processing: true
+
+  # Backup and recovery
+  auto_backup_queue: true
+  backup_interval: 3600  # seconds
+  backup_retention_days: 7
+
+# Feature Flags
+features:
+  # Experimental features
+  advanced_formatting: true
+  chart_generation: false
+  voice_messages: false
+  document_sharing: true
+
+  # Integration features
+  webhook_support: false
+  external_api_integration: true
+  custom_commands: true

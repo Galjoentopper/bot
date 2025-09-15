@@ -50,12 +50,12 @@ class SchemaValidator:
                 "required_columns": ["close", "high", "low", "open", "volume"],
             },
             "lightgbm": {
-                "expected_features": 113,
+                "expected_features": 100,
                 "feature_types": ["float64", "float32"],
                 "required_columns": ["close", "high", "low", "open", "volume"],
             },
             "ppo": {
-                "expected_features": 13,  # 10 market + 3 portfolio
+                "expected_features": 104,  # PPO uses 104 expanded features (fixed from 13)
                 "sequence_length": 32,  # Updated default
                 "feature_types": ["float64", "float32"],
                 "required_columns": ["close", "high", "low", "open", "volume"],
@@ -116,8 +116,11 @@ class SchemaValidator:
 
     def _load_schema_from_model_metadata(self, symbol: str, model_type: str) -> Optional[Dict]:
         """Load schema from model-specific metadata files."""
-        # Search paths for model metadata
+        # Search paths for model metadata - PRIORITY: our professional metadata
         search_paths = [
+            # PRIORITY: Professional metadata system
+            self.models_dir / "metadata",  # Our feature metadata files
+            # Legacy paths for backward compatibility
             self.models_dir / symbol / model_type,
             self.models_dir / "packaged_models" / f"{model_type}_{symbol}",
             self.models_dir / "imported_models" / f"{model_type}_{symbol}",
@@ -127,7 +130,26 @@ class SchemaValidator:
         ]
 
         for path in search_paths:
-            # Try features.json first
+            # PRIORITY: Try our professional metadata files first
+            professional_features_file = path / f"features_{model_type}_{symbol}.json"
+            if professional_features_file.exists():
+                try:
+                    with open(professional_features_file, "r") as f:
+                        features_data = json.load(f)
+
+                    if "expected_features" in features_data and "feature_count" in features_data:
+                        expected_features = features_data["feature_count"]
+                        schema = self.default_model_schemas.get(model_type, {}).copy()
+                        schema["expected_features"] = expected_features
+                        schema["feature_names"] = features_data["expected_features"]
+                        self.logger.logger.debug(
+                            f"Loaded professional metadata for {model_type}_{symbol}: {expected_features} features"
+                        )
+                        return schema
+                except Exception as e:
+                    self.logger.logger.debug(f"Failed to load {professional_features_file}: {e}")
+
+            # Fallback: Try legacy features.json
             features_file = path / "features.json"
             if features_file.exists():
                 try:

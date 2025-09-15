@@ -13,13 +13,14 @@ Key Features:
 - Market regime detection for strategy adaptation
 """
 
-import numpy as np
-import pandas as pd
+import logging
 import time
-from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import logging
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -64,28 +65,16 @@ class ProfitOptimizer:
 
         # Configuration parameters
         self.min_profit_pct = config.get("min_profit_pct", 0.02)  # 2% minimum profit
-        self.max_position_pct = config.get(
-            "max_position_pct", 0.25
-        )  # 25% max position size
-        self.trailing_stop_pct = config.get(
-            "trailing_stop_pct", 0.05
-        )  # 5% trailing stop
-        self.profit_target_pct = config.get(
-            "profit_target_pct", 0.15
-        )  # 15% profit target
-        self.max_holding_days = config.get(
-            "max_holding_days", 7
-        )  # Maximum holding period
+        self.max_position_pct = config.get("max_position_pct", 0.25)  # 25% max position size
+        self.trailing_stop_pct = config.get("trailing_stop_pct", 0.05)  # 5% trailing stop
+        self.profit_target_pct = config.get("profit_target_pct", 0.15)  # 15% profit target
+        self.max_holding_days = config.get("max_holding_days", 7)  # Maximum holding period
         self.volatility_adjustment = config.get("volatility_adjustment", True)
         self.correlation_threshold = config.get("correlation_threshold", 0.7)
 
         # Partial profit-taking parameters
-        self.profit_scaling_levels = config.get(
-            "profit_scaling_levels", [0.02, 0.04, 0.06]
-        )
-        self.profit_scaling_amounts = config.get(
-            "profit_scaling_amounts", [0.3, 0.4, 0.5]
-        )
+        self.profit_scaling_levels = config.get("profit_scaling_levels", [0.02, 0.04, 0.06])
+        self.profit_scaling_amounts = config.get("profit_scaling_amounts", [0.3, 0.4, 0.5])
 
         # Enhanced risk management parameters
         self.position_sizing_method = config.get("position_sizing_method", "fixed")
@@ -125,9 +114,7 @@ class ProfitOptimizer:
             volatility = returns.std() * np.sqrt(24)  # 24 periods per day for 30m data
 
             # Calculate momentum
-            price_change = (
-                market_data["close"].iloc[-1] / market_data["close"].iloc[-10] - 1
-            )
+            price_change = market_data["close"].iloc[-1] / market_data["close"].iloc[-10] - 1
 
             # Calculate volume trend
             recent_vol_mean = market_data["volume"].rolling(5).mean().iloc[-1]
@@ -138,26 +125,16 @@ class ProfitOptimizer:
                 volume_trend = 1.0
 
             # Adjust thresholds based on market conditions
-            volatility_multiplier = max(
-                0.5, min(2.0, volatility / 0.02)
-            )  # Adjust for volatility
-            momentum_adjustment = np.clip(
-                price_change * 0.5, -0.3, 0.3
-            )  # Momentum bias
-            volume_adjustment = np.clip(
-                (volume_trend - 1) * 0.2, -0.2, 0.2
-            )  # Volume confirmation
+            volatility_multiplier = max(0.5, min(2.0, volatility / 0.02))  # Adjust for volatility
+            momentum_adjustment = np.clip(price_change * 0.5, -0.3, 0.3)  # Momentum bias
+            volume_adjustment = np.clip((volume_trend - 1) * 0.2, -0.2, 0.2)  # Volume confirmation
 
             # Calculate adjusted thresholds
             buy_threshold = (
-                base_threshold * volatility_multiplier
-                + momentum_adjustment
-                + volume_adjustment
+                base_threshold * volatility_multiplier + momentum_adjustment + volume_adjustment
             )
             sell_threshold = (
-                -base_threshold * volatility_multiplier
-                - momentum_adjustment
-                - volume_adjustment
+                -base_threshold * volatility_multiplier - momentum_adjustment - volume_adjustment
             )
 
             logger.debug(
@@ -190,21 +167,15 @@ class ProfitOptimizer:
         """Calculate optimal position size using enhanced Kelly Criterion and improved cash utilization."""
         try:
             # Enhanced Kelly Criterion with prediction strength
-            win_rate = min(
-                0.95, max(0.15, confidence)
-            )  # Wider range for better utilization
+            win_rate = min(0.95, max(0.15, confidence))  # Wider range for better utilization
             avg_win = self.profit_target_pct
             avg_loss = self.trailing_stop_pct
 
             # Kelly fraction with prediction strength multiplier
             kelly_base = (win_rate * avg_win - (1 - win_rate) * avg_loss) / avg_win
-            prediction_strength = min(
-                2.0, abs(prediction) * 1000
-            )  # Scale prediction impact
+            prediction_strength = min(2.0, abs(prediction) * 1000)  # Scale prediction impact
             kelly_fraction = kelly_base * prediction_strength
-            kelly_fraction = max(
-                0.02, min(0.4, kelly_fraction)
-            )  # Increased range: 2%-40%
+            kelly_fraction = max(0.02, min(0.4, kelly_fraction))  # Increased range: 2%-40%
 
             # Calculate portfolio metrics
             # Use current prices to value positions
@@ -215,14 +186,10 @@ class ProfitOptimizer:
                     total_position_value += qty * price
             total_portfolio_value = current_balance + total_position_value
             current_exposure = (
-                total_position_value / total_portfolio_value
-                if total_portfolio_value > 0
-                else 0
+                total_position_value / total_portfolio_value if total_portfolio_value > 0 else 0
             )
             cash_ratio = (
-                current_balance / total_portfolio_value
-                if total_portfolio_value > 0
-                else 1.0
+                current_balance / total_portfolio_value if total_portfolio_value > 0 else 1.0
             )
 
             # Enhanced cash utilization - target 80-90% deployment
@@ -258,9 +225,7 @@ class ProfitOptimizer:
 
             # Final position size calculation
             optimal_size = kelly_fraction * vol_adjustment
-            optimal_size = max(
-                0.01, min(dynamic_max_position, optimal_size)
-            )  # Min 1%, max dynamic
+            optimal_size = max(0.01, min(dynamic_max_position, optimal_size))  # Min 1%, max dynamic
 
             # Ensure we don't exceed total portfolio limits (max 90% deployed)
             if current_exposure + optimal_size > 0.9:
@@ -279,9 +244,7 @@ class ProfitOptimizer:
             logger.error(f"Failed to calculate optimal position size for {symbol}: {e}")
             return 0.05  # Less conservative fallback
 
-    def update_trailing_stops(
-        self, current_prices: Dict[str, float]
-    ) -> Dict[str, TradeSignal]:
+    def update_trailing_stops(self, current_prices: Dict[str, float]) -> Dict[str, TradeSignal]:
         """Update trailing stops and generate sell signals when triggered."""
         signals = {}
 
@@ -295,9 +258,7 @@ class ProfitOptimizer:
 
             # Update unrealized P&L
             position.last_price = current_price
-            position.unrealized_pnl = (
-                current_price - position.avg_cost
-            ) * position.quantity
+            position.unrealized_pnl = (current_price - position.avg_cost) * position.quantity
 
             # Initialize trailing stop if not set
             if position.trailing_stop is None:
@@ -307,15 +268,10 @@ class ProfitOptimizer:
             new_trailing_stop = current_price * (1 - self.trailing_stop_pct)
             if new_trailing_stop > position.trailing_stop:
                 position.trailing_stop = new_trailing_stop
-                logger.debug(
-                    f"{symbol} trailing stop updated to {position.trailing_stop:.4f}"
-                )
+                logger.debug(f"{symbol} trailing stop updated to {position.trailing_stop:.4f}")
 
             # Check for stop loss trigger
-            if (
-                position.trailing_stop is not None
-                and current_price <= position.trailing_stop
-            ):
+            if position.trailing_stop is not None and current_price <= position.trailing_stop:
                 unrealized_pnl_pct = position.unrealized_pnl / position.total_cost
                 signals[symbol] = TradeSignal(
                     symbol=symbol,
@@ -340,9 +296,7 @@ class ProfitOptimizer:
                     self, "profit_scaling_amounts"
                 ):
                     for i, level in enumerate(self.profit_scaling_levels):
-                        if profit_pct >= level and not hasattr(
-                            position, f"scaled_at_level_{i}"
-                        ):
+                        if profit_pct >= level and not hasattr(position, f"scaled_at_level_{i}"):
                             sell_amount = (
                                 self.profit_scaling_amounts[i]
                                 if i < len(self.profit_scaling_amounts)
@@ -407,9 +361,7 @@ class ProfitOptimizer:
                         risk_score=0.3,
                         expected_return=unrealized_pnl_pct,
                     )
-                    logger.info(
-                        f"{symbol} time-based exit: held {holding_time/86400:.1f} days"
-                    )
+                    logger.info(f"{symbol} time-based exit: held {holding_time/86400:.1f} days")
 
         return signals
 
@@ -458,9 +410,7 @@ class ProfitOptimizer:
                             and symbol in correlation_matrix.columns
                             and other_symbol in correlation_matrix.columns
                         ):
-                            correlation = abs(
-                                correlation_matrix.loc[symbol, other_symbol]
-                            )
+                            correlation = abs(correlation_matrix.loc[symbol, other_symbol])
                             weighted_correlation += correlation * other_weight
                             total_other_weight += other_weight
 
@@ -549,9 +499,7 @@ class ProfitOptimizer:
             return adjusted_size
 
         except Exception as e:
-            logger.error(
-                f"Failed to calculate volatility-adjusted size for {symbol}: {e}"
-            )
+            logger.error(f"Failed to calculate volatility-adjusted size for {symbol}: {e}")
             return base_size
 
     def check_trade_limits(self) -> bool:
@@ -572,12 +520,13 @@ class ProfitOptimizer:
                 )
                 return False
 
-            # Check minimum time between trades
-            if current_time - self.last_trade_time < self.min_time_between_trades:
-                logger.debug(
-                    f"Minimum time between trades not met: {current_time - self.last_trade_time:.0f}s < {self.min_time_between_trades}s"
-                )
-                return False
+            # Check minimum time between trades (skip if configured as 0 or less)
+            if getattr(self, "min_time_between_trades", 0) and self.min_time_between_trades > 0:
+                if current_time - self.last_trade_time < self.min_time_between_trades:
+                    logger.debug(
+                        f"Minimum time between trades not met: {current_time - self.last_trade_time:.0f}s < {self.min_time_between_trades}s"
+                    )
+                    return False
 
             return True
 
@@ -585,9 +534,7 @@ class ProfitOptimizer:
             logger.error(f"Failed to check trade limits: {e}")
             return True  # Allow trade if check fails
 
-    def should_filter_by_volatility(
-        self, symbol: str, market_data: pd.DataFrame
-    ) -> bool:
+    def should_filter_by_volatility(self, symbol: str, market_data: pd.DataFrame) -> bool:
         """Check if trade should be filtered due to high volatility."""
         try:
             if not self.volatility_filter or len(market_data) < 10:
@@ -710,9 +657,7 @@ class ProfitOptimizer:
                 "max_drawdown": self.max_drawdown,
                 "current_drawdown": self.current_drawdown,
                 "peak_value": self.peak_portfolio_value,
-                "num_positions": len(
-                    [p for p in self.positions.values() if p.quantity > 0]
-                ),
+                "num_positions": len([p for p in self.positions.values() if p.quantity > 0]),
                 "positions": {
                     symbol: {
                         "quantity": pos.quantity,
@@ -720,9 +665,7 @@ class ProfitOptimizer:
                         "current_price": pos.last_price,
                         "unrealized_pnl": pos.unrealized_pnl,
                         "unrealized_pnl_pct": (
-                            pos.unrealized_pnl / pos.total_cost
-                            if pos.total_cost > 0
-                            else 0
+                            pos.unrealized_pnl / pos.total_cost if pos.total_cost > 0 else 0
                         ),
                         "trailing_stop": pos.trailing_stop,
                     }
@@ -776,9 +719,7 @@ class ProfitOptimizer:
                     pos.total_cost = new_total_cost
 
                 # Set profit target
-                self.positions[symbol].profit_target = price * (
-                    1 + self.profit_target_pct
-                )
+                self.positions[symbol].profit_target = price * (1 + self.profit_target_pct)
 
                 # Update trade tracking
                 self.daily_trade_count += 1
@@ -833,9 +774,7 @@ class ProfitOptimizer:
 
             # Update unrealized P&L
             position.last_price = current_price
-            position.unrealized_pnl = (
-                current_price - position.avg_cost
-            ) * position.quantity
+            position.unrealized_pnl = (current_price - position.avg_cost) * position.quantity
 
             # Check profit target
             if position.profit_target and current_price >= position.profit_target:
@@ -847,9 +786,7 @@ class ProfitOptimizer:
                     self, "profit_scaling_amounts"
                 ):
                     for i, level in enumerate(self.profit_scaling_levels):
-                        if profit_pct >= level and not hasattr(
-                            position, f"scaled_at_level_{i}"
-                        ):
+                        if profit_pct >= level and not hasattr(position, f"scaled_at_level_{i}"):
                             sell_amount = (
                                 self.profit_scaling_amounts[i]
                                 if i < len(self.profit_scaling_amounts)

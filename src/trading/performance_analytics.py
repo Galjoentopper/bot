@@ -85,6 +85,8 @@ class PerformanceAnalyzer:
         self.benchmark_return = config.get("benchmark_return", 0.08)  # 8% annual
         self.report_frequency = config.get("report_frequency", "daily")
         self.export_path = Path(config.get("export_path", "reports"))
+        # Smoothing window for Sharpe/vol metrics (number of return periods)
+        self.sharpe_window_periods = int(config.get("sharpe_window_periods", 96))  # ~2 days @ 30m
 
         # Create reports directory
         self.export_path.mkdir(exist_ok=True)
@@ -173,9 +175,12 @@ class PerformanceAnalyzer:
             df["timestamp"] = pd.to_datetime(df["timestamp"])
             df = df.sort_values("timestamp")
 
-            # Calculate returns
+            # Calculate returns at snapshot frequency
             portfolio_values = df["portfolio_value"]
             returns = portfolio_values.pct_change().dropna()
+            # Apply smoothing window to avoid noisy instantaneous Sharpe
+            if len(returns) > self.sharpe_window_periods:
+                returns = returns.tail(self.sharpe_window_periods)
 
             return returns
 

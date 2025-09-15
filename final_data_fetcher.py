@@ -592,12 +592,16 @@ def main():
         description="Final Data Fetcher - Build 1-year trading databases"
     )
     parser.add_argument(
-        "symbols", nargs="*", help="Specific symbols to fetch (default: all from config)"
+        "symbols",
+        nargs="*",
+        help="Specific symbols to fetch (default: all from config)",
     )
     parser.add_argument("--dry-run", action="store_true", help="Test run without saving databases")
     parser.add_argument("--interval", default="30m", help="Time interval (default: 30m)")
     parser.add_argument(
-        "--no-push", action="store_true", help="Skip GitHub push after updating databases"
+        "--no-push",
+        action="store_true",
+        help="Skip GitHub push after updating databases",
     )
 
     args = parser.parse_args()

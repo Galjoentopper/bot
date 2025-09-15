@@ -69,7 +69,12 @@ class ABTestConfig:
 
     # Secondary metrics to track
     secondary_metrics: List[str] = field(
-        default_factory=lambda: ["total_return", "max_drawdown", "volatility", "win_rate"]
+        default_factory=lambda: [
+            "total_return",
+            "max_drawdown",
+            "volatility",
+            "win_rate",
+        ]
     )
 
     # Automated stopping conditions
@@ -442,7 +447,8 @@ class ABTestingFramework:
         se_diff = pooled_std * np.sqrt(1 / len(control_values) + 1 / len(variant_values))
 
         t_critical = stats.t.ppf(
-            1 - config.significance_level / 2, len(control_values) + len(variant_values) - 2
+            1 - config.significance_level / 2,
+            len(control_values) + len(variant_values) - 2,
         )
         margin_of_error = t_critical * se_diff
 
@@ -455,7 +461,10 @@ class ABTestingFramework:
 
         # Estimate statistical power (simplified)
         statistical_power = self._estimate_power(
-            len(control_values), len(variant_values), effect_size, config.significance_level
+            len(control_values),
+            len(variant_values),
+            effect_size,
+            config.significance_level,
         )
 
         # Analyze secondary metrics
@@ -471,7 +480,9 @@ class ABTestingFramework:
             if len(control_secondary_values) > 5 and len(variant_secondary_values) > 5:
                 try:
                     sec_t_stat, sec_p_value = ttest_ind(
-                        variant_secondary_values, control_secondary_values, equal_var=False
+                        variant_secondary_values,
+                        control_secondary_values,
+                        equal_var=False,
                     )
                     sec_control_mean = np.mean(control_secondary_values)
                     sec_variant_mean = np.mean(variant_secondary_values)
@@ -493,7 +504,10 @@ class ABTestingFramework:
 
         # Determine conclusion
         conclusion = self._determine_conclusion(
-            p_value, improvement_pct, config.significance_level, config.minimum_effect_size
+            p_value,
+            improvement_pct,
+            config.significance_level,
+            config.minimum_effect_size,
         )
 
         # Generate recommendation
@@ -791,7 +805,7 @@ class ABTestingFramework:
                     "variant_model": config_row[4],
                     "observation_counts": observation_counts,
                     "has_results": result_row is not None,
-                    "last_analyzed": result_row[17] if result_row else None,  # analyzed_at
+                    "last_analyzed": (result_row[17] if result_row else None),  # analyzed_at
                 }
 
         except Exception as e:

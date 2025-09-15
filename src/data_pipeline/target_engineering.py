@@ -195,7 +195,9 @@ class TradingTargetEngine:
                 cost_adj_return > strong_buy_threshold,
                 2,  # Strong Buy
                 np.where(
-                    cost_adj_return < strong_sell_threshold, -2, direction  # Strong Sell
+                    cost_adj_return < strong_sell_threshold,
+                    -2,
+                    direction,  # Strong Sell
                 ),  # Use regular direction
             )
             targets_df[f"strong_direction_{horizon}h"] = strong_direction

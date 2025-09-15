@@ -451,7 +451,11 @@ def log_performance(
 
                         duration_ms = (time.time() - start_time) * 1000
 
-                        result_log_data = {**log_data, "duration_ms": duration_ms, "success": True}
+                        result_log_data = {
+                            **log_data,
+                            "duration_ms": duration_ms,
+                            "success": True,
+                        }
                         if log_result and result is not None:
                             result_log_data["result"] = str(result)[:200]  # Truncate large results
 
@@ -474,7 +478,10 @@ def log_performance(
 
                 if log_args:
                     log_data.update(
-                        {"args": args[:5], "kwargs": {k: v for k, v in list(kwargs.items())[:5]}}
+                        {
+                            "args": args[:5],
+                            "kwargs": {k: v for k, v in list(kwargs.items())[:5]},
+                        }
                     )
 
                 try:
@@ -486,7 +493,11 @@ def log_performance(
 
                         duration_ms = (time.time() - start_time) * 1000
 
-                        result_log_data = {**log_data, "duration_ms": duration_ms, "success": True}
+                        result_log_data = {
+                            **log_data,
+                            "duration_ms": duration_ms,
+                            "success": True,
+                        }
                         if log_result and result is not None:
                             result_log_data["result"] = str(result)[:200]
 

@@ -425,7 +425,10 @@ class BulkheadHandler:
                 if self.logger:
                     self.logger.log_info(
                         f"Bulkhead {self.name} executing request",
-                        context={"correlation_id": correlation_id, "function": func.__name__},
+                        context={
+                            "correlation_id": correlation_id,
+                            "function": func.__name__,
+                        },
                     )
 
                 result = func(*args, **kwargs)
@@ -433,7 +436,10 @@ class BulkheadHandler:
                 if self.logger:
                     self.logger.log_info(
                         f"Bulkhead {self.name} completed request",
-                        context={"correlation_id": correlation_id, "function": func.__name__},
+                        context={
+                            "correlation_id": correlation_id,
+                            "function": func.__name__,
+                        },
                     )
 
                 return result
@@ -539,7 +545,10 @@ def get_bulkhead(name: str, config: BulkheadConfig) -> BulkheadHandler:
 
 
 def bulkhead(
-    name: str, max_concurrent: int = 10, max_queue_size: int = 100, timeout_seconds: float = 30.0
+    name: str,
+    max_concurrent: int = 10,
+    max_queue_size: int = 100,
+    timeout_seconds: float = 30.0,
 ):
     """Bulkhead decorator."""
     config = BulkheadConfig(

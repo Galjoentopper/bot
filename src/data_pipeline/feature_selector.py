@@ -58,6 +58,11 @@ class FeatureSelector:
         self, features_df: pd.DataFrame, model_type: str, symbol: str
     ) -> Optional[pd.DataFrame]:
         """Apply model-specific feature selection if metadata available."""
+        # CRITICAL FIX: Validate input DataFrame
+        if features_df is None or features_df.empty:
+            logger.warning(f"Invalid input DataFrame for {model_type}_{symbol}")
+            return features_df if features_df is not None else pd.DataFrame()
+
         # Try to load saved feature names from model metadata
         model_key = f"{model_type}_{symbol}"
 
@@ -69,6 +74,7 @@ class FeatureSelector:
                 self.model_feature_cache[model_key] = expected_features
 
         if not expected_features:
+            logger.debug(f"No metadata found for {model_key}, using fallback")
             return None
 
         logger.info(f"Found {len(expected_features)} expected features for {model_key}")
@@ -192,7 +198,7 @@ class FeatureSelector:
         defaults = {
             "lightgbm": 113,  # LightGBM models trained on 113 features
             "gru": 113,  # GRU models trained on 113 features
-            "ppo": 13,  # PPO has specific observation space requirements (7 market + 3 technical + 3 portfolio)
+            "ppo": 104,  # PPO models expect 104 features as defined in PPOFeatureExpander
         }
         default_count = defaults.get(model_type, 100)
         logger.info(f"Using dynamic default feature count {default_count} for {model_type}")
@@ -221,6 +227,9 @@ class FeatureSelector:
     def _load_model_feature_names(self, model_type: str, symbol: str) -> Optional[List[str]]:
         """Load model-specific feature names from metadata."""
         search_paths = [
+            # PRIORITY: Load from our feature metadata files first
+            Path(f"models/metadata/features_{model_type}_{symbol}.json"),
+            # Fallback paths for compatibility
             Path(f"models/{model_type}/{symbol}/features.json"),
             Path(f"models/{model_type}/{symbol}/metadata.json"),
             Path(f"models/{model_type}/{symbol}/feature_names.pkl"),
@@ -237,7 +246,15 @@ class FeatureSelector:
                             if isinstance(data, list):
                                 return data
                             elif isinstance(data, dict):
-                                return data.get("feature_names", data.get("features", None))
+                                # Support multiple metadata formats
+                                features = (
+                                    data.get("expected_features")
+                                    or data.get("feature_names")
+                                    or data.get("features")
+                                )
+                                if features and isinstance(features, list):
+                                    logger.info(f"Loaded {len(features)} features from {path}")
+                                    return features
                     elif path.suffix == ".pkl":
                         with open(path, "rb") as f:
                             feature_names = pickle.load(f)

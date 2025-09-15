@@ -182,9 +182,11 @@ class PortfolioRiskManager:
             "portfolio_risk_metrics": portfolio_risk_metrics,
             "risk_limits": risk_limits,
             "correlation_analysis": {
-                "correlation_matrix": self.correlation_matrix.tolist()
-                if self.correlation_matrix is not None
-                else None,
+                "correlation_matrix": (
+                    self.correlation_matrix.tolist()
+                    if self.correlation_matrix is not None
+                    else None
+                ),
                 "correlation_clusters": [
                     {
                         "cluster_id": cluster.cluster_id,
@@ -426,14 +428,19 @@ class PortfolioRiskManager:
                 "position_weight": position_weight,
                 "asset_volatility": asset_vol,
                 "risk_contribution": risk_contrib,
-                "risk_contribution_pct": risk_contrib
-                / sum(
-                    pos_val / portfolio_value * np.std(asset_returns.get(ast, [0])) * np.sqrt(252)
-                    for ast, pos_val in positions.items()
-                    if ast in asset_returns
-                )
-                if any(ast in asset_returns for ast in positions.keys())
-                else 0,
+                "risk_contribution_pct": (
+                    risk_contrib
+                    / sum(
+                        pos_val
+                        / portfolio_value
+                        * np.std(asset_returns.get(ast, [0]))
+                        * np.sqrt(252)
+                        for ast, pos_val in positions.items()
+                        if ast in asset_returns
+                    )
+                    if any(ast in asset_returns for ast in positions.keys())
+                    else 0
+                ),
             }
 
         return risk_contributions
@@ -474,8 +481,10 @@ class PortfolioRiskManager:
             "sector_exposures": dict(sector_exposures),
             "sector_limit_breaches": sector_limit_breaches,
             "unmapped_assets": unmapped_assets,
-            "max_sector_exposure": max(sector_exposures.values()) if sector_exposures else 0,
-            "diversification_score": 1 - max(sector_exposures.values()) if sector_exposures else 0,
+            "max_sector_exposure": (max(sector_exposures.values()) if sector_exposures else 0),
+            "diversification_score": (
+                1 - max(sector_exposures.values()) if sector_exposures else 0
+            ),
         }
 
     def _run_stress_tests(
@@ -532,9 +541,9 @@ class PortfolioRiskManager:
                 results[scenario_name] = {
                     "scenario_parameter": scenario_param,
                     "estimated_loss": portfolio_loss,
-                    "loss_percentage": portfolio_loss / portfolio_value
-                    if portfolio_value > 0
-                    else 0,
+                    "loss_percentage": (
+                        portfolio_loss / portfolio_value if portfolio_value > 0 else 0
+                    ),
                     "exceeds_var_limit": portfolio_loss / portfolio_value
                     > self.constraints.max_portfolio_var_99,
                 }
@@ -546,13 +555,15 @@ class PortfolioRiskManager:
         return {
             "enabled": True,
             "scenarios": results,
-            "max_scenario_loss": max(
-                result.get("loss_percentage", 0)
-                for result in results.values()
-                if "error" not in result
-            )
-            if results
-            else 0,
+            "max_scenario_loss": (
+                max(
+                    result.get("loss_percentage", 0)
+                    for result in results.values()
+                    if "error" not in result
+                )
+                if results
+                else 0
+            ),
         }
 
     def _determine_overall_risk_status(self, risk_limits: Dict[str, RiskLimit]) -> str:
@@ -682,7 +693,9 @@ class PortfolioRiskManager:
 
         # Analyze risk with new positions
         new_risk_analysis = self.analyze_portfolio_risk(
-            positions=new_positions, asset_returns=asset_returns, portfolio_value=portfolio_value
+            positions=new_positions,
+            asset_returns=asset_returns,
+            portfolio_value=portfolio_value,
         )
 
         # Check for new limit breaches
@@ -726,5 +739,8 @@ class PortfolioRiskManager:
             "new_risk_status": new_risk_analysis["overall_risk_status"],
             "risk_improvement": len(current_breaches) - len(new_breaches),
             "recommendations": new_risk_analysis["recommendations"],
-            "detailed_analysis": {"current": current_risk_analysis, "proposed": new_risk_analysis},
+            "detailed_analysis": {
+                "current": current_risk_analysis,
+                "proposed": new_risk_analysis,
+            },
         }

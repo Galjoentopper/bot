@@ -35,7 +35,10 @@ def setup_logging(debug: bool = False):
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.FileHandler("logs/webhook_server.log"), logging.StreamHandler()],
+        handlers=[
+            logging.FileHandler("logs/webhook_server.log"),
+            logging.StreamHandler(),
+        ],
     )
 
 

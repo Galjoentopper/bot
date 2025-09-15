@@ -40,10 +40,9 @@ try:
     from .models.lgbm_trainer import LightGBMTrainer
     from .models.model_manager import ModelManager
     from .models.ppo_trainer import PPOTrainer
-    from .notifier.enhanced_telegram import EnhancedTelegramNotifier
 
-    # Notifications
-    from .notifier.telegram import TelegramNotifier
+    # Notifications (compat layer aliases to unified system)
+    from .notifier import EnhancedTelegramNotifier, TelegramNotifier
 
     # RL Environment
     from .rl_env.trading_env import TradingEnvironment

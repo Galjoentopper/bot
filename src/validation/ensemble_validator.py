@@ -96,7 +96,9 @@ class EnsembleValidator:
 
         # Create time series splits
         tscv = TimeSeriesSplit(
-            n_splits=self.n_splits, test_size=int(len(X) * self.test_size), gap=self.gap_size
+            n_splits=self.n_splits,
+            test_size=int(len(X) * self.test_size),
+            gap=self.gap_size,
         )
 
         fold_results = []
@@ -174,7 +176,11 @@ class EnsembleValidator:
         return validation_results
 
     def _calculate_fold_metrics(
-        self, predictions: np.ndarray, actuals: np.ndarray, prices: np.ndarray, fold: int
+        self,
+        predictions: np.ndarray,
+        actuals: np.ndarray,
+        prices: np.ndarray,
+        fold: int,
     ) -> Dict[str, Any]:
         """Calculate comprehensive metrics for a validation fold."""
         metrics = {"fold": fold}
@@ -321,7 +327,10 @@ class EnsembleValidator:
 
         # Optimize
         study.optimize(
-            objective, n_trials=self.n_trials, timeout=self.optimization_timeout, catch=(Exception,)
+            objective,
+            n_trials=self.n_trials,
+            timeout=self.optimization_timeout,
+            catch=(Exception,),
         )
 
         # Get best results
@@ -340,7 +349,11 @@ class EnsembleValidator:
         }
 
     def test_ensemble_robustness(
-        self, ensemble: TradingEnsemble, X: np.ndarray, y: np.ndarray, prices: np.ndarray
+        self,
+        ensemble: TradingEnsemble,
+        X: np.ndarray,
+        y: np.ndarray,
+        prices: np.ndarray,
     ) -> Dict[str, Any]:
         """
         Test ensemble robustness to input noise and data variations.
@@ -408,9 +421,11 @@ class EnsembleValidator:
                 if len(boot_pred) == len(y_boot):
                     trading_perf = evaluate_trading_performance(
                         predictions=boot_pred,
-                        actual_prices=prices_boot[: len(boot_pred)]
-                        if len(prices_boot) > len(boot_pred)
-                        else prices_boot,
+                        actual_prices=(
+                            prices_boot[: len(boot_pred)]
+                            if len(prices_boot) > len(boot_pred)
+                            else prices_boot
+                        ),
                         initial_balance=10000.0,
                         transaction_cost=0.001,
                     )
@@ -454,7 +469,11 @@ class EnsembleValidator:
         return robustness_results
 
     def performance_attribution(
-        self, ensemble: TradingEnsemble, X: np.ndarray, y: np.ndarray, prices: np.ndarray
+        self,
+        ensemble: TradingEnsemble,
+        X: np.ndarray,
+        y: np.ndarray,
+        prices: np.ndarray,
     ) -> Dict[str, Any]:
         """
         Analyze performance attribution of ensemble components.
@@ -478,9 +497,9 @@ class EnsembleValidator:
         # Calculate ensemble performance
         ensemble_perf = evaluate_trading_performance(
             predictions=ensemble_pred,
-            actual_prices=prices[: len(ensemble_pred)]
-            if len(prices) > len(ensemble_pred)
-            else prices,
+            actual_prices=(
+                prices[: len(ensemble_pred)] if len(prices) > len(ensemble_pred) else prices
+            ),
             initial_balance=10000.0,
             transaction_cost=0.001,
         )

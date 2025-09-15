@@ -240,7 +240,10 @@ class DynamicPositionSizer:
         )
 
     def _risk_parity_sizing(
-        self, returns: np.ndarray, current_positions: Optional[Dict[str, float]], risk_metrics
+        self,
+        returns: np.ndarray,
+        current_positions: Optional[Dict[str, float]],
+        risk_metrics,
     ) -> PositionSizeResult:
         """Risk parity position sizing"""
 

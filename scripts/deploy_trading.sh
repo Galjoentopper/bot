@@ -98,29 +98,19 @@ log_info "Starting tmux trading session..."
 if "$SCRIPT_DIR/scripts/tmux_manager.sh" start; then
     log_success "Trading session started successfully"
 
-    # Send startup notification
-    python3 -c "
-import asyncio
-from src.notifier.enhanced_telegram import EnhancedTelegramNotifier
-import os
-
-async def notify():
-    notifier = EnhancedTelegramNotifier(
-        bot_token=os.getenv('TELEGRAM_BOT_TOKEN'),
-        chat_id=os.getenv('TELEGRAM_CHAT_ID')
-    )
-    message = '''🚀 <b>SYSTEM_STARTUP</b>
-
-Trading system deployed and running on new Hetzner server
-✅ 66 model files loaded
-✅ Tmux session active
-✅ Health monitoring enabled
-
-<i>Status: INFO</i>'''
-    await notifier.send_message(message)
-
-asyncio.run(notify())
-"
+    # Startup notification (optional): use unified Telegram service if running
+    python3 - <<'PY'
+import asyncio, os
+try:
+    from src.notifications import get_telegram_service, MessagePriority
+    async def notify():
+        svc = get_telegram_service()
+        if getattr(svc, 'is_running', False):
+            await svc.send_notification("🚀 <b>SYSTEM_STARTUP</b>\n\nDeployment completed. Tmux session active.", MessagePriority.HIGH)
+    asyncio.run(notify())
+except Exception:
+    pass
+PY
 else
     log_error "Failed to start trading session"
     exit 1

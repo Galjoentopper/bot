@@ -20,9 +20,9 @@ import pandas as pd
 from ..data_pipeline.features import FeatureEngine
 from ..ensemble.trading_ensemble import TradingEnsemble
 from ..evaluation.trading_evaluator import TradingModelEvaluator
-from ..models.ppo_trainer import PPOTrainer as EnhancedPPOTrainer
 from ..models.gru_trainer import GRUTrainer as TradingGRUTrainer
 from ..models.lgbm_trainer import LightGBMTrainer as TradingLightGBM
+from ..models.ppo_trainer import PPOTrainer as EnhancedPPOTrainer
 from ..utils.trading_metrics import TradingMetricsCalculator
 from ..validation.data_validator import TradingDataValidator
 from ..validation.ensemble_validator import EnsembleValidator
@@ -114,7 +114,12 @@ class EnhancedEnsembleTrainer:
             if self.comprehensive_validation:
                 logger.info("Step 4: Comprehensive validation")
                 validation_results = self._comprehensive_validation(
-                    trained_models, ensemble_results.get("ensemble"), X, y, prices, symbol
+                    trained_models,
+                    ensemble_results.get("ensemble"),
+                    X,
+                    y,
+                    prices,
+                    symbol,
                 )
             else:
                 validation_results = {}

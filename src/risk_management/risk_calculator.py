@@ -441,7 +441,10 @@ class RiskCalculator:
         return None
 
     def calculate_position_risk(
-        self, position_value: float, asset_returns: np.ndarray, confidence_level: float = 0.95
+        self,
+        position_value: float,
+        asset_returns: np.ndarray,
+        confidence_level: float = 0.95,
     ) -> Dict[str, float]:
         """Calculate risk metrics for a specific position size"""
 
@@ -524,9 +527,9 @@ class RiskCalculator:
             "concentration_risk": concentration_risk,
             "total_portfolio_value": total_value,
             "weights": dict(zip(assets, weights)),
-            "correlation_matrix": correlation_matrix.tolist()
-            if correlation_matrix is not None
-            else None,
+            "correlation_matrix": (
+                correlation_matrix.tolist() if correlation_matrix is not None else None
+            ),
         }
 
     def _calculate_concentration_risk(self, weights: np.ndarray) -> Dict[str, float]:

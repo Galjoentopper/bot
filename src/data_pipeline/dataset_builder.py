@@ -164,7 +164,7 @@ class DatasetBuilder:
         logger.info(f"Generated {len(feature_names)} enhanced trading features")
 
         # Use trading-optimized target if available, otherwise use first available target
-        target_columns = [col for col in features_df.columns if col.startswith('target_')]
+        target_columns = [col for col in features_df.columns if col.startswith("target_")]
         if target_columns:
             target_col = target_columns[0]  # Use first available target
             logger.info(f"Using trading target: {target_col}")
@@ -177,10 +177,10 @@ class DatasetBuilder:
             logger.info(f"Creating simple {target_type} target from original data")
             if target_type == "return" and target_horizon == 1:
                 # Use simple 1-period return as fallback
-                prices = df['close']
+                prices = df["close"]
                 y = prices.pct_change(target_horizon).shift(-target_horizon).fillna(0).values
                 # Align with features length
-                y = y[:len(features_df)]
+                y = y[: len(features_df)]
             else:
                 logger.warning("Fallback target creation failed, using zeros")
                 y = np.zeros(len(features_df))

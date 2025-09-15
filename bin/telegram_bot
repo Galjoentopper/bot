@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""
+Unified Telegram Service Launcher
+================================
+
+Production-ready launcher for the new unified Telegram notification system.
+Replaces all legacy Telegram bot implementations with a single, secure solution.
+
+Features:
+- Unified Telegram service with advanced architecture
+- Secure credential management
+- Priority message queuing with persistence
+- Command registry with authentication
+- Comprehensive error handling and monitoring
+- Production hardening and health checks
+"""
+
+import asyncio
+import os
+import sys
+from pathlib import Path
+
+# Ensure the bot directory is in the Python path
+bot_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(bot_dir))
+
+from src.config.secure_env_manager import get_env_manager
+from src.core.logging_manager import get_system_logger
+from src.notifications import get_telegram_service
+from src.notifications.integrations import TradingBotIntegration
+from src.security import get_credential_manager
+
+
+async def launch():
+    """Launch the unified Telegram service with error handling and monitoring."""
+    logger = get_system_logger("unified_telegram_launcher")
+    logger.info("🚀 Starting Unified Telegram Service...")
+
+    # Ensure environment variables are loaded from .env (if present)
+    # This makes TELEGRAM_* credentials available even when not sourced by the shell/tmux
+    try:
+        get_env_manager()  # loads .env and populates os.environ via dotenv
+    except Exception as e:
+        logger.warning(f"Failed to initialize env manager: {e}")
+
+    # Validate credentials first
+    credential_manager = get_credential_manager()
+    validation_result = credential_manager.validate_environment()
+
+    if not validation_result["valid"]:
+        logger.error("❌ Environment validation failed:")
+        for error in validation_result["errors"]:
+            logger.error(f"  - {error}")
+        return False
+
+    logger.info("✅ Environment validation passed")
+
+    # Get service instances
+    telegram_service = get_telegram_service()
+    trading_integration = TradingBotIntegration()
+
+    max_retries = 3
+    retry_delay = 5
+
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"🔄 Launch attempt {attempt + 1}/{max_retries}")
+
+            # Initialize and start Telegram service first
+            logger.info("🔧 Initializing Telegram service...")
+            if not await telegram_service.initialize():
+                logger.error("❌ Failed to initialize Telegram service")
+                continue
+
+            logger.info("▶️ Starting Telegram service...")
+            if not await telegram_service.start():
+                logger.error("❌ Failed to start Telegram service")
+                continue
+
+            # Now initialize trading integration (requires running service)
+            logger.info("🔧 Initializing trading integration...")
+            if not await trading_integration.initialize():
+                logger.error("❌ Failed to initialize trading integration")
+                continue
+
+            logger.info("✅ Unified Telegram Service is now running!")
+
+            # Keep service running
+            try:
+                while telegram_service._running:
+                    await asyncio.sleep(1)
+            except KeyboardInterrupt:
+                logger.info("🛑 Received interrupt signal, shutting down...")
+                break
+
+        except KeyboardInterrupt:
+            logger.info("🛑 Received interrupt signal, shutting down...")
+            break
+
+        except Exception as e:
+            logger.error(f"❌ Launch attempt {attempt + 1} failed: {e}")
+
+            # Try to cleanup if possible
+            try:
+                await telegram_service.shutdown()
+            except:
+                pass
+
+            if attempt < max_retries - 1:
+                logger.info(f"⏳ Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                logger.error("💥 All launch attempts failed")
+                return False
+
+    # Graceful shutdown
+    logger.info("🛑 Initiating graceful shutdown...")
+    try:
+        await telegram_service.shutdown()
+        logger.info("✅ Telegram service shutdown complete")
+    except Exception as e:
+        logger.error(f"❌ Error during shutdown: {e}")
+
+    return True
+
+
+if __name__ == "__main__":
+    try:
+        success = asyncio.run(launch())
+        sys.exit(0 if success else 1)
+    except KeyboardInterrupt:
+        print("\nLauncher interrupted by user")
+        sys.exit(0)
+    except Exception as e:
+        print(f"Launcher fatal error: {e}")
+        sys.exit(1)

@@ -36,10 +36,18 @@ class FeatureEngine:
         Args:
             config: Configuration dictionary with feature parameters
         """
-        self.config = config or self._get_default_config()
-        self.feature_selector = FeatureSelector(config)
-        self.trading_features = TradingFeatureEngine(config)
-        self.target_engineer = TradingTargetEngine(config)
+        full_config = config or {}
+        # Extract feature-specific config from nested structure
+        self.config = full_config.get("features", {})
+        # Merge with default config for missing keys
+        default_config = self._get_default_config()
+        for key, value in default_config.items():
+            if key not in self.config:
+                self.config[key] = value
+
+        self.feature_selector = FeatureSelector(full_config)
+        self.trading_features = TradingFeatureEngine(self.config)
+        self.target_engineer = TradingTargetEngine(full_config)
         logger.info("FeatureEngine initialized with feature selector and trading features")
 
     def _get_default_config(self) -> Dict:
@@ -718,13 +726,27 @@ class FeatureEngine:
             logger.warning("No symbol provided for feature alignment, using generic alignment")
             symbol = "GENERIC"
 
+        # CRITICAL FIX: Validate input DataFrame
+        if df is None or df.empty:
+            logger.error(f"Invalid input DataFrame for {model_type}_{symbol}")
+            return df if df is not None else pd.DataFrame()
+
         # Use the enhanced feature selector for proper alignment
         try:
             aligned_df = self.feature_selector.align_features_for_model(df, model_type, symbol)
+
+            # CRITICAL FIX: Handle None return from feature selector
+            if aligned_df is None or aligned_df.empty:
+                logger.warning(
+                    f"Feature selector returned None/empty for {model_type}_{symbol}, using fallback"
+                )
+                aligned_df = self._legacy_feature_alignment(df, model_type, symbol)
+
             logger.info(
                 f"Feature selector aligned {len(aligned_df.columns)} features for {model_type}_{symbol}"
             )
             return aligned_df
+
         except Exception as e:
             logger.error(f"Feature selector failed for {model_type}_{symbol}: {e}")
             # Fallback to legacy method
@@ -1051,9 +1073,7 @@ class FeatureEngine:
                         # Absolute bounds for financial data - very conservative
                         upper_bound = 200000  # $200k absolute max for crypto
                         lower_bound = 0.01  # $0.01 absolute min
-                        logger.warning(
-                            f"Using absolute bounds for {col} due to corrupted statistics"
-                        )
+                        logger.debug(f"Using absolute bounds for {col} due to corrupted statistics")
                     else:
                         # Robust outlier detection using IQR method
                         robust_upper = q75 + 3 * iqr  # 3x IQR above Q3
@@ -1064,7 +1084,7 @@ class FeatureEngine:
                         lower_bound = max(robust_lower, 0.01)  # Min $0.01
 
                 except Exception as e:
-                    logger.warning(
+                    logger.debug(
                         f"Percentile calculation failed for {col}: {e}, using absolute bounds"
                     )
                     upper_bound = 200000  # $200k absolute max

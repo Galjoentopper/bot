@@ -10,4 +10,9 @@ from .portfolio_manager import PortfolioRiskManager
 from .position_sizer import DynamicPositionSizer
 from .risk_calculator import RiskCalculator
 
-__all__ = ["RiskCalculator", "DynamicPositionSizer", "PortfolioRiskManager", "DrawdownProtector"]
+__all__ = [
+    "RiskCalculator",
+    "DynamicPositionSizer",
+    "PortfolioRiskManager",
+    "DrawdownProtector",
+]

@@ -195,7 +195,9 @@ class AdvancedCircuitBreaker:
                     )
 
         raise CircuitBreakerException(
-            f"Circuit breaker {self.name} is open", self.name, str(self._last_failure_time)
+            f"Circuit breaker {self.name} is open",
+            self.name,
+            str(self._last_failure_time),
         )
 
     def call(self, func: Callable, *args, **kwargs):

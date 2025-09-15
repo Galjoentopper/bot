@@ -27,7 +27,7 @@ test-cov:
 	pytest --cov=src -q
 
 lint:
-	flake8 src
+	flake8 --jobs=1 src
 
 format:
 	black src *.py

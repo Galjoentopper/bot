@@ -96,6 +96,76 @@ except ImportError:
 
     SB3_AVAILABLE = False
 
+
+class PPOModelProxy:
+    """
+    Memory-efficient proxy for PPO models using centralized model management.
+
+    This proxy uses a singleton manager to ensure only one PPO model is loaded
+    at a time, preventing memory exhaustion from multiple 1.2GB models.
+    """
+
+    def __init__(self, model_path: str):
+        self.model_path = model_path
+        self._manager = None
+
+    def _get_manager(self):
+        """Get the PPO model manager instance."""
+        if self._manager is None:
+            from .ppo_model_manager import get_ppo_manager
+
+            self._manager = get_ppo_manager()
+        return self._manager
+
+    def predict(self, observation, deterministic=True):
+        """Predict using the managed model."""
+        try:
+            manager = self._get_manager()
+            return manager.predict(self.model_path, observation, deterministic)
+        except Exception as e:
+            logger.error(f"PPO prediction failed: {e}")
+            # Return neutral action as fallback
+            import numpy as np
+
+            if hasattr(observation, "shape"):
+                batch_size = observation.shape[0] if len(observation.shape) > 1 else 1
+                actions = np.zeros(batch_size, dtype=np.float32)
+            else:
+                actions = np.array([0.0], dtype=np.float32)
+            return actions, None
+
+    def __getattr__(self, name):
+        """Proxy all other attributes to the managed model."""
+        if name.startswith("_"):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+        try:
+            manager = self._get_manager()
+            model = manager.load_model(self.model_path)
+            if model is not None:
+                return getattr(model, name)
+            else:
+                raise AttributeError(f"Model not loaded: {name}")
+        except Exception as e:
+            logger.error(f"Error accessing model attribute {name}: {e}")
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+
+class DummyPPOModel:
+    """Fallback dummy PPO model that returns neutral predictions when real model fails to load."""
+
+    def predict(self, observation, deterministic=True):
+        """Return neutral action (0) and None state."""
+        if hasattr(observation, "shape"):
+            batch_size = observation.shape[0] if len(observation.shape) > 1 else 1
+            # Return neutral action (0) for each observation
+            actions = np.zeros(batch_size, dtype=np.float32)
+        else:
+            actions = np.array([0.0], dtype=np.float32)
+
+        return actions, None
+
+
 # Create aliases for consistent usage
 BaseCallback = SB3_BaseCallback
 PPO = SB3_PPO
@@ -859,6 +929,76 @@ class PPOTrainer:
 
         logger.info(f"PPO model saved to {model_path} with {len(self.feature_names)} features")
 
+    # --- Feature Index Export (for trainer server) ---
+    def export_feature_index(
+        self,
+        symbol: str,
+        example_market_df: pd.DataFrame,
+        output_dir: Optional[str] = None,
+    ) -> str:
+        """
+        Export PPO per-symbol feature index (exact column names) for deployment pinning.
+
+        Use the PPOFeatureExpander to derive the canonical 104-feature set from
+        a representative OHLCV DataFrame and save the ordered list of feature
+        names to models/ppo/<SYMBOL>/feature_index.json (or output_dir if set).
+
+        Args:
+            symbol: Trading symbol (e.g., 'BTCEUR')
+            example_market_df: OHLCV DataFrame representative of training data
+            output_dir: Optional directory to save into; defaults to models/ppo/<SYMBOL>
+
+        Returns:
+            Path to the saved feature_index.json
+        """
+        try:
+            from ..data_pipeline.ppo_feature_expansion import PPOFeatureExpander
+
+            expander = PPOFeatureExpander()
+            # Expand with pinning disabled to compute fresh from OHLCV baseline
+            prev_pin = expander.pin_feature_index
+            expander.pin_feature_index = False
+            expanded = expander.expand_features(example_market_df, symbol=symbol)
+            names = expander.get_feature_names()
+            expander.pin_feature_index = prev_pin
+
+            # Determine output path
+            base_dir = output_dir or os.path.join("models", "ppo", symbol)
+            os.makedirs(base_dir, exist_ok=True)
+            out_path = os.path.join(base_dir, "feature_index.json")
+
+            import json
+
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(names, f, indent=2)
+            logger.info(
+                f"Exported PPO feature index for {symbol}: {len(names)} features -> {out_path}"
+            )
+            return out_path
+
+        except Exception as e:
+            logger.error(f"Failed to export PPO feature index for {symbol}: {e}")
+            raise
+
+    @classmethod
+    def _load_model_optimized(cls, filepath_with_extension: str) -> Any:
+        """
+        Load PPO model with memory-aware lazy loading strategy.
+
+        Due to the large size of PPO model files (>1GB) containing training data,
+        we implement a lazy proxy that only loads the actual model when needed.
+
+        Args:
+            filepath_with_extension: Path to the PPO model zip file
+
+        Returns:
+            PPO model proxy that loads on-demand
+        """
+        logger.info(f"Creating lazy-loaded PPO model proxy for {filepath_with_extension}")
+
+        # Return a lazy-loading proxy instead of loading immediately
+        return PPOModelProxy(filepath_with_extension)
+
     @classmethod
     def load_model(cls, filepath: str, config: Dict[str, Any]) -> "PPOTrainer":
         """
@@ -886,9 +1026,9 @@ class PPOTrainer:
         # Create trainer instance
         trainer = cls(config)
 
-        # Load model
+        # Load model with memory optimization
         if SB3_AVAILABLE:
-            trainer.model = SB3_PPO.load(filepath_with_extension)
+            trainer.model = cls._load_model_optimized(filepath_with_extension)
         else:
             trainer.model = PPO()
 

@@ -10,4 +10,9 @@ from .drift_detector import DriftDetector
 from .model_monitor import ModelPerformanceMonitor
 from .performance_tracker import PerformanceTracker
 
-__all__ = ["ModelPerformanceMonitor", "DriftDetector", "PerformanceTracker", "ABTestingFramework"]
+__all__ = [
+    "ModelPerformanceMonitor",
+    "DriftDetector",
+    "PerformanceTracker",
+    "ABTestingFramework",
+]

@@ -162,9 +162,9 @@ class TradingEnsemble:
         if prices is not None and len(prices) >= len(predictions):
             trading_perf = evaluate_trading_performance(
                 predictions=predictions,
-                actual_prices=prices[: len(predictions)]
-                if len(prices) > len(predictions)
-                else prices,
+                actual_prices=(
+                    prices[: len(predictions)] if len(prices) > len(predictions) else prices
+                ),
                 initial_balance=10000.0,
                 transaction_cost=0.001,
             )
@@ -400,7 +400,10 @@ class TradingEnsemble:
                 return "sideways"
 
     def predict(
-        self, X: np.ndarray, prices: Optional[np.ndarray] = None, update_weights: bool = True
+        self,
+        X: np.ndarray,
+        prices: Optional[np.ndarray] = None,
+        update_weights: bool = True,
     ) -> np.ndarray:
         """
         Make ensemble predictions.
@@ -488,7 +491,7 @@ class TradingEnsemble:
                 "predictions": model_predictions.copy(),
                 "weights": weights_to_use.copy(),
                 "ensemble_prediction": ensemble_pred.copy(),
-                "regime": self._detect_market_regime(prices) if prices is not None else "unknown",
+                "regime": (self._detect_market_regime(prices) if prices is not None else "unknown"),
             }
         )
 

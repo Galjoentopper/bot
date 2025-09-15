@@ -161,7 +161,10 @@ class S3StorageSetup:
                             "Days": 30,  # Move to IA after 30 days (AWS minimum)
                             "StorageClass": "STANDARD_IA",
                         },
-                        {"Days": 60, "StorageClass": "GLACIER"},  # Archive after 60 days
+                        {
+                            "Days": 60,
+                            "StorageClass": "GLACIER",
+                        },  # Archive after 60 days
                         {
                             "Days": 180,  # Deep archive after 180 days
                             "StorageClass": "DEEP_ARCHIVE",
@@ -248,7 +251,9 @@ class S3StorageSetup:
 
             # Test presigned URL generation
             download_url = self.s3_client.generate_presigned_url(
-                "get_object", Params={"Bucket": self.bucket_name, "Key": test_key}, ExpiresIn=3600
+                "get_object",
+                Params={"Bucket": self.bucket_name, "Key": test_key},
+                ExpiresIn=3600,
             )
             logger.info("✅ Presigned URL generation successful")
 
