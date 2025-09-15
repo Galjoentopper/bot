@@ -38,6 +38,18 @@ import numpy as np
 import psutil
 import yaml
 
+# Robustly add project root and src/ to sys.path regardless of CWD or notebooks mount
+try:
+    _this_file = Path(__file__).resolve()
+    _project_root = _this_file.parent.parent  # repo root (parent of paperspace_mlops)
+    if str(_project_root) not in sys.path:
+        sys.path.insert(0, str(_project_root))
+    _src_root = _project_root / "src"
+    if _src_root.exists() and str(_src_root) not in sys.path:
+        sys.path.insert(0, str(_src_root))
+except Exception:
+    pass
+
 # S3 upload support
 try:
     import boto3
@@ -47,9 +59,9 @@ try:
 except ImportError:
     S3_AVAILABLE = False
 
-# Add paths
-sys.path.append("/notebooks/bot" if Path("/notebooks").exists() else ".")
-sys.path.append("/notebooks/bot/src" if Path("/notebooks").exists() else "./src")
+# Legacy fallback for older notebook mounting conventions
+sys.path.append("/notebooks/bot") if Path("/notebooks").exists() else None
+sys.path.append("/notebooks/bot/src") if Path("/notebooks").exists() else None
 
 # Telegram notifications
 try:
