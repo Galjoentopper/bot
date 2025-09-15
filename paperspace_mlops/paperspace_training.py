@@ -48,7 +48,9 @@ try:
     if _src_root.exists() and str(_src_root) not in sys.path:
         sys.path.insert(0, str(_src_root))
 except Exception:
-    pass
+    # Fallback for any path issues
+    sys.path.insert(0, "/notebooks/bot")
+    sys.path.insert(0, "/notebooks/bot/src")
 
 # S3 upload support
 try:
@@ -107,6 +109,15 @@ class PaperspaceTraining:
 
         # Load configuration
         self.config = self._load_config(config_path)
+        # Validate environment early for actionable failures
+        try:
+            self._validate_environment(config_source_hint=config_path)
+        except Exception as ve:
+            logger.error(f"Environment validation failed: {ve}")
+            # Do not hard-fail in interactive runs, but surface loudly
+            # Raise in strict CI or set ENV flag to enforce
+            if os.getenv("STRICT_ENV_VALIDATION", "0") in ("1", "true", "yes"):
+                raise
         self._set_global_seeds()
 
         # Initialize Telegram notifications
@@ -139,9 +150,46 @@ class PaperspaceTraining:
             if Path(path).exists():
                 logger.info(f"✅ Loading config: {path}")
                 with open(path, "r") as f:
-                    return yaml.safe_load(f)
+                    cfg = yaml.safe_load(f)
+                    # Backward/sideways compatibility: normalize model config key
+                    try:
+                        if "models" not in cfg and "model_parameters" in cfg:
+                            cfg["models"] = cfg.get("model_parameters", {})
+                            logger.info("Normalized config: using 'model_parameters' as 'models'")
+                    except Exception:
+                        pass
+                    return cfg
 
         raise FileNotFoundError(f"Config file {config_path} not found in any location")
+
+    def _validate_environment(self, config_source_hint: Optional[str] = None) -> None:
+        """Run environment validation checks and log actionable feedback."""
+        try:
+            from validate_environment import (
+                validate_python_environment,
+                validate_directories,
+                validate_config_file,
+                validate_environment_variables,
+                validate_permissions,
+            )
+
+            py_ok, py_errs = validate_python_environment()
+            dir_ok, dir_errs, _ = validate_directories()
+            # Validate the resolved config path if hint exists
+            if config_source_hint and Path(config_source_hint).exists():
+                cfg_ok, cfg_errs = validate_config_file(config_source_hint)
+            else:
+                # Fall back to default lookup
+                cfg_ok, cfg_errs = validate_config_file()
+            _, _, _ = validate_environment_variables()
+            perm_ok, perm_errs = validate_permissions()
+
+            errs = py_errs + dir_errs + cfg_errs + perm_errs
+            if not (py_ok and dir_ok and cfg_ok and perm_ok):
+                raise RuntimeError("; ".join(errs[:5]))
+            logger.info("✅ Environment validation checks passed (subset)")
+        except ImportError:
+            logger.info("validate_environment module not available; skipping validation")
 
     def _set_global_seeds(self):
         """Set global random seeds for reproducibility"""
@@ -270,7 +318,14 @@ class PaperspaceTraining:
         try:
             from src.data_pipeline.dataset_builder import DatasetBuilder
         except ImportError:
-            raise ImportError("Could not import DatasetBuilder. Make sure src/ is in Python path")
+            # Try alternative import path
+            try:
+                sys.path.insert(0, "/notebooks/bot")
+                sys.path.insert(0, "/notebooks/bot/src")
+                from src.data_pipeline.dataset_builder import DatasetBuilder
+                logger.info("✅ Fixed import path for DatasetBuilder")
+            except ImportError as e:
+                raise ImportError(f"Could not import DatasetBuilder. Import error: {e}")
 
         if symbols is None:
             symbols = self.config.get("data_acquisition", {}).get("symbols", [])
@@ -295,19 +350,35 @@ class PaperspaceTraining:
 
                 if result and len(result) > 4:
                     X, y, timestamps, feature_names, metadata = result
-                    datasets[symbol] = {
-                        "data": (X, y, timestamps),
-                        "features": feature_names,
-                        "metadata": metadata,
-                        "sample_count": len(X),
-                    }
-                    logger.info(f"  ✅ {symbol}: {len(X)} samples, {len(feature_names)} features")
+                    # Validate dataset quality and consistency before accepting
+                    try:
+                        is_valid, errors = builder.validate_dataset(X, y, metadata)
+                    except Exception as ve:
+                        is_valid, errors = False, [f"validation_exception: {ve}"]
+
+                    if is_valid:
+                        datasets[symbol] = {
+                            "data": (X, y, timestamps),
+                            "features": feature_names,
+                            "metadata": metadata,
+                            "sample_count": len(X),
+                        }
+                        logger.info(
+                            f"  ✅ {symbol}: {len(X)} samples, {len(feature_names)} features (validated)"
+                        )
+                    else:
+                        logger.error(
+                            f"  ❌ {symbol}: Dataset validation failed -> {errors[:3]}"
+                        )
+                        failed_symbols.append(symbol)
                 else:
                     logger.error(f"  ❌ {symbol}: Failed to build dataset")
                     failed_symbols.append(symbol)
 
             except Exception as e:
+                import traceback
                 logger.error(f"  ❌ {symbol}: {e}")
+                logger.debug(traceback.format_exc())
                 failed_symbols.append(symbol)
 
         if not datasets:
@@ -422,22 +493,35 @@ class PaperspaceTraining:
                 signal.signal(signal.SIGALRM, timeout_handler)
                 signal.alarm(int(task["time_limit"] * 3600))
 
-            # Import trainer
+            # Import trainer with robust path handling
             model_type = task["model_type"]
-            if model_type == "gru":
-                from src.models.gru_trainer import GRUTrainer
-
-                trainer = GRUTrainer(self.config)
-            elif model_type == "lightgbm":
-                from src.models.lgbm_trainer import LightGBMTrainer
-
-                trainer = LightGBMTrainer(self.config)
-            elif model_type == "ppo":
-                from src.models.ppo_trainer import PPOTrainer
-
-                trainer = PPOTrainer(self.config)
-            else:
-                raise ValueError(f"Unknown model type: {model_type}")
+            try:
+                if model_type == "gru":
+                    from src.models.gru_trainer import GRUTrainer
+                    trainer = GRUTrainer(self.config)
+                elif model_type == "lightgbm":
+                    from src.models.lgbm_trainer import LightGBMTrainer
+                    trainer = LightGBMTrainer(self.config)
+                elif model_type == "ppo":
+                    from src.models.ppo_trainer import PPOTrainer
+                    trainer = PPOTrainer(self.config)
+                else:
+                    raise ValueError(f"Unknown model type: {model_type}")
+            except ImportError as e:
+                # Try with explicit path setup
+                sys.path.insert(0, "/notebooks/bot/src")
+                if model_type == "gru":
+                    from src.models.gru_trainer import GRUTrainer
+                    trainer = GRUTrainer(self.config)
+                elif model_type == "lightgbm":
+                    from src.models.lgbm_trainer import LightGBMTrainer
+                    trainer = LightGBMTrainer(self.config)
+                elif model_type == "ppo":
+                    from src.models.ppo_trainer import PPOTrainer
+                    trainer = PPOTrainer(self.config)
+                else:
+                    raise ValueError(f"Unknown model type: {model_type}")
+                logger.info(f"✅ Fixed import path for {model_type} trainer")
 
             # Prepare data
             X, y, timestamps = task["dataset"]["data"]
@@ -494,51 +578,80 @@ class PaperspaceTraining:
                     save_path=str(model_path),
                 )
             elif model_type == "ppo":
-                # PPO expects DataFrame with proper columns including 'close'
+                # PPO expects time-indexed OHLCV + expanded features via router/expander
                 import pandas as pd
 
-                # Create DataFrame from features with timestamps as index
-                features = task["dataset"]["features"]
-                logger.info(f"PPO input X shape: {X.shape}, expected features: {len(features)}")
+                logger.info(
+                    f"PPO input X shape: {X.shape}, incoming features: {len(task['dataset']['features'])}"
+                )
 
-                # Ensure feature count matches
-                if X.shape[1] != len(features):
-                    logger.warning(
-                        f"Feature count mismatch: X has {X.shape[1]} features, but expected {len(features)}"
+                # Prefer raw OHLCV reconstructed by DatasetBuilder for stable expansion
+                raw_runtime = None
+                try:
+                    raw_runtime = (
+                        task["dataset"]["metadata"].get("_runtime", {}).get("full_data")
                     )
-                    # Use the minimum to avoid index errors
-                    min_features = min(X.shape[1], len(features))
-                    X = X[:, :min_features]
-                    features = features[:min_features]
-                    logger.info(f"Truncated to {min_features} features for consistency")
+                except Exception:
+                    raw_runtime = None
 
-                df_data = pd.DataFrame(X, columns=features)
-                df_data.index = pd.to_datetime(timestamps)
+                if raw_runtime is None or not isinstance(raw_runtime, pd.DataFrame) or raw_runtime.empty:
+                    logger.warning(
+                        "PPO: No runtime OHLCV in metadata; reconstructing minimal OHLCV from available data"
+                    )
+                    # Reconstruct minimal OHLCV using timestamps and a proxy close
+                    df_tmp = pd.DataFrame(index=pd.to_datetime(timestamps))
+                    # Use target-based synthetic close if we must
+                    proxy_close = pd.Series(y[: len(df_tmp)], index=df_tmp.index).astype(float)
+                    proxy_close = (1 + proxy_close.shift(1).fillna(0)).cumprod() * 1000.0
+                    df_tmp["close"] = proxy_close
+                    df_tmp["open"] = df_tmp["close"].shift(1).fillna(df_tmp["close"]).astype(float)
+                    df_tmp["high"] = pd.concat([df_tmp["open"], df_tmp["close"]], axis=1).max(axis=1)
+                    df_tmp["low"] = pd.concat([df_tmp["open"], df_tmp["close"]], axis=1).min(axis=1)
+                    df_tmp["volume"] = 1.0
+                    ohclv_df = df_tmp
+                else:
+                    ohclv_df = raw_runtime.copy()
+                    # Ensure required columns and datetime index
+                    ohclv_df.index = pd.to_datetime(ohclv_df.index)
+                    for col in ["open", "high", "low", "close", "volume"]:
+                        if col not in ohclv_df.columns:
+                            raise ValueError(f"Runtime OHLCV missing column: {col}")
 
-                # Add target column
-                df_data["target"] = y[: len(df_data)]
+                # Route features specifically for PPO (104-dim) using ModelFeatureRouter
+                try:
+                    from src.data_pipeline.model_feature_router import ModelFeatureRouter
 
-                # Ensure we have a 'close' column - look for it in feature names first
-                if "close" not in df_data.columns:
-                    # Look for close-related columns
-                    close_candidates = [col for col in df_data.columns if "close" in col.lower()]
-                    if close_candidates:
-                        df_data["close"] = df_data[close_candidates[0]]
-                        logger.info(f"Using {close_candidates[0]} as close price for PPO")
-                    else:
-                        # Create synthetic close from cumulative returns of target
-                        df_data["close"] = (
-                            1 + df_data["target"].shift(1).fillna(0)
-                        ).cumprod() * 50000  # Start at ~50k
-                        logger.info("Created synthetic close price from target returns for PPO")
+                    router = ModelFeatureRouter()
+                    routed_df, routing_info = router.route_features_for_model(
+                        ohclv_df, model_type="ppo", symbol=task["symbol"], use_enhanced_engine=False
+                    )
+                    logger.info(
+                        f"PPO routed features: {routing_info.get('feature_count')} via {routing_info.get('method_used')}"
+                    )
+                    df_data = routed_df
+                except Exception as e:
+                    logger.warning(
+                        f"PPO feature routing failed ({e}); falling back to basic DataFrame from X"
+                    )
+                    features = task["dataset"]["features"]
+                    # Align shapes safely
+                    if X.shape[1] != len(features):
+                        min_features = min(X.shape[1], len(features))
+                        X = X[:, :min_features]
+                        features = features[:min_features]
+                    df_data = pd.DataFrame(X, columns=features, index=pd.to_datetime(timestamps))
+                    # Ensure a close column exists
+                    if "close" not in df_data.columns:
+                        df_data["close"] = ohclv_df["close"].reindex(df_data.index).ffill().bfill()
 
-                # Split train/eval
+                # Split train/eval preserving time order
                 split_idx = int(len(df_data) * 0.8)
-                train_data = df_data[:split_idx].copy()
-                eval_data = df_data[split_idx:].copy()
+                train_data = df_data.iloc[:split_idx].copy()
+                eval_data = df_data.iloc[split_idx:].copy()
 
-                logger.info(f"PPO data shapes - train: {train_data.shape}, eval: {eval_data.shape}")
-                logger.info(f"PPO columns: {list(train_data.columns)}")
+                logger.info(
+                    f"PPO data shapes - train: {train_data.shape}, eval: {eval_data.shape}, cols: {len(train_data.columns)}"
+                )
 
                 result = trainer.train(
                     train_data=train_data,
@@ -550,34 +663,9 @@ class PaperspaceTraining:
 
                 # Export per-symbol PPO feature index for deployment pinning
                 try:
-                    # Build a minimal OHLCV frame from available data
-                    import pandas as pd
-
-                    if "close" in train_data.columns:
-                        close = train_data["close"].astype(float)
-                    else:
-                        # Fallback: synthetic close from target
-                        tgt = train_data.get("target", pd.Series(0.0, index=train_data.index))
-                        close = (1 + tgt.shift(1).fillna(0)).cumprod() * 1000.0
-                    open_ = close.shift(1).fillna(close)
-                    high = pd.concat([open_, close], axis=1).max(axis=1)
-                    low = pd.concat([open_, close], axis=1).min(axis=1)
-                    volume = (
-                        train_data["volume"]
-                        if "volume" in train_data.columns
-                        else pd.Series(1.0, index=train_data.index)
+                    trainer.export_feature_index(
+                        task["symbol"], ohclv_df, output_dir=str(model_path)
                     )
-                    ohlcv = pd.DataFrame(
-                        {
-                            "open": open_.values,
-                            "high": high.values,
-                            "low": low.values,
-                            "close": close.values,
-                            "volume": volume.values,
-                        },
-                        index=train_data.index,
-                    )
-                    trainer.export_feature_index(task["symbol"], ohlcv, output_dir=str(model_path))
                 except Exception as e:
                     logger.warning(f"⚠️ PPO feature index export failed for {task['symbol']}: {e}")
             else:
@@ -594,9 +682,14 @@ class PaperspaceTraining:
             }
 
         except TimeoutError as e:
-            return {"success": False, "error": f"Timeout: {e}"}
+            tb = traceback.format_exc()
+            return {"success": False, "error": f"Timeout: {e}", "traceback": tb}
         except Exception as e:
-            return {"success": False, "error": f"Training error: {str(e)}"}
+            tb = traceback.format_exc()
+            # Log full traceback for faster diagnosis
+            logger.error(f"Training error for {task.get('symbol')} {task.get('model_type')}: {e}")
+            logger.debug(tb)
+            return {"success": False, "error": f"Training error: {str(e)}", "traceback": tb}
         finally:
             # Clear timeout
             if hasattr(signal, "SIGALRM"):

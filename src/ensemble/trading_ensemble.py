@@ -401,9 +401,10 @@ class TradingEnsemble:
 
     def predict(
         self,
-        X: np.ndarray,
+        X: Union[np.ndarray, pd.DataFrame],
         prices: Optional[np.ndarray] = None,
         update_weights: bool = True,
+        symbol: Optional[str] = None,
     ) -> np.ndarray:
         """
         Make ensemble predictions.
@@ -423,7 +424,11 @@ class TradingEnsemble:
         model_predictions = {}
         for name, model in self.models.items():
             try:
-                pred = model.predict(X)
+                # PPO models require PPO-specific routed features and sequence observations
+                if "ppo" in name.lower():
+                    pred = self._predict_with_ppo_model(model, X, symbol)
+                else:
+                    pred = model.predict(X)
                 model_predictions[name] = pred
             except Exception as e:
                 logger.error(f"Error getting predictions from {name}: {e}")
@@ -433,7 +438,10 @@ class TradingEnsemble:
             raise ValueError("No valid predictions from ensemble models")
 
         # Ensure all predictions have the same length
-        min_length = min(len(pred) for pred in model_predictions.values())
+        lengths = {name: len(pred) for name, pred in model_predictions.items()}
+        min_length = min(lengths.values())
+        if len(set(lengths.values())) > 1:
+            logger.warning(f"Prediction length mismatch across models: {lengths}. Truncating to {min_length}")
         for name in model_predictions:
             model_predictions[name] = model_predictions[name][:min_length]
 
@@ -496,6 +504,51 @@ class TradingEnsemble:
         )
 
         return ensemble_pred
+
+    def _predict_with_ppo_model(
+        self, model: Any, X: Union[np.ndarray, pd.DataFrame], symbol: Optional[str]
+    ) -> np.ndarray:
+        """Best-effort PPO prediction using feature router if a DataFrame is provided.
+
+        For PPO, if callers supply a DataFrame with OHLCV columns, we route features
+        via ModelFeatureRouter (which uses PPOFeatureExpander) to obtain the
+        104-feature representation and construct a single observation using the
+        last 32 timesteps. Otherwise, fall back to the raw model.predict call.
+        """
+        try:
+            import numpy as np
+            import pandas as pd
+            from ..data_pipeline.model_feature_router import ModelFeatureRouter
+
+            if isinstance(X, pd.DataFrame):
+                router = ModelFeatureRouter()
+                routed_df, info = router.route_features_for_model(
+                    X, model_type="ppo", symbol=symbol or "GENERIC", use_enhanced_engine=False
+                )
+                # Build observation from the last 32 timesteps of routed features (excluding OHLCV)
+                excluded = {"open", "high", "low", "close", "volume", "timestamp", "target"}
+                feature_cols = [c for c in routed_df.columns if c not in excluded]
+                seq_len = min(32, len(routed_df))
+                obs = routed_df[feature_cols].iloc[-seq_len:].to_numpy(dtype=np.float32)
+                # Pad if needed
+                if seq_len < 32:
+                    pad = np.zeros((32 - seq_len, obs.shape[1]), dtype=np.float32)
+                    obs = np.vstack([pad, obs])
+                # Predict with deterministic policy when available
+                try:
+                    return model.predict(obs, deterministic=True)[0]
+                except Exception:
+                    return model.predict(obs)
+            else:
+                # Fallback: let model handle the array
+                return model.predict(X)
+        except Exception as e:
+            logger.error(f"PPO routed prediction failed: {e}")
+            # Final fallback
+            try:
+                return model.predict(X)
+            except Exception:
+                return np.zeros((len(X),), dtype=float) if hasattr(X, "__len__") else np.array([0.0])
 
     def update_performance(self, actuals: np.ndarray, prices: Optional[np.ndarray] = None):
         """

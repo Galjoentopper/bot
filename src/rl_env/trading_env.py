@@ -103,8 +103,9 @@ class TradingEnvironment(gym.Env):
             np.random.seed(seed)
 
     def _preprocess_data(self) -> None:
-        # Feature columns (exclude 'close')
-        self.feature_columns = [c for c in self.data.columns if c != "close"]
+        # Feature columns (exclude non-predictive/metadata columns)
+        excluded = {"close", "target", "timestamp"}
+        self.feature_columns = [c for c in self.data.columns if c not in excluded]
         if self.feature_columns:
             market = self.data[self.feature_columns].to_numpy(dtype=np.float32)
             market = np.nan_to_num(market, nan=0.0, posinf=1.0, neginf=-1.0)

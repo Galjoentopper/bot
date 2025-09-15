@@ -191,7 +191,8 @@ class GRUTrainer:
             config: Configuration dictionary
         """
         self.config = config
-        self.model_config = config.get("models", {}).get("gru", {})
+        models_cfg = config.get("models") or config.get("model_parameters") or {}
+        self.model_config = models_cfg.get("gru", {})
         self.training_config = config.get("training", {})
 
         # Device configuration (GPU optimization for Paperspace)
