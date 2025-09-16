@@ -24,6 +24,19 @@ Complete automated MLOps pipeline for training trading bot models on Paperspace 
    - Uses existing databases in `data/` folder (no network fetching)
    - Automatically manages time limits and training parameters
 
+### One-command workflow
+
+If you prefer to mirror the old notebook flow, use the bundled script which
+loads an environment file, pulls the latest code, installs dependencies, and
+launches setup + training:
+
+```bash
+./scripts/run_paperspace_training.sh envs/paperspace.env
+```
+
+Fill `envs/paperspace.env` with your secrets (copy from
+`envs/paperspace.env.example`) and keep it out of source control.
+
 ### On Production Server
 
 1. **Start the webhook server** (to receive models automatically):
