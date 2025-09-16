@@ -8,6 +8,8 @@ data_acquisition:
   interval: '30m'
   lookback_days: 365
   use_local_databases: true
+  use_cache: false
+  force_refresh_cache: true
   data_sources:
     primary: 'binance'
     fallback: 'yfinance'

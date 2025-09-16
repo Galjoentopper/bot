@@ -31,11 +31,12 @@ loads an environment file, pulls the latest code, installs dependencies, and
 launches setup + training:
 
 ```bash
-./scripts/run_paperspace_training.sh envs/paperspace.env
+./scripts/run_paperspace_training.sh paperspace_mlops/envs/paperspace.env
 ```
 
-Fill `envs/paperspace.env` with your secrets (copy from
-`envs/paperspace.env.example`) and keep it out of source control.
+Fill `paperspace_mlops/envs/paperspace.env` with your secrets (copy from
+`paperspace_mlops/envs/paperspace.env.example`) and keep it out of source
+control.
 
 ### On Production Server
 

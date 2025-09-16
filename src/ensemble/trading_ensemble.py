@@ -10,7 +10,9 @@ Sophisticated ensemble system for cryptocurrency trading models with:
 - Regime-aware ensemble weights
 """
 
+import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -70,6 +72,16 @@ class TradingEnsemble:
 
         # Metrics calculator
         self.metrics_calc = TradingMetricsCalculator()
+
+        # Portfolio context used when constructing PPO observations
+        self.current_balance: float = 1.0
+        self.positions: Dict[str, float] = {}
+        self.last_prices: Dict[str, float] = {}
+        self.unrealized_pnls: Dict[str, float] = {}
+
+        # Cache PPO metadata and feature indices to avoid repeated disk reads
+        self._ppo_metadata_cache: Dict[str, Dict[str, Any]] = {}
+        self._ppo_feature_index_cache: Dict[str, List[str]] = {}
 
         logger.info(f"Trading ensemble initialized with {self.weighting_method} weighting")
 
@@ -399,12 +411,36 @@ class TradingEnsemble:
             else:
                 return "sideways"
 
+    def update_portfolio_state(
+        self,
+        balance: float,
+        positions: Optional[Dict[str, float]] = None,
+        last_prices: Optional[Dict[str, float]] = None,
+        unrealized: Optional[Dict[str, float]] = None,
+    ) -> None:
+        """Update cached portfolio context for PPO observation construction."""
+
+        try:
+            self.current_balance = float(balance)
+        except Exception:
+            self.current_balance = 1.0
+
+        if positions is not None:
+            self.positions = {str(k): float(v) for k, v in positions.items()}
+
+        if last_prices is not None:
+            self.last_prices = {str(k): float(v) for k, v in last_prices.items()}
+
+        if unrealized is not None:
+            self.unrealized_pnls = {str(k): float(v) for k, v in unrealized.items()}
+
     def predict(
         self,
         X: Union[np.ndarray, pd.DataFrame],
         prices: Optional[np.ndarray] = None,
         update_weights: bool = True,
         symbol: Optional[str] = None,
+        portfolio_state: Optional[Dict[str, Any]] = None,
     ) -> np.ndarray:
         """
         Make ensemble predictions.
@@ -413,12 +449,22 @@ class TradingEnsemble:
             X: Input features
             prices: Price series for regime detection
             update_weights: Whether to update weights
+            symbol: Preferred symbol context when a single asset is routed
+            portfolio_state: Optional dict with balance/positions data for PPO
 
         Returns:
             Ensemble predictions
         """
         if not self.models:
             raise ValueError("No models in ensemble")
+
+        if portfolio_state:
+            self.update_portfolio_state(
+                balance=portfolio_state.get("balance", self.current_balance),
+                positions=portfolio_state.get("positions"),
+                last_prices=portfolio_state.get("last_prices"),
+                unrealized=portfolio_state.get("unrealized_pnl"),
+            )
 
         # Get predictions from all models
         model_predictions = {}
@@ -522,23 +568,118 @@ class TradingEnsemble:
 
             if isinstance(X, pd.DataFrame):
                 router = ModelFeatureRouter()
-                routed_df, info = router.route_features_for_model(
+                routed_df, _ = router.route_features_for_model(
                     X, model_type="ppo", symbol=symbol or "GENERIC", use_enhanced_engine=False
                 )
-                # Build observation from the last 32 timesteps of routed features (excluding OHLCV)
-                excluded = {"open", "high", "low", "close", "volume", "timestamp", "target"}
-                feature_cols = [c for c in routed_df.columns if c not in excluded]
-                seq_len = min(32, len(routed_df))
-                obs = routed_df[feature_cols].iloc[-seq_len:].to_numpy(dtype=np.float32)
-                # Pad if needed
-                if seq_len < 32:
-                    pad = np.zeros((32 - seq_len, obs.shape[1]), dtype=np.float32)
-                    obs = np.vstack([pad, obs])
+
+                if routed_df is None or routed_df.empty:
+                    return np.zeros((len(X),), dtype=float) if hasattr(X, "__len__") else np.array([0.0])
+
+                routed_df = routed_df.copy()
+
+                metadata = self._load_ppo_metadata(symbol)
+                feature_index = self._load_ppo_feature_index(symbol)
+
+                # Determine ordered market feature columns (mirrors training environment)
+                base_cols = [c for c in ["open", "high", "low", "volume"] if c in routed_df.columns]
+                if feature_index:
+                    for col in feature_index:
+                        if col not in routed_df.columns:
+                            routed_df[col] = 0.0
+                    indicator_cols = [col for col in feature_index if col in routed_df.columns]
+                else:
+                    indicator_cols = [
+                        col
+                        for col in routed_df.columns
+                        if col
+                        not in set(base_cols).union({"close", "timestamp", "target"})
+                    ]
+
+                # Include any additional engineered columns that were not in the cached index
+                extra_cols = [
+                    col
+                    for col in routed_df.columns
+                    if col
+                    not in set(base_cols)
+                    .union({"close", "timestamp", "target"})
+                    .union(indicator_cols)
+                ]
+                if extra_cols:
+                    indicator_cols.extend(sorted(extra_cols))
+
+                ordered_cols = base_cols + indicator_cols
+                if not ordered_cols:
+                    ordered_cols = [
+                        col
+                        for col in routed_df.columns
+                        if col not in {"timestamp", "target"}
+                    ]
+
+                feature_matrix = routed_df[ordered_cols].to_numpy(dtype=np.float32)
+                feature_matrix = np.nan_to_num(feature_matrix, nan=0.0, posinf=1.0, neginf=-1.0)
+
+                sequence_length = 32
+                expected_market_features: Optional[int] = None
+                if metadata:
+                    obs_shape = metadata.get("observation_shape")
+                    if (
+                        isinstance(obs_shape, (list, tuple))
+                        and len(obs_shape) == 2
+                        and obs_shape[0]
+                    ):
+                        try:
+                            sequence_length = int(obs_shape[0])
+                            expected_market_features = int(obs_shape[1]) - 3
+                        except Exception:
+                            expected_market_features = None
+
+                if expected_market_features is not None and expected_market_features > 0:
+                    current_features = feature_matrix.shape[1]
+                    if current_features < expected_market_features:
+                        pad = np.zeros(
+                            (feature_matrix.shape[0], expected_market_features - current_features),
+                            dtype=np.float32,
+                        )
+                        feature_matrix = np.hstack([feature_matrix, pad])
+                    elif current_features > expected_market_features:
+                        feature_matrix = feature_matrix[:, :expected_market_features]
+
+                if feature_matrix.shape[0] < sequence_length:
+                    pad = np.zeros(
+                        (sequence_length - feature_matrix.shape[0], feature_matrix.shape[1]),
+                        dtype=np.float32,
+                    )
+                    feature_matrix = np.vstack([pad, feature_matrix])
+                else:
+                    feature_matrix = feature_matrix[-sequence_length:]
+
+                last_price = 0.0
+                if "close" in routed_df.columns and not routed_df["close"].empty:
+                    last_price = float(routed_df["close"].iloc[-1])
+                elif symbol and symbol in self.last_prices:
+                    last_price = float(self.last_prices[symbol])
+
+                if symbol and last_price > 0:
+                    self.last_prices[symbol] = last_price
+
+                portfolio_features = self._compute_portfolio_features(symbol, last_price)
+                portfolio_matrix = np.tile(portfolio_features, (feature_matrix.shape[0], 1))
+                observation = np.concatenate([feature_matrix, portfolio_matrix], axis=1)
+
+                if metadata and isinstance(metadata.get("observation_shape"), (list, tuple)):
+                    expected_obs = tuple(metadata["observation_shape"])
+                    if (observation.shape[0], observation.shape[1]) != expected_obs:
+                        logger.debug(
+                            "PPO observation shape mismatch (got %s, expected %s)",
+                            observation.shape,
+                            expected_obs,
+                        )
+
                 # Predict with deterministic policy when available
                 try:
-                    return model.predict(obs, deterministic=True)[0]
+                    return model.predict(observation, deterministic=True)[0]
                 except Exception:
-                    return model.predict(obs)
+                    return model.predict(observation)
             else:
                 # Fallback: let model handle the array
                 return model.predict(X)
@@ -549,6 +690,70 @@ class TradingEnsemble:
                 return model.predict(X)
             except Exception:
                 return np.zeros((len(X),), dtype=float) if hasattr(X, "__len__") else np.array([0.0])
+
+    def _load_ppo_metadata(self, symbol: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not symbol:
+            return None
+        if symbol in self._ppo_metadata_cache:
+            return self._ppo_metadata_cache[symbol]
+
+        metadata_path = Path("models") / "ppo" / symbol / "model_metadata.json"
+        if not metadata_path.exists():
+            self._ppo_metadata_cache[symbol] = {}
+            return None
+        try:
+            with metadata_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+                self._ppo_metadata_cache[symbol] = data
+                return data
+        except Exception as exc:
+            logger.debug(f"Failed to load PPO metadata for %s: %s", symbol, exc)
+            self._ppo_metadata_cache[symbol] = {}
+            return None
+
+    def _load_ppo_feature_index(self, symbol: Optional[str]) -> Optional[List[str]]:
+        if not symbol:
+            return None
+        if symbol in self._ppo_feature_index_cache:
+            return self._ppo_feature_index_cache[symbol]
+
+        index_path = Path("models") / "ppo" / symbol / "feature_index.json"
+        if not index_path.exists():
+            self._ppo_feature_index_cache[symbol] = []
+            return None
+
+        try:
+            with index_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    self._ppo_feature_index_cache[symbol] = data
+                    return data
+        except Exception as exc:
+            logger.debug(f"Failed to load PPO feature index for %s: %s", symbol, exc)
+
+        self._ppo_feature_index_cache[symbol] = []
+        return None
+
+    def _compute_portfolio_features(self, symbol: Optional[str], last_price: float) -> np.ndarray:
+        balance = max(self.current_balance, 1e-6)
+
+        position_amount = 0.0
+        if symbol and symbol in self.positions:
+            position_amount = float(self.positions[symbol])
+
+        position_value = position_amount * last_price if last_price > 0 else 0.0
+        total_value = max(balance + position_value, 1e-6)
+
+        balance_ratio = np.clip(balance / total_value, 0.01, 10.0)
+        position_ratio = np.clip(position_value / total_value, -1.0, 1.0)
+
+        unrealized = 0.0
+        if symbol and symbol in self.unrealized_pnls:
+            unrealized = float(self.unrealized_pnls[symbol])
+
+        unrealized_ratio = np.clip(unrealized / total_value, -2.0, 2.0)
+
+        return np.array([balance_ratio, position_ratio, unrealized_ratio], dtype=np.float32)
 
     def update_performance(self, actuals: np.ndarray, prices: Optional[np.ndarray] = None):
         """

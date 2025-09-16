@@ -628,9 +628,14 @@ class FeatureEngine:
         return adx
 
     def get_feature_names(self, df: pd.DataFrame) -> List[str]:
-        """Get list of feature column names (excluding OHLCV)."""
+        """Get list of predictive feature column names.
+
+        Excludes raw OHLCV, identifiers, timestamps, and any label/target columns
+        produced by the TradingTargetEngine (e.g., return_*, direction_*, etc.).
+        Only numeric predictive columns are returned to avoid downstream NaNs.
+        """
         # Non-feature columns to exclude (including OHLCV)
-        excluded_cols = [
+        excluded_cols = {
             "open",
             "high",
             "low",
@@ -643,10 +648,45 @@ class FeatureEngine:
             "id",
             "timestamp",
             "target",
+        }
+
+        # Patterns indicating target/label-like columns to exclude from X
+        target_like_prefixes = (
+            "target_",
+            "return_",           # return_1h, log_return_*, etc.
+            "log_return_",
+            "cost_adj_return_",
+            "direction_",
+            "strong_direction_",
+            "is_profitable_",
+            "risk_adj_",         # risk_adj_return_, risk_adj_direction_
+            "info_ratio_",
+            "confidence_",
+            "high_confidence_",
+            "regime_direction_",
+            "bull_return_",
+            "bear_return_",
+            "high_vol_return_",
+            "low_vol_return_",
+            "magnitude_",
+            "return_magnitude_",
+            "positive_magnitude_",
+            "magnitude_category_",
+        )
+
+        def is_target_like(col: str) -> bool:
+            return any(col.startswith(pref) for pref in target_like_prefixes) or (
+                "direction" in col or "profitable" in col or "confidence" in col or "regime" in col
+            )
+
+        # Keep only numeric predictive columns, excluding OHLCV/ids and any target-like columns
+        numeric_cols = set(df.select_dtypes(include=[np.number]).columns)
+        feature_cols = [
+            col
+            for col in numeric_cols
+            if col not in excluded_cols and not is_target_like(col)
         ]
 
-        # Return only engineered features, excluding OHLCV
-        feature_cols = [col for col in df.columns if col not in excluded_cols]
         return feature_cols
 
     def prepare_model_input(
@@ -1335,7 +1375,15 @@ class FeatureEngine:
             DataFrame with trading targets added
         """
         logger.info(f"Generating trading targets for {symbol}")
-        return self.target_engineer.create_trading_targets(df, "close")
+        targets_df = self.target_engineer.create_trading_targets(df, "close")
+        # Merge targets alongside existing features (do not drop features)
+        try:
+            combined = pd.concat([df, targets_df], axis=1)
+            return combined
+        except Exception:
+            # Fallback: if concat fails, return original df to avoid data loss
+            logger.warning("Failed to combine targets with features; returning features only")
+            return df
 
     def generate_features_and_targets(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
         """

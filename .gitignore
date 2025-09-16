@@ -51,6 +51,7 @@ model_transfer_*.zip
 .env.local
 .env.backup_with_real_creds
 envs/*.env
+paperspace_mlops/envs/*.env
 env/
 venv/
 ENV/

@@ -115,6 +115,9 @@ class EnsembleValidator:
                     initial_weight = ensemble_config.get("static_weights", {}).get(name)
                     ensemble.add_model(name, model, initial_weight)
 
+                # Default portfolio state so PPO observations include portfolio ratios
+                ensemble.update_portfolio_state(balance=1.0, positions={}, last_prices={}, unrealized={})
+
                 # Get test data
                 X_test = X[test_idx]
                 y_test = y[test_idx]
@@ -123,7 +126,16 @@ class EnsembleValidator:
                 )
 
                 # Make ensemble predictions
-                ensemble_pred = ensemble.predict(X_test, prices_test)
+                ensemble_pred = ensemble.predict(
+                    X_test,
+                    prices_test,
+                    portfolio_state={
+                        "balance": 1.0,
+                        "positions": {},
+                        "last_prices": {},
+                        "unrealized_pnl": {},
+                    },
+                )
 
                 # Ensure same length
                 min_len = min(len(ensemble_pred), len(y_test))
@@ -373,7 +385,16 @@ class EnsembleValidator:
 
         # Test noise robustness
         noise_results = {}
-        baseline_pred = ensemble.predict(X, prices)
+        baseline_pred = ensemble.predict(
+            X,
+            prices,
+            portfolio_state={
+                "balance": 1.0,
+                "positions": {},
+                "last_prices": {},
+                "unrealized_pnl": {},
+            },
+        )
 
         for noise_level in self.noise_levels:
             noise_scores = []
@@ -384,7 +405,16 @@ class EnsembleValidator:
                 X_noisy = X + noise
 
                 try:
-                    noisy_pred = ensemble.predict(X_noisy, prices)
+                    noisy_pred = ensemble.predict(
+                        X_noisy,
+                        prices,
+                        portfolio_state={
+                            "balance": 1.0,
+                            "positions": {},
+                            "last_prices": {},
+                            "unrealized_pnl": {},
+                        },
+                    )
 
                     # Calculate prediction stability
                     pred_correlation = np.corrcoef(baseline_pred, noisy_pred)[0, 1]
@@ -415,7 +445,16 @@ class EnsembleValidator:
             prices_boot = prices[indices] if len(prices) > max(indices) else prices
 
             try:
-                boot_pred = ensemble.predict(X_boot, prices_boot)
+                boot_pred = ensemble.predict(
+                    X_boot,
+                    prices_boot,
+                    portfolio_state={
+                        "balance": 1.0,
+                        "positions": {},
+                        "last_prices": {},
+                        "unrealized_pnl": {},
+                    },
+                )
 
                 # Calculate performance metrics
                 if len(boot_pred) == len(y_boot):
@@ -492,7 +531,17 @@ class EnsembleValidator:
         attribution_results = {}
 
         # Get ensemble prediction
-        ensemble_pred = ensemble.predict(X, prices)
+        ensemble.update_portfolio_state(balance=1.0, positions={}, last_prices={}, unrealized={})
+        ensemble_pred = ensemble.predict(
+            X,
+            prices,
+            portfolio_state={
+                "balance": 1.0,
+                "positions": {},
+                "last_prices": {},
+                "unrealized_pnl": {},
+            },
+        )
 
         # Calculate ensemble performance
         ensemble_perf = evaluate_trading_performance(

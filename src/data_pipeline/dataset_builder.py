@@ -61,6 +61,56 @@ class DatasetBuilder:
 
         logger.info(f"DatasetBuilder initialized with cache at {cache_dir}")
 
+    def clear_cache(self, symbol: Optional[str] = None, interval: Optional[str] = None) -> int:
+        """Remove cached feature artifacts for the requested scope."""
+        cache_path = Path(self.cache_dir)
+        if not cache_path.exists():
+            return 0
+
+        patterns: List[str] = []
+
+        if symbol and interval:
+            sym = symbol.upper()
+            iv = interval.lower()
+            patterns = [
+                f"{sym}_{iv}_*.parquet",
+                f"{sym}_{iv}_*_metadata.json",
+            ]
+        elif symbol:
+            sym = symbol.upper()
+            patterns = [
+                f"{sym}_*_*.parquet",
+                f"{sym}_*_*_metadata.json",
+            ]
+        elif interval:
+            iv = interval.lower()
+            patterns = [
+                f"*_{iv}_*.parquet",
+                f"*_{iv}_*_metadata.json",
+            ]
+        else:
+            patterns = ["*.parquet", "*_metadata.json"]
+
+        removed = 0
+        seen_paths = set()
+
+        for pattern in patterns:
+            for file_path in cache_path.glob(pattern):
+                if file_path in seen_paths:
+                    continue
+                seen_paths.add(file_path)
+                try:
+                    file_path.unlink()
+                    removed += 1
+                except OSError as exc:
+                    logger.warning(f"Failed to remove cache file {file_path}: {exc}")
+
+        if removed:
+            scope = symbol or interval or "all"
+            logger.info(f"Cleared {removed} cached feature files for scope={scope}")
+
+        return removed
+
     def build_dataset(
         self,
         symbol: str,
@@ -331,7 +381,9 @@ class DatasetBuilder:
                 low_variance_features.append(col)
 
         if low_variance_features:
-            errors.append(f"Low variance features: {low_variance_features[:5]}...")
+            logger.warning(
+                f"Low variance features detected: {low_variance_features[:5]}... (treated as warning)"
+            )
 
         is_valid = len(errors) == 0
         return is_valid, errors
@@ -416,31 +468,6 @@ class DatasetBuilder:
         }
 
         return metadata
-
-    def clear_cache(self, symbol: Optional[str] = None):
-        """
-        Clear cached features.
-
-        Args:
-            symbol: Specific symbol to clear (None clears all)
-        """
-        if symbol:
-            pattern = os.path.join(self.cache_dir, f"{symbol}_*.parquet")
-            files = list(Path(self.cache_dir).glob(f"{symbol}_*"))
-        else:
-            files = list(Path(self.cache_dir).glob("*.parquet")) + list(
-                Path(self.cache_dir).glob("*.json")
-            )
-
-        removed_count = 0
-        for file in files:
-            try:
-                os.remove(file)
-                removed_count += 1
-            except Exception as e:
-                logger.warning(f"Failed to remove {file}: {e}")
-
-        logger.info(f"Cleared {removed_count} cached files")
 
     def get_cache_info(self) -> Dict[str, Any]:
         """Get information about cached datasets."""

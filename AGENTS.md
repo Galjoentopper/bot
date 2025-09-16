@@ -1,45 +1,19 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Source in `src/` (e.g., `src/trading`, `src/models`, `src/utils`).
-- Tests in `tests/` with `unit/`, `integration/`, and `system/` subfolders.
-- Config in `config/` (top‑level `config.yaml` is a symlink to a training config).
-- Automation in `scripts/` and top‑level `*.sh` helpers.
-- Data/artifacts: `data/`, `models/`, `mlruns/`, `reports/`, `logs/`.
+Keep production code inside `src/`, grouping features by domain (for example `src/trading`, `src/models`, `src/utils`). Mirror each module with focused tests under `tests/` using `unit/`, `integration/`, or `system/` so behaviors stay localized. Store configuration in `config/` with `config.yaml` pointing to the active training profile, keep generated data in `data/`, and place model artifacts or reports in `models/` and `reports/`. Automation scripts live in `scripts/` or top-level `*.sh` helpers.
 
 ## Build, Test, and Development Commands
-- `make setup` — Create venv and install dev deps (`pip install -e .[dev]`).
-- `make test` — Fast pytest run for local iteration.
-- `make test-cov` — Pytest with coverage for `src/`.
-- `make lint` — Run flake8 on `src/`.
-- `make format` — Run black on `src` and top‑level `*.py`.
-- `make pre-commit-install` / `make pre-commit-run` — Install and run hooks.
-- Examples: `pytest -m unit`, `pytest -m "integration and not slow"`.
+Run `make setup` once to create the virtualenv and install editable dev dependencies. During iteration use `make test` for the fast pytest suite and `make test-cov` when validating coverage across `src/`. Enforce style with `make lint` and `make format`, and install or run the pre-commit hooks via `make pre-commit-install` and `make pre-commit-run`.
 
 ## Coding Style & Naming Conventions
-- Python 3; 4‑space indentation; max line length 100.
-- Format with Black; import order via isort (`profile=black`).
-- Lint with flake8 (ignores: E203, W503, E501); type‑check with mypy.
-- Naming: modules/files `snake_case.py`; classes `CamelCase`; functions/vars `snake_case`.
+Write Python 3 with 4-space indents, ≤100-character lines, and snake_case modules, functions, and variables. Classes use CamelCase. Format imports with isort (`profile=black`) and rely on black for layout; flake8 (ignoring E203, W503, E501) guards lint quality. Favor small, composable units and add precise docstrings where logic is non-obvious.
 
 ## Testing Guidelines
-- Framework: pytest; markers: `unit`, `integration`, `performance`, `model`, `trading`, `config`, `slow`.
-- Coverage threshold: 80% (see `pytest.ini`).
-- Naming: files `test_*.py` or `*_test.py`; tests `def test_*`.
-- Run subsets: `pytest tests/unit`, `pytest -m integration`.
+Use pytest with markers like `unit`, `integration`, `performance`, `trading`, and `slow`. Name tests `test_*` and keep them under the matching layer (`tests/unit`, etc.). Target at least 80% coverage, matching `pytest.ini`. Run subsets via `pytest tests/unit` or `pytest -m "integration and not slow"` during focused debugging.
 
 ## Commit & Pull Request Guidelines
-- Prefer Conventional Commits: `feat: ...`, `fix: ...`, `chore: ...` (imperative, focused; reference issues).
-- PRs must include description, motivation/context, test plan (commands + results), and relevant screenshots/logs.
-- Ensure CI passes (lint, type‑checks, tests); run `make pre-commit-run` before pushing.
+Adopt Conventional Commit prefixes (`feat:`, `fix:`, `chore:`) written in the imperative and scoped to a single concern. Each PR should summarize motivation, note architecture or data implications, list verification commands (e.g., `make test`, `make lint`), and link issues when relevant. Attach logs or artifacts that prove expected behavior and confirm CI status before requesting review.
 
 ## Security & Configuration Tips
-- Never commit secrets. Use `.env.template`; keep real values in `.env`.
-- Validate environment with `validate_environment.py`; review `SECURITY_IMPLEMENTATION_SUMMARY.md`.
-- Be mindful of data paths and external services; mark such tests `external` or `slow`.
-
-## Architecture & Planning Standards
-- Clarify requirements and constraints before coding; outline design and dependencies.
-- Break work into TODOs with clear scope and owners.
-- Document risks, edge cases, and mitigations.
-- Aim for SOLID design, clear errors/logging, and mockable interfaces.
+Never commit real credentials; populate `.env` from `.env.template` and validate with `python validate_environment.py`. Review `SECURITY_IMPLEMENTATION_SUMMARY.md` when boundaries change, tag risky scenarios with `external` or `slow`, and keep training outputs inside tracked artifact directories.

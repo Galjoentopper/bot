@@ -342,6 +342,8 @@ class TradingFeatureEngine:
             # Sortino ratio (downside deviation)
             downside_returns = returns.where(returns < 0, 0)
             downside_vol = downside_returns.rolling(window).std()
+            # Rolling mean return as numerator for risk-adjusted metrics
+            mean_return = returns.rolling(window).mean()
             df[f"sortino_{window}"] = mean_return / (downside_vol + 1e-8) * np.sqrt(24 * 365)
 
             # Calmar ratio (return/max drawdown)

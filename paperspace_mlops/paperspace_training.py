@@ -327,10 +327,14 @@ class PaperspaceTraining:
             except ImportError as e:
                 raise ImportError(f"Could not import DatasetBuilder. Import error: {e}")
 
-        if symbols is None:
-            symbols = self.config.get("data_acquisition", {}).get("symbols", [])
+        data_cfg = self.config.get("data_acquisition", {})
 
-        interval = self.config.get("data_acquisition", {}).get("interval", "30m")
+        if symbols is None:
+            symbols = data_cfg.get("symbols", [])
+
+        interval = data_cfg.get("interval", "30m")
+        use_cache = data_cfg.get("use_cache", True)
+        force_refresh_cache = data_cfg.get("force_refresh_cache", False)
 
         # Initialize dataset builder
         builder = DatasetBuilder(
@@ -346,7 +350,10 @@ class PaperspaceTraining:
             try:
                 logger.info(f"📥 Building dataset for {symbol}...")
 
-                result = builder.build_dataset(symbol=symbol, interval=interval, use_cache=True)
+                if force_refresh_cache:
+                    builder.clear_cache(symbol=symbol, interval=interval)
+
+                result = builder.build_dataset(symbol=symbol, interval=interval, use_cache=use_cache)
 
                 if result and len(result) > 4:
                     X, y, timestamps, feature_names, metadata = result

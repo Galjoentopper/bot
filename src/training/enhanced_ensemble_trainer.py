@@ -271,6 +271,9 @@ class EnhancedEnsembleTrainer:
             for name, model in trained_models.items():
                 ensemble.add_model(name, model)
 
+            # Provide neutral portfolio context by default
+            ensemble.update_portfolio_state(balance=1.0, positions={}, last_prices={}, unrealized={})
+
             ensemble_results["ensemble"] = ensemble
             ensemble_results["config"] = ensemble_config
 
@@ -294,6 +297,10 @@ class EnhancedEnsembleTrainer:
                         for name, model in trained_models.items():
                             optimized_ensemble.add_model(name, model)
 
+                        optimized_ensemble.update_portfolio_state(
+                            balance=1.0, positions={}, last_prices={}, unrealized={}
+                        )
+
                         ensemble_results["optimized_ensemble"] = optimized_ensemble
                         ensemble_results["optimized_config"] = optimized_config
 
@@ -307,7 +314,16 @@ class EnhancedEnsembleTrainer:
             test_X = X[-test_size:]
             test_prices = prices[-test_size:]
 
-            ensemble_pred = ensemble.predict(test_X, test_prices)
+            ensemble_pred = ensemble.predict(
+                test_X,
+                test_prices,
+                portfolio_state={
+                    "balance": 1.0,
+                    "positions": {},
+                    "last_prices": {},
+                    "unrealized_pnl": {},
+                },
+            )
             ensemble_results["test_predictions"] = ensemble_pred
 
             logger.info("Ensemble creation completed")
@@ -369,7 +385,16 @@ class EnhancedEnsembleTrainer:
             logger.info("Performing benchmark comparison")
             try:
                 if ensemble is not None:
-                    ensemble_pred = ensemble.predict(X, prices)
+                    ensemble_pred = ensemble.predict(
+                        X,
+                        prices,
+                        portfolio_state={
+                            "balance": 1.0,
+                            "positions": {},
+                            "last_prices": {},
+                            "unrealized_pnl": {},
+                        },
+                    )
                     benchmark_results = self.model_evaluator.benchmark_comparison(
                         ensemble_pred, prices
                     )

@@ -13,6 +13,9 @@ Environment Variables Required:
     AWS_ACCESS_KEY_ID: Your AWS access key
     AWS_SECRET_ACCESS_KEY: Your AWS secret key
     AWS_DEFAULT_REGION: AWS region (optional, defaults to us-east-1)
+
+Optional:
+    AWS_MODELS_BUCKET: Existing bucket to reuse instead of creating a new one
 """
 
 import json
@@ -44,7 +47,7 @@ class S3StorageSetup:
 
     def __init__(self):
         self.region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
-        self.bucket_name = None
+        self.bucket_name = os.environ.get("AWS_MODELS_BUCKET")
         self.s3_client = None
 
     def verify_credentials(self):
@@ -92,6 +95,45 @@ class S3StorageSetup:
         self.bucket_name = f"paperspace-models-{timestamp}"
         logger.info(f"📦 Generated bucket name: {self.bucket_name}")
         return self.bucket_name
+
+    def use_existing_bucket(self):
+        """Reuse bucket provided via environment variable"""
+
+        logger.info(
+            f"🔁 Reusing existing bucket from AWS_MODELS_BUCKET: {self.bucket_name}"
+        )
+
+        try:
+            self.s3_client.head_bucket(Bucket=self.bucket_name)
+
+            bucket_location = self.s3_client.get_bucket_location(
+                Bucket=self.bucket_name
+            ).get("LocationConstraint")
+
+            if bucket_location in (None, ""):
+                bucket_location = "us-east-1"
+
+            if bucket_location != self.region:
+                logger.info(
+                    "ℹ️ Updating region to match existing bucket location: %s",
+                    bucket_location,
+                )
+                self.region = bucket_location
+                self.s3_client = boto3.client("s3", region_name=self.region)
+
+            return True
+
+        except ClientError as e:
+            logger.error(
+                "❌ Unable to access existing bucket '%s': %s",
+                self.bucket_name,
+                e,
+            )
+            return False
+
+        except Exception as e:
+            logger.error(f"❌ Unexpected error checking existing bucket: {e}")
+            return False
 
     def create_bucket(self):
         """Create S3 bucket with cost optimization"""
@@ -353,30 +395,33 @@ AWS_SECRET_ACCESS_KEY=your-secret-key-here
         if not self.verify_credentials():
             return False
 
-        # Step 2: Generate bucket name
-        self.generate_bucket_name()
+        # Step 2: Either reuse supplied bucket or create a new one
+        if self.bucket_name:
+            if not self.use_existing_bucket():
+                return False
+        else:
+            self.generate_bucket_name()
 
-        # Step 3: Create bucket
-        if not self.create_bucket():
-            return False
+            if not self.create_bucket():
+                return False
 
-        # Step 4: Setup lifecycle policy
+        # Step 3: Setup lifecycle policy
         if not self.setup_lifecycle_policy():
             return False
 
-        # Step 5: Add cost monitoring tags
+        # Step 4: Add cost monitoring tags
         if not self.setup_cost_monitoring():
             return False
 
-        # Step 6: Test access
+        # Step 5: Test access
         if not self.test_bucket_access():
             return False
 
-        # Step 7: Generate configuration
+        # Step 6: Generate configuration
         if not self.generate_environment_config():
             return False
 
-        # Step 8: Print cost breakdown
+        # Step 7: Print cost breakdown
         self.print_cost_breakdown()
 
         logger.info("🎉 S3 Setup Completed Successfully!")

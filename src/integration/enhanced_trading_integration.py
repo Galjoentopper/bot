@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 # Import our new components
+from ..ensemble.trading_ensemble import TradingEnsemble
 from ..monitoring import (
     ABTestingFramework,
     DriftDetector,
@@ -122,6 +123,11 @@ class EnhancedTradingSystem:
         # Performance tracking
         self.trade_history = []
         self.daily_pnl = []
+
+        # Portfolio context for ensemble-based models
+        self.last_prices: Dict[str, float] = {}
+        self.unrealized_pnls: Dict[str, float] = {}
+        self.trading_ensemble = TradingEnsemble()
 
         self.logger.info("Enhanced Trading System initialized")
 
@@ -261,9 +267,61 @@ class EnhancedTradingSystem:
             # 1. Feature Engineering (mock implementation)
             features_df = self._extract_features(market_data)
 
+            latest_price = None
+            for price_key in ("price", "close", "last_price"):
+                if price_key in market_data:
+                    try:
+                        latest_price = float(market_data[price_key])
+                        break
+                    except (TypeError, ValueError):
+                        continue
+
+            if latest_price is not None:
+                self.last_prices[symbol] = latest_price
+
+            portfolio_state = self._build_portfolio_state(symbol, latest_price)
+            try:
+                self.trading_ensemble.update_portfolio_state(
+                    balance=portfolio_state["balance"],
+                    positions=portfolio_state["positions"],
+                    last_prices=portfolio_state["last_prices"],
+                    unrealized=portfolio_state["unrealized_pnl"],
+                )
+            except Exception as ensemble_state_error:
+                self.logger.debug(
+                    "Failed to update ensemble portfolio state for %s: %s",
+                    symbol,
+                    ensemble_state_error,
+                )
+
             # 2. Model Predictions (mock implementation)
             model_predictions = await self._get_model_predictions(symbol, features_df)
-            ensemble_prediction = np.mean(list(model_predictions.values()))
+
+            ensemble_prediction_override: Optional[float] = None
+            if self.trading_ensemble and getattr(self.trading_ensemble, "models", {}):
+                try:
+                    ensemble_output = self.trading_ensemble.predict(
+                        features_df,
+                        prices=None,
+                        update_weights=True,
+                        symbol=symbol,
+                        portfolio_state=portfolio_state,
+                    )
+                    ensemble_array = np.atleast_1d(np.asarray(ensemble_output))
+                    if ensemble_array.size > 0:
+                        ensemble_prediction_override = float(ensemble_array[-1])
+                        model_predictions["ensemble_model"] = ensemble_prediction_override
+                except Exception as ensemble_error:
+                    self.logger.debug(
+                        "Ensemble prediction unavailable for %s: %s", symbol, ensemble_error
+                    )
+
+            base_values = list(model_predictions.values())
+            ensemble_prediction = (
+                float(np.mean(base_values)) if base_values else 0.0
+            )
+            if ensemble_prediction_override is not None:
+                ensemble_prediction = ensemble_prediction_override
 
             # 3. Model Health Check and Monitoring
             monitoring_result = self.model_monitor.monitor_model_prediction(
@@ -626,6 +684,47 @@ class EnhancedTradingSystem:
             # Remove zero positions
             if abs(self.current_positions.get(decision.asset, 0)) < 0.01:
                 self.current_positions.pop(decision.asset, None)
+
+            # Reset unrealized PnL snapshot for the asset until next valuation cycle
+            self.unrealized_pnls[decision.asset] = self.unrealized_pnls.get(decision.asset, 0.0)
+
+        # Update ensemble portfolio snapshot
+        try:
+            portfolio_state = self._build_portfolio_state(decision.asset)
+            self.trading_ensemble.update_portfolio_state(
+                balance=portfolio_state["balance"],
+                positions=portfolio_state["positions"],
+                last_prices=portfolio_state["last_prices"],
+                unrealized=portfolio_state["unrealized_pnl"],
+            )
+        except Exception as ensemble_state_error:
+            self.logger.debug(
+                "Failed to refresh ensemble portfolio state post-trade for %s: %s",
+                decision.asset,
+                ensemble_state_error,
+            )
+
+    def _build_portfolio_state(
+        self, symbol: str, latest_price: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """Assemble portfolio snapshot for ensemble models."""
+
+        positions_snapshot = {k: float(v) for k, v in self.current_positions.items()}
+
+        last_price_snapshot = self.last_prices.copy()
+        if latest_price is not None:
+            last_price_snapshot[symbol] = latest_price
+
+        unrealized_snapshot = self.unrealized_pnls.copy()
+        if symbol not in unrealized_snapshot:
+            unrealized_snapshot[symbol] = unrealized_snapshot.get(symbol, 0.0)
+
+        return {
+            "balance": float(self.portfolio_value),
+            "positions": positions_snapshot,
+            "last_prices": last_price_snapshot,
+            "unrealized_pnl": unrealized_snapshot,
+        }
 
     def _send_trade_notification(self, decision: TradingDecision, execution_result: Dict[str, Any]):
         """Send trade notification via Telegram"""
