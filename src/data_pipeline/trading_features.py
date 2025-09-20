@@ -52,7 +52,11 @@ class TradingFeatureEngine:
     def _merge_config(self, base_config: Dict, new_config: Dict) -> None:
         """Recursively merge configuration dictionaries."""
         for key, value in new_config.items():
-            if key in base_config and isinstance(base_config[key], dict) and isinstance(value, dict):
+            if (
+                key in base_config
+                and isinstance(base_config[key], dict)
+                and isinstance(value, dict)
+            ):
                 self._merge_config(base_config[key], value)
             else:
                 base_config[key] = value
@@ -339,6 +343,9 @@ class TradingFeatureEngine:
                 returns, window, annualize=True, periods_per_year=17520  # 30min periods/year
             )
 
+            # Rolling mean return used by Sortino/Calmar calculations
+            mean_return = returns.rolling(window).mean()
+
             # Sortino ratio (downside deviation)
             downside_returns = returns.where(returns < 0, 0)
             downside_vol = downside_returns.rolling(window).std()
@@ -405,9 +412,7 @@ class TradingFeatureEngine:
         bollinger_periods = self.config.get("bollinger_periods", [20, 50])
         bollinger_std = self.config.get("bollinger_std", 2.0)
         for period in bollinger_periods:
-            bb = ta.volatility.BollingerBands(
-                df["close"], window=period, window_dev=bollinger_std
-            )
+            bb = ta.volatility.BollingerBands(df["close"], window=period, window_dev=bollinger_std)
             df[f"bb_upper_{period}"] = bb.bollinger_hband()
             df[f"bb_lower_{period}"] = bb.bollinger_lband()
             df[f"bb_width_{period}"] = (df[f"bb_upper_{period}"] - df[f"bb_lower_{period}"]) / df[

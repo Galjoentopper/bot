@@ -86,6 +86,15 @@ class SystemCommandHandler:
             rate_limit=1,
         )
 
+        # Admin-only: import latest model bundles using the project script
+        registry.register_command(
+            name="import",
+            handler=self.handle_import,
+            description="Import latest model bundle (runs ./bin/import_models)",
+            admin_only=True,
+            rate_limit=1,
+        )
+
         self.logger.info("System commands registered")
 
     async def handle_health(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -259,6 +268,125 @@ class SystemCommandHandler:
         except Exception as e:
             self.logger.error(f"Error handling database command: {e}")
             await update.message.reply_text(f"❌ Database rebuild failed: {e}", parse_mode="HTML")
+
+    async def handle_import(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /import command.
+
+        Runs the repository's model import script (./bin/import_models). Optional
+        KEY=VALUE arguments are treated as environment overrides for the import
+        process (e.g., KEEP_OLD_MODELS=1, STRICT_IMPORT=1, MODELS_REGISTRY_JSON=path).
+        """
+        try:
+            import asyncio
+            import os
+            import re
+            from shutil import which
+
+            # Initial notice
+            await update.message.reply_text(
+                "📦 Starting model import… This may take several minutes."
+            )
+
+            # Locate project root (search upwards for bin/import_models)
+            script_path: Optional[Path] = None
+            current = Path(__file__).resolve()
+            for parent in [current.parent] + list(current.parents):
+                candidate = (
+                    parent.parent.parent / "bin" / "import_models"
+                )  # src/notifications/handlers/ -> repo
+                if candidate.exists():
+                    script_path = candidate
+                    break
+                # Fallback: direct check at this level
+                candidate2 = parent / "bin" / "import_models"
+                if candidate2.exists():
+                    script_path = candidate2
+                    break
+
+            if not script_path or not script_path.exists():
+                await update.message.reply_text("❌ Could not find ./bin/import_models script")
+                return
+
+            # Prepare environment with optional KEY=VALUE args
+            env = os.environ.copy()
+            args = list(context.args or [])
+            for a in args:
+                if "=" in a and not a.startswith("--"):
+                    k, v = a.split("=", 1)
+                    if k and v is not None:
+                        env[k] = v
+
+            # Ensure executable via bash
+            bash = which("bash") or "/bin/bash"
+
+            # Run process and capture output
+            proc = await asyncio.create_subprocess_exec(
+                bash,
+                str(script_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(script_path.parent.parent),  # repo root
+                env=env,
+            )
+
+            stdout_bytes, stderr_bytes = await proc.communicate()
+
+            # Helper: strip ANSI color codes
+            ansi_re = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+            stdout = ansi_re.sub("", (stdout_bytes or b"").decode("utf-8", errors="ignore"))
+            stderr = ansi_re.sub("", (stderr_bytes or b"").decode("utf-8", errors="ignore"))
+
+            exit_code = proc.returncode or 0
+
+            # Build concise summary (prioritize SUCCESS/ERROR/WARNING/INFO lines)
+            def summarize(text: str, max_lines: int = 40) -> str:
+                lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+                important = [
+                    ln
+                    for ln in lines
+                    if any(
+                        tag in ln
+                        for tag in (
+                            "[SUCCESS]",
+                            "[ERROR]",
+                            "[WARNING]",
+                            "[INFO]",
+                            "SUCCESS:",
+                            "ERROR:",
+                            "WARNING:",
+                            "INFO:",
+                        )
+                    )
+                ]
+                chosen = important[-max_lines:] if important else lines[-max_lines:]
+                # Cap total message length
+                out = []
+                total = 0
+                for ln in chosen:
+                    if total + len(ln) + 1 > 3500:
+                        break
+                    out.append(ln)
+                    total += len(ln) + 1
+                return "\n".join(out)
+
+            if exit_code == 0:
+                summary = summarize(stdout)
+                msg = "✅ Import completed successfully."
+                if summary:
+                    msg += f"\n\n<code>{summary}</code>"
+                await update.message.reply_text(msg, parse_mode="HTML")
+            else:
+                # Include relevant stderr + tail of stdout
+                combined = (stderr + "\n" + stdout).strip()
+                summary = summarize(combined, max_lines=60)
+                msg = f"❌ Import failed (exit {exit_code})."
+                if summary:
+                    msg += f"\n\n<code>{summary}</code>"
+                await update.message.reply_text(msg, parse_mode="HTML")
+
+        except Exception as e:
+            self.logger.error(f"Error handling import command: {e}")
+            await update.message.reply_text("❌ Error running model import script")
 
     async def _discover_symbols(self) -> list[str]:
         """Discover symbols from installed models directory."""

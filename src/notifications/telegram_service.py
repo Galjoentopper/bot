@@ -199,6 +199,10 @@ class TelegramService:
             # Start message queue worker
             await self.message_queue.start()
 
+            # Mark service as running before spawning background workers so they enter
+            # their run loop immediately instead of exiting on the initial `_running` check.
+            self._running = True
+
             # Start message worker task
             self._worker_task = asyncio.create_task(self._message_worker())
 
@@ -219,8 +223,6 @@ class TelegramService:
                         self.logger.warning(
                             "No polling method found on Telegram application; commands may be inactive"
                         )
-
-            self._running = True
 
             # Send startup notification
             await self.send_notification(

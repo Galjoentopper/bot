@@ -204,9 +204,7 @@ async def rebuild_databases(
 
         # Fetch in thread to avoid blocking loop
         # FinalDataFetcher.fetch_symbol_data expects only (symbol)
-        df: Optional[pd.DataFrame] = await asyncio.to_thread(
-            fetcher.fetch_symbol_data, sym
-        )
+        df: Optional[pd.DataFrame] = await asyncio.to_thread(fetcher.fetch_symbol_data, sym)
         if df is None or len(df) < 20:
             raise RuntimeError(f"No/insufficient data for {sym} at {interval}")
 

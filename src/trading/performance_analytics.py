@@ -193,7 +193,7 @@ class PerformanceAnalyzer:
         returns: pd.Series,
         portfolio_value: float,
         cash_balance: float,
-        position_value: float,
+        _position_value: float,
         positions: Dict[str, float],
         prices: Dict[str, float],
     ) -> PerformanceMetrics:
@@ -214,21 +214,32 @@ class PerformanceAnalyzer:
                 annualized_return = mean_return * 48 * 365
                 annualized_volatility = volatility * annualization_factor
 
-                # Sharpe ratio
+                # Sharpe ratio with minimum volatility threshold and bounds
                 excess_return = annualized_return - self.risk_free_rate
-                sharpe_ratio = (
-                    excess_return / annualized_volatility if annualized_volatility > 0 else 0.0
+                min_volatility_threshold = (
+                    0.001  # 0.1% minimum volatility for meaningful Sharpe calculation
                 )
 
-                # Sortino ratio (downside deviation)
+                if annualized_volatility > min_volatility_threshold:
+                    sharpe_ratio = excess_return / annualized_volatility
+                    # Apply reasonable bounds to prevent extreme values
+                    sharpe_ratio = max(-10.0, min(10.0, sharpe_ratio))
+                else:
+                    sharpe_ratio = 0.0
+
+                # Sortino ratio (downside deviation) with bounds
                 downside_returns = returns[returns < 0]
                 if len(downside_returns) > 0:
                     downside_deviation = downside_returns.std() * annualization_factor
-                    sortino_ratio = (
-                        excess_return / downside_deviation if downside_deviation > 0 else 0.0
-                    )
+                    if downside_deviation > min_volatility_threshold:
+                        sortino_ratio = excess_return / downside_deviation
+                        # Apply reasonable bounds to prevent extreme values
+                        sortino_ratio = max(-10.0, min(10.0, sortino_ratio))
+                    else:
+                        sortino_ratio = 0.0
                 else:
-                    sortino_ratio = float("inf") if excess_return > 0 else 0.0
+                    # Set reasonable bound instead of infinity
+                    sortino_ratio = 10.0 if excess_return > 0 else 0.0
 
                 # Drawdown analysis
                 cumulative_returns = (1 + returns).cumprod()
@@ -255,21 +266,9 @@ class PerformanceAnalyzer:
                 if trade.get("action") == "SELL"
             )
 
-            unrealized_pnl = (
-                position_value
-                - sum(
-                    trade.get("cost", 0.0)
-                    for trade in self.trade_history
-                    if trade.get("action") == "BUY"
-                )
-                + sum(
-                    trade.get("proceeds", 0.0)
-                    for trade in self.trade_history
-                    if trade.get("action") == "SELL"
-                )
-            )
-
-            total_pnl = realized_pnl + unrealized_pnl
+            # Anchor total P&L to current equity to avoid double-counting
+            total_pnl = portfolio_value - self.initial_capital
+            unrealized_pnl = total_pnl - realized_pnl
 
             return PerformanceMetrics(
                 timestamp=timestamp,
@@ -643,8 +642,15 @@ class PerformanceAnalyzer:
                 "benchmark_return": self.benchmark_return,
                 "excess_return": metrics.annualized_return - self.benchmark_return,
                 "information_ratio": (
-                    (metrics.annualized_return - self.benchmark_return) / metrics.volatility
-                    if metrics.volatility > 0
+                    max(
+                        -10.0,
+                        min(
+                            10.0,
+                            (metrics.annualized_return - self.benchmark_return)
+                            / metrics.volatility,
+                        ),
+                    )
+                    if metrics.volatility > 0.001
                     else 0.0
                 ),
                 "outperformance": metrics.annualized_return > self.benchmark_return,
@@ -758,8 +764,8 @@ class PerformanceAnalyzer:
                 "expected_shortfall_99": es_99,
                 "volatility_percentile": self._calculate_volatility_percentile(metrics.volatility),
                 "risk_adjusted_return": (
-                    metrics.annualized_return / metrics.volatility
-                    if metrics.volatility > 0
+                    max(-10.0, min(10.0, metrics.annualized_return / metrics.volatility))
+                    if metrics.volatility > 0.001
                     else 0.0
                 ),
             }

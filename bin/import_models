@@ -435,6 +435,11 @@ PYMAN
                     log_warning "Missing PPO file: $(basename "$sym")/feature_index.json"
                     missing_required=1
                 fi
+                # Check for VecNormalize statistics saved by trainer
+                if ! ls "$sym"/*vecnormalize.pkl >/dev/null 2>&1; then
+                    log_warning "Missing PPO normalization stats (*vecnormalize.pkl) in $(basename "$sym")"
+                    # Not strictly required to import, but enforce if STRICT_IMPORT is on
+                fi
             done
             # Determine strict import default based on environment if not set
             if [ -z "${STRICT_IMPORT:-}" ]; then
@@ -668,15 +673,24 @@ validate_imported_models() {
         log_info "  ✓ PPO models found"
         # Check for feature_index.json per PPO symbol
         missing_index=0
+        missing_vecnorm=0
         for sym in models/ppo/*; do
             [ -d "$sym" ] || continue
             if [ ! -f "$sym/feature_index.json" ]; then
                 log_warning "  ⚠️ Missing feature_index.json in $sym"
                 missing_index=1
             fi
+            # Check for VecNormalize stats next to model (model_vecnormalize.pkl or similar)
+            if ! ls "$sym"/*vecnormalize.pkl >/dev/null 2>&1; then
+                log_warning "  ⚠️ Missing VecNormalize stats (*vecnormalize.pkl) in $sym"
+                missing_vecnorm=1
+            fi
         done
         if [ $missing_index -eq 1 ]; then
             log_warning "Some PPO symbols missing feature_index.json; inference will auto-create if enabled, but trainer should provide it."
+        fi
+        if [ $missing_vecnorm -eq 1 ]; then
+            log_warning "Some PPO symbols missing VecNormalize stats; predictions may be off without normalization."
         fi
     else
         log_warning "  ✗ PPO models not found"

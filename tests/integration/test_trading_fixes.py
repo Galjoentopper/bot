@@ -3,20 +3,31 @@
 
 import sys
 import time
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
 
 import yaml
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent))
+# Ensure project root is on sys.path so runtime modules are importable
+INTEGRATION_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = INTEGRATION_DIR.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 try:
-    from scripts.enhanced_trader import EnhancedUnifiedPaperTrader
-    from src.utils.logger import Logger
-except ImportError as e:
-    print(f"Import error: {e}")
-    print("Make sure you're running from the project root directory")
-    sys.exit(1)
+    from bin.trader import EnhancedUnifiedPaperTrader  # type: ignore[attr-defined]
+except ModuleNotFoundError:
+    loader = SourceFileLoader("integration_trader", str(PROJECT_ROOT / "bin" / "trader"))
+    spec = spec_from_loader(loader.name, loader)
+    if spec is None or spec.loader is None:  # pragma: no cover - defensive
+        print("Unable to load EnhancedUnifiedPaperTrader entry point")
+        sys.exit(1)
+    module = module_from_spec(spec)
+    loader.exec_module(module)  # type: ignore[arg-type]
+    EnhancedUnifiedPaperTrader = module.EnhancedUnifiedPaperTrader
+
+from src.utils.logger import Logger
 
 
 def test_signal_generation():

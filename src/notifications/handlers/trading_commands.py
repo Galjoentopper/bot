@@ -176,7 +176,7 @@ class TradingCommandHandler:
 
 <b>Risk Metrics</b>
 📉 Max Drawdown: {perf_data.get('max_drawdown', 0):.1f}%
-📊 Sharpe Ratio: {perf_data.get('sharpe_ratio', 0):.2f}
+📊 Sharpe Ratio: {max(-10.0, min(10.0, perf_data.get('sharpe_ratio', 0))):.2f}
 """
 
             message += f"\n⏰ <i>Period: {timeframe.upper()} | Updated: {datetime.now(timezone.utc).strftime('%H:%M UTC')}</i>"
@@ -361,22 +361,48 @@ class TradingCommandHandler:
 
                 total_value = float(data.get("portfolio_value", 0.0))
                 total_pnl = float(data.get("total_pnl", 0.0))
-                # Derive an initial balance estimate to compute percent safely
-                initial_estimate = total_value - total_pnl
-                total_pnl_percent = (
-                    (total_pnl / initial_estimate) * 100.0 if initial_estimate > 0 else 0.0
-                )
 
+                # Prefer explicit total_return from metrics when available to avoid
+                # drift from repeated derived calculations.
+                total_return = data.get("total_return")
+                if total_return is not None:
+                    try:
+                        total_pnl_percent = float(total_return)
+                        # Values in JSON are expressed as a ratio (0.01 == 1%).
+                        if abs(total_pnl_percent) <= 1.0:
+                            total_pnl_percent *= 100.0
+                    except Exception:
+                        total_pnl_percent = 0.0
+                else:
+                    initial_estimate = total_value - total_pnl
+                    total_pnl_percent = (
+                        (total_pnl / initial_estimate) * 100.0 if initial_estimate > 0 else 0.0
+                    )
+
+                # Build per-asset snapshots from balance values, then enrich with the
+                # reconstructed position quantities used by the /positions command so the
+                # portfolio view reports real sizing instead of zeros.
                 assets: Dict[str, Dict[str, float]] = {}
-                for sym, val in (data.get("positions", {}) or {}).items():
+                raw_positions = data.get("positions", {}) or {}
+
+                # Reuse the detailed position reconstruction to source quantities/pnl
+                # without duplicating CSV parsing logic here.
+                detailed_positions = await self._get_positions_data()
+                position_lookup = {
+                    pos["symbol"]: pos for pos in (detailed_positions or []) if pos.get("symbol")
+                }
+
+                for sym, val in raw_positions.items():
                     try:
                         value_f = float(val)
                     except Exception:
                         value_f = 0.0
+
+                    details = position_lookup.get(sym, {})
                     assets[sym] = {
-                        "quantity": 0.0,  # Not tracked in balance.json; value is provided
+                        "quantity": float(details.get("size", 0.0)) if details else 0.0,
                         "value": value_f,
-                        "pnl_percent": 0.0,
+                        "pnl_percent": (float(details.get("pnl_percent", 0.0)) if details else 0.0),
                     }
 
                 return {
@@ -462,13 +488,27 @@ class TradingCommandHandler:
                     quantities = {}
                     avg_costs = {}
 
+            # Build a latest price cache to derive actual quantities from portfolio value
+            price_cache: Dict[str, float] = {}
+            for symbol in pos_values.keys():
+                latest_price = await self._get_latest_price(symbol)
+                if latest_price and latest_price > 0:
+                    price_cache[symbol] = latest_price
+
             positions: List[Dict[str, Any]] = []
             for symbol, value_f in pos_values.items():
-                qty = quantities.get(symbol, 0.0)
                 avg_cost = avg_costs.get(symbol, 0.0)
-                # Derive current price if possible
-                current_price = (value_f / qty) if qty not in (0.0, None) else 0.0
-                # Compute unrealized P&L and percentage based on avg cost
+
+                market_price = price_cache.get(symbol)
+
+                qty = quantities.get(symbol, 0.0)
+                if market_price:
+                    inferred_qty = value_f / market_price if market_price else 0.0
+                    if inferred_qty > 0:
+                        qty = inferred_qty
+
+                current_price = market_price or ((value_f / qty) if qty else 0.0)
+
                 unrealized_pnl = 0.0
                 pnl_percent = 0.0
                 if qty and avg_cost > 0 and current_price > 0:
@@ -481,7 +521,7 @@ class TradingCommandHandler:
                     {
                         "symbol": symbol,
                         "side": "LONG" if value_f > 0 else "FLAT",
-                        "size": abs(qty) if qty else 0.0,  # quantity
+                        "size": abs(qty) if qty else 0.0,
                         "entry_price": avg_cost,
                         "current_price": current_price,
                         "unrealized_pnl": unrealized_pnl,
@@ -496,6 +536,39 @@ class TradingCommandHandler:
             return []
         except Exception as e:
             self.logger.error(f"Error getting positions data: {e}")
+            return None
+
+    async def _get_latest_price(self, symbol: str) -> Optional[float]:
+        """Fetch the most recent close price for a symbol from local datasets."""
+        try:
+            import sqlite3
+
+            base = symbol.lower()
+            candidates = [
+                Path("data") / f"{base}_30m.db",
+                Path("data") / f"{base}_1h.db",
+                Path("data") / f"{base}_1d.db",
+            ]
+
+            for db_path in candidates:
+                if not db_path.exists():
+                    continue
+
+                conn = sqlite3.connect(str(db_path))
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT close FROM market_data ORDER BY timestamp DESC LIMIT 1")
+                    row = cursor.fetchone()
+                    if row and row[0] is not None:
+                        return float(row[0])
+                except Exception as e:
+                    self.logger.debug(f"Failed to read price from {db_path.name} for {symbol}: {e}")
+                finally:
+                    conn.close()
+
+            return None
+        except Exception as e:
+            self.logger.debug(f"Error loading latest price for {symbol}: {e}")
             return None
 
     async def _get_performance_data(self) -> Optional[Dict[str, Any]]:
@@ -551,15 +624,20 @@ class TradingCommandHandler:
             if not trades_path.exists():
                 return []
 
-            # Read all lines and take the last `limit`
-            lines = trades_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-            if not lines:
+            all_rows: List[List[str]] = []
+            with trades_path.open("r", encoding="utf-8", errors="ignore") as csv_file:
+                reader = csv.reader(csv_file)
+                for row in reader:
+                    if row:
+                        all_rows.append(row)
+
+            if not all_rows:
                 return []
 
-            selected = lines[-limit:]
+            selected_rows = all_rows[-limit:]
             trades: List[Dict[str, Any]] = []
 
-            # Build current price map from balance.json and derived quantities
+            # Build current price map, favouring on-disk candle data for accuracy
             current_price_map: Dict[str, float] = {}
             try:
                 import json
@@ -571,40 +649,49 @@ class TradingCommandHandler:
                         bal = json.load(f) or {}
                 pos_vals = bal.get("positions", {}) or {}
 
-                # Derive quantities again from entire CSV to get position sizes
-                quantities: Dict[str, float] = {}
-                for row_all in csv.reader(trades_path.open("r", encoding="utf-8", errors="ignore")):
-                    if not row_all or len(row_all) < 6:
-                        continue
-                    sym_all = row_all[2]
-                    side_all = (row_all[3] or "").strip().upper()
-                    try:
-                        q_all = float(row_all[4])
-                    except Exception:
-                        q_all = 0.0
-                    if not sym_all:
-                        continue
-                    signed = -abs(q_all) if side_all == "SELL" else abs(q_all)
-                    quantities[sym_all] = quantities.get(sym_all, 0.0) + signed
-
-                for sym, val in pos_vals.items():
-                    try:
-                        v = float(val)
-                    except Exception:
-                        v = 0.0
-                    qty = quantities.get(sym, 0.0)
-                    if qty:
-                        current_price_map[sym] = v / qty if qty != 0 else 0.0
+                for sym in pos_vals.keys():
+                    price = await self._get_latest_price(sym)
+                    if price and price > 0:
+                        current_price_map[sym] = price
+                    else:
+                        try:
+                            v = float(pos_vals[sym])
+                        except Exception:
+                            v = 0.0
+                        if v > 0:
+                            # Fallback: attempt to infer using recent trades quantity
+                            qty = 0.0
+                            try:
+                                for row_all in all_rows:
+                                    if len(row_all) < 6 or row_all[2] != sym:
+                                        continue
+                                    side_all = (row_all[3] or "").strip().upper()
+                                    try:
+                                        q_all = float(row_all[4])
+                                    except Exception:
+                                        q_all = 0.0
+                                    signed = -abs(q_all) if side_all == "SELL" else abs(q_all)
+                                    qty += signed
+                                if qty:
+                                    current_price_map[sym] = v / qty if qty != 0 else 0.0
+                            except Exception:
+                                continue
             except Exception:
                 current_price_map = {}
 
-            for line in selected:
-                # Parse CSV row; note writer didn't quote fields
-                try:
-                    row = next(csv.reader([line]))
-                except Exception:
-                    continue
+            # Ensure we have price coverage for the symbols we'll display even if no
+            # active position is recorded for them.
+            symbols_in_selected = {row[2] for row in selected_rows if len(row) > 2}
+            for sym in symbols_in_selected:
+                if sym not in current_price_map:
+                    price = await self._get_latest_price(sym)
+                    if price and price > 0:
+                        current_price_map[sym] = price
 
+            # Track unique trades to prevent duplicates
+            seen_trades = set()
+
+            for row in selected_rows:
                 # Expected columns:
                 # 0 timestamp, 1 trade_id, 2 symbol, 3 trade_type, 4 quantity,
                 # 5 price, 6 status, 7 notes, 8 model_used, 9 confidence, 10 balance
@@ -622,7 +709,13 @@ class TradingCommandHandler:
                 side = row[3].upper() if len(row) > 3 else "UNKNOWN"
                 quantity = _safe_float(row[4] if len(row) > 4 else 0.0)
                 price = _safe_float(row[5] if len(row) > 5 else 0.0)
-                confidence = _safe_float(row[9] if len(row) > 9 else 0.0)
+                confidence = _safe_float(row[-2] if len(row) >= 2 else 0.0)
+
+                # Create unique trade identifier to prevent duplicates
+                trade_key = (timestamp, symbol, side, quantity, price)
+                if trade_key in seen_trades:
+                    continue
+                seen_trades.add(trade_key)
 
                 # Estimate mark-to-market P&L using current price if known
                 cur_px = current_price_map.get(symbol, 0.0)
@@ -723,7 +816,12 @@ class TradingCommandHandler:
                 action = "BUY" if c > 0 else "SELL"
                 confidence = min(abs(c) / 3.0, 1.0)
                 results.append(
-                    {"symbol": sym, "action": action, "confidence": confidence, "timestamp": ts}
+                    {
+                        "symbol": sym,
+                        "action": action,
+                        "confidence": confidence,
+                        "timestamp": ts,
+                    }
                 )
             return results
         except Exception as e:
@@ -783,9 +881,9 @@ class TradingCommandHandler:
             return {
                 "risk_level": risk_level,
                 "portfolio_risk": portfolio_risk_pct,
-                "position_size_percent": (positions_total / portfolio_value * 100.0)
-                if portfolio_value > 0
-                else 0.0,
+                "position_size_percent": (
+                    (positions_total / portfolio_value * 100.0) if portfolio_value > 0 else 0.0
+                ),
                 "current_drawdown": current_drawdown * 100.0,
                 "risk_limit": risk_limit_dd,
                 "circuit_breakers": breakers,

@@ -21,7 +21,7 @@ import sys
 import time
 import warnings
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -63,9 +63,10 @@ from src.data_pipeline.data_preprocessor import DataPreprocessor
 from src.data_pipeline.feature_engine import FeatureEngine
 from src.data_pipeline.feature_selector import EnhancedDataPreprocessor
 from src.data_pipeline.model_feature_router import ModelFeatureRouter
-from src.models.gru_trainer import GRUTrainer
-from src.models.lgbm_trainer import LightGBMTrainer
-from src.models.ppo_trainer import PPOTrainer
+
+# Note: SuperiorEnsembleTrainer is used for training, not live trading
+# Import only when needed to avoid dependency issues
+# from paperspace_mlops.superior_ensemble_trainer import SuperiorEnsembleTrainer
 from src.notifier.telegram import TelegramNotifier
 
 # Advanced risk management
@@ -244,7 +245,19 @@ class EnhancedUnifiedPaperTrader:
         # Initialize components with proper config injection
         self.feature_engine = FeatureEngine(self.config)
         self.model_feature_router = ModelFeatureRouter()  # Initialize PPO feature router
+        self.using_superior_ppo = (
+            getattr(self.model_feature_router, "ppo_mode", "").lower() == "superior"
+        )
+        self.ppo_expected_features = getattr(
+            self.model_feature_router, "ppo_expected_features", 104
+        )
         self.trading_metrics = TradingMetrics()
+
+        if self.using_superior_ppo:
+            self.system_logger.info(
+                "🎯 Superior PPO mode enabled (expected features: %s)",
+                self.ppo_expected_features,
+            )
 
         # Initialize Telegram notifier using proper configuration method
         self.telegram_notifier = TelegramNotifier.from_config(self.config)
@@ -304,14 +317,14 @@ class EnhancedUnifiedPaperTrader:
         self.symbol_thresholds = thresholds_cfg.get(
             "per_symbol",
             {
-                "BTCEUR": 0.00008,
-                "ETHEUR": 0.00008,
-                "SOLEUR": 0.00012,
-                "ADAEUR": 0.00012,
-                "XRPEUR": 0.00012,
+                "BTCEUR": 0.004,
+                "ETHEUR": 0.004,
+                "SOLEUR": 0.006,
+                "ADAEUR": 0.006,
+                "XRPEUR": 0.006,
             },
         )
-        self.default_threshold = float(thresholds_cfg.get("default", 0.00010))
+        self.default_threshold = float(thresholds_cfg.get("default", 0.005))
         self.use_cost_floor = bool(thresholds_cfg.get("use_cost_floor", True))
         self.cost_floor_multiplier = float(thresholds_cfg.get("cost_floor_multiplier", 1.2))
         self.vol_reference = float(thresholds_cfg.get("vol_reference", 0.02))
@@ -331,6 +344,11 @@ class EnhancedUnifiedPaperTrader:
         self.positions = {symbol: 0.0 for symbol in self.symbols}
         self.balance = self.initial_balance
         self.last_prices = {}
+
+        # Rolling performance anchors for intraday reporting
+        self._last_export_equity: Optional[float] = None
+        self._daily_equity_anchor: Optional[float] = None
+        self._daily_anchor_date: Optional[date] = None
 
         # Caching and performance tracking
         self.data_cache = {}
@@ -630,13 +648,19 @@ class EnhancedUnifiedPaperTrader:
     ) -> Optional[Tuple[Any, ModelMetadata]]:
         """Load model with multiple fallback sources."""
         # Define search strategies in order of preference
-        strategies = [
-            ("packaged", self._load_from_packaged_models),
-            ("imported", self._load_from_imported_models),
-            ("best_wf", self._load_from_best_walkforward),
-            ("latest", self._load_from_latest_models),
-            ("unified", self._load_from_unified_artifacts),
-        ]
+        strategies: List[Tuple[str, Any]] = []
+        if model_type == "ppo":
+            strategies.append(("superior", self._load_from_superior_models))
+
+        strategies.extend(
+            [
+                ("packaged", self._load_from_packaged_models),
+                ("imported", self._load_from_imported_models),
+                ("best_wf", self._load_from_best_walkforward),
+                ("latest", self._load_from_latest_models),
+                ("unified", self._load_from_unified_artifacts),
+            ]
+        )
 
         for strategy_name, strategy_func in strategies:
             try:
@@ -671,6 +695,53 @@ class EnhancedUnifiedPaperTrader:
                     f"Strategy {strategy_name} failed for {symbol} {model_type}: {e}"
                 )
                 continue
+
+        return None
+
+    def _load_from_superior_models(
+        self, symbol: str, model_type: str
+    ) -> Optional[Tuple[Any, Path]]:
+        """Load PPO models exported by the superior training pipeline."""
+        if model_type != "ppo":
+            return None
+
+        superior_dir = self.models_dir / "superior" / symbol
+        if not superior_dir.exists():
+            return None
+
+        candidates: List[Path] = []
+        best_model = superior_dir / "best" / "best_model.zip"
+        if best_model.exists():
+            candidates.append(best_model)
+
+        top_level = sorted(
+            superior_dir.glob("superior_ppo_*.zip"), key=lambda p: p.stat().st_mtime, reverse=True
+        )
+        candidates.extend(top_level)
+
+        checkpoint_dir = superior_dir / "checkpoints"
+        if checkpoint_dir.exists():
+            checkpoints = sorted(
+                checkpoint_dir.glob("*.zip"), key=lambda p: p.stat().st_mtime, reverse=True
+            )
+            candidates.extend(checkpoints)
+
+        seen = set()
+        for candidate in candidates:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            try:
+                model = self._load_model_file(candidate, model_type)
+                if model:
+                    self.logger.logger.info(
+                        f"Loaded superior PPO model for {symbol} from {candidate}"
+                    )
+                    return model, candidate
+            except Exception as exc:
+                self.logger.logger.debug(
+                    f"Failed to load superior PPO model {candidate} for {symbol}: {exc}"
+                )
 
         return None
 
@@ -808,14 +879,23 @@ class EnhancedUnifiedPaperTrader:
         return None
 
     def _load_model_file(self, file_path: Path, model_type: str) -> Optional[Any]:
-        """Load a model file based on its type."""
+        """Load a model file based on its type using direct loading methods."""
         try:
             if model_type == "gru":
-                return GRUTrainer.load_model(str(file_path), self.config)
+                # Load PyTorch model directly
+                import torch
+
+                return torch.load(str(file_path), map_location="cpu")
             elif model_type == "lightgbm":
-                return LightGBMTrainer.load_model(str(file_path), self.config)
+                # Load LightGBM model directly
+                import joblib
+
+                return joblib.load(str(file_path))
             elif model_type == "ppo":
-                return PPOTrainer.load_model(str(file_path), self.config)
+                # Load PPO model using stable_baselines3
+                from stable_baselines3 import PPO
+
+                return PPO.load(str(file_path))
             else:
                 self.logger.logger.error(f"Unknown model type: {model_type}")
                 return None
@@ -1428,7 +1508,7 @@ class EnhancedUnifiedPaperTrader:
                                 model_type="ppo",
                                 prediction=ppo_pred,
                                 confidence=confidence,
-                                features_used=104,  # PPO uses 104 routed features
+                                features_used=self.ppo_expected_features,
                             )
                         )
 
@@ -1702,7 +1782,7 @@ class EnhancedUnifiedPaperTrader:
             return None
 
     def _get_ppo_prediction(self, symbol: str, features: pd.DataFrame) -> Optional[float]:
-        """Get PPO model prediction using ModelFeatureRouter with 104 features."""
+        """Get PPO model prediction using the configured PPO feature pipeline."""
         try:
             # CRITICAL FIX: Check if model exists
             if symbol not in self.models or "ppo" not in self.models[symbol]:
@@ -1716,7 +1796,7 @@ class EnhancedUnifiedPaperTrader:
                 self.logger.logger.debug(f"PPO model is None for {symbol}")
                 return None
 
-            # **FIXED**: Use ModelFeatureRouter to expand features to 104 for PPO
+            # Route features through the configured PPO expander (classic or superior)
             self.logger.logger.debug(f"Routing features for PPO {symbol} using ModelFeatureRouter")
 
             try:
@@ -1740,9 +1820,15 @@ class EnhancedUnifiedPaperTrader:
                 return None
 
             # Get sequence length for PPO
-            sequence_length = self.config.get("models", {}).get("ppo", {}).get(
-                "sequence_length"
-            ) or self.config.get("models", {}).get("gru", {}).get("sequence_length", 32)
+            ppo_config = self.config.get("models", {}).get("ppo", {})
+            sequence_length = ppo_config.get("sequence_length")
+            if not sequence_length:
+                if self.using_superior_ppo:
+                    sequence_length = ppo_config.get("superior_sequence_length", 32)
+                else:
+                    sequence_length = (
+                        self.config.get("models", {}).get("gru", {}).get("sequence_length", 32)
+                    )
 
             if len(routed_df) < sequence_length:
                 self.logger.logger.debug(
@@ -1754,9 +1840,10 @@ class EnhancedUnifiedPaperTrader:
             excluded_cols = ["open", "high", "low", "close", "volume", "timestamp", "target"]
             feature_cols = [col for col in routed_df.columns if col not in excluded_cols]
 
-            if len(feature_cols) != 104:
+            expected_feature_count = self.ppo_expected_features
+            if len(feature_cols) != expected_feature_count:
                 self.logger.logger.error(
-                    f"PPO expected 104 features, got {len(feature_cols)} for {symbol}"
+                    f"PPO expected {expected_feature_count} features, got {len(feature_cols)} for {symbol}"
                 )
                 return None
 
@@ -1774,10 +1861,10 @@ class EnhancedUnifiedPaperTrader:
                 )
                 return None
 
-            observation = feature_matrix[-sequence_length:]  # Shape: (sequence_length, 104)
+            observation = feature_matrix[-sequence_length:]
 
             # Validate final observation shape
-            expected_shape = (sequence_length, 104)  # PPO expects exactly 104 features
+            expected_shape = (sequence_length, expected_feature_count)
             if observation.shape != expected_shape:
                 self.logger.logger.error(
                     f"PPO observation shape mismatch for {symbol}: {observation.shape} != {expected_shape}"
@@ -1793,9 +1880,9 @@ class EnhancedUnifiedPaperTrader:
 
             # Validate model input
             if hasattr(self, "validation_manager"):
-                # Convert single timestep observation to DataFrame for validation (104 features)
+                # Convert single timestep observation to DataFrame for validation using routed feature count
                 # Use the last timestep of the observation for validation
-                single_timestep = observation[-1, :].reshape(1, -1)  # Shape: (1, 104)
+                single_timestep = observation[-1, :].reshape(1, -1)
                 obs_df = pd.DataFrame(single_timestep)
                 validation_result = self.validation_manager.validate_model_input(
                     data=obs_df, model_type="ppo", symbol=symbol
@@ -2005,8 +2092,11 @@ class EnhancedUnifiedPaperTrader:
                         if not self.profit_optimizer.check_trade_limits():
                             try:
                                 import time as _t
+
                                 elapsed = _t.time() - float(self.profit_optimizer.last_trade_time)
-                                min_gap = getattr(self.profit_optimizer, "min_time_between_trades", 0)
+                                min_gap = getattr(
+                                    self.profit_optimizer, "min_time_between_trades", 0
+                                )
                                 daily = getattr(self.profit_optimizer, "daily_trade_count", 0)
                                 max_daily = getattr(self.profit_optimizer, "max_daily_trades", 0)
                                 self.logger.logger.info(
@@ -2132,7 +2222,9 @@ class EnhancedUnifiedPaperTrader:
                             # Track per-candle buy count for this symbol
                             try:
                                 if hasattr(self, "_per_cycle_buys"):
-                                    self._per_cycle_buys[symbol] = self._per_cycle_buys.get(symbol, 0) + 1
+                                    self._per_cycle_buys[symbol] = (
+                                        self._per_cycle_buys.get(symbol, 0) + 1
+                                    )
                             except Exception:
                                 pass
 
@@ -2156,19 +2248,6 @@ class EnhancedUnifiedPaperTrader:
                                         self, "current_market_regime", "unknown"
                                     ),
                                 },
-                            )
-
-                            # Legacy CSV logging for backward compatibility
-                            self._record_trade_to_csv(
-                                symbol,
-                                "BUY",
-                                trade_amount,
-                                price,
-                                "SUCCESS",
-                                reasoning,
-                                "ENHANCED",
-                                confidence,
-                                self.balance,
                             )
 
                             # Send individual trade notification
@@ -2303,19 +2382,6 @@ class EnhancedUnifiedPaperTrader:
                                 },
                             )
 
-                            # Legacy CSV logging for backward compatibility
-                            self._record_trade_to_csv(
-                                symbol,
-                                "SELL",
-                                trade_amount,
-                                price,
-                                "SUCCESS",
-                                sell_reason,
-                                "ENHANCED",
-                                confidence,
-                                self.balance,
-                            )
-
                             # Send individual trade notification
                             self._send_trade_notification(
                                 symbol, "SELL", trade_amount, price, net_proceeds
@@ -2388,18 +2454,13 @@ class EnhancedUnifiedPaperTrader:
                         ):
                             sell_signal_obj = profit_sell_signal
                             sell_source = "PROFIT_TARGET"
-                        elif (
-                            time_exit_signal
-                            and getattr(time_exit_signal, "action", "") == "SELL"
-                        ):
+                        elif time_exit_signal and getattr(time_exit_signal, "action", "") == "SELL":
                             sell_signal_obj = time_exit_signal
                             sell_source = "TIME_EXIT"
 
                         if sell_signal_obj:
                             sell_pct = getattr(sell_signal_obj, "quantity_pct", 0.5)
-                            base_reason = getattr(
-                                sell_signal_obj, "reasoning", "optimizer signal"
-                            )
+                            base_reason = getattr(sell_signal_obj, "reasoning", "optimizer signal")
                             sell_reason = f"{sell_source} - {base_reason}"
                             confidence = getattr(sell_signal_obj, "confidence", 0.7)
 
@@ -2473,17 +2534,6 @@ class EnhancedUnifiedPaperTrader:
                                     f"P&L=€{realized_pnl:.2f} ({sell_reason})"
                                 )
 
-                                self._record_trade_to_csv(
-                                    symbol,
-                                    "SELL",
-                                    trade_amount,
-                                    price,
-                                    "SUCCESS",
-                                    sell_reason,
-                                    "OPTIMIZER",
-                                    confidence,
-                                    self.balance,
-                                )
                                 self._send_trade_notification(
                                     symbol, "SELL", trade_amount, price, net_proceeds
                                 )
@@ -2645,48 +2695,6 @@ class EnhancedUnifiedPaperTrader:
         except Exception:
             pass
 
-    def _record_trade_to_csv(
-        self,
-        symbol: str,
-        trade_type: str,
-        quantity: float,
-        price: float,
-        status: str,
-        notes: str,
-        model_used: str,
-        confidence: float,
-        balance: float,
-    ) -> None:
-        """Record trade to CSV file for tracking and reporting."""
-        try:
-            import uuid
-
-            # Ensure logs directory exists
-            os.makedirs("logs", exist_ok=True)
-
-            # Generate trade ID
-            trade_id = str(uuid.uuid4())[:8]
-
-            # Format timestamp
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            # CSV file path
-            csv_path = "logs/trades_report.csv"
-
-            # Create CSV row
-            row = f"{timestamp},{trade_id},{symbol},{trade_type},{quantity:.6f},{price:.4f},{status},{notes},{model_used},{confidence:.2f},{balance:.2f}\n"
-
-            # Append to CSV file
-            with open(csv_path, "a", encoding="utf-8") as f:
-                f.write(row)
-
-            self.logger.logger.debug(
-                f"Trade recorded to CSV: {symbol} {trade_type} {quantity:.6f} @ {price:.4f}"
-            )
-
-        except Exception as e:
-            self.logger.logger.warning(f"Failed to record trade to CSV: {e}")
-
     def _export_balance_data(self, total_portfolio_value: float, metrics) -> None:
         """Export current balance data to JSON for Telegram commands."""
         try:
@@ -2737,9 +2745,21 @@ class EnhancedUnifiedPaperTrader:
             os.makedirs("logs", exist_ok=True)
 
             # Calculate additional metrics
-            # Use correct equity (already inclusive of cash) to avoid double-counting
             total_equity = total_portfolio_value
-            daily_pnl = total_equity - self.initial_balance
+
+            now = datetime.now()
+            today = now.date()
+            previous_equity = self._last_export_equity
+
+            if self._daily_anchor_date != today:
+                anchor = previous_equity if previous_equity is not None else total_equity
+                self._daily_equity_anchor = anchor
+                self._daily_anchor_date = today
+
+            anchor_equity = (
+                self._daily_equity_anchor if self._daily_equity_anchor is not None else total_equity
+            )
+            daily_pnl = total_equity - anchor_equity
 
             # Count active positions
             active_positions = sum(
@@ -2749,25 +2769,31 @@ class EnhancedUnifiedPaperTrader:
                 or (isinstance(pos, (int, float)) and pos > 0)
             )
 
-            # Calculate win rate if we have trades
-            win_rate = 0.0
-            if hasattr(self, "trade_history") and self.trade_history:
-                winning_trades = sum(1 for trade in self.trade_history if trade.get("pnl", 0) > 0)
-                win_rate = (winning_trades / len(self.trade_history)) * 100
+            completed_trades = getattr(metrics, "total_trades", 0) or 0
+            winning_trades = getattr(metrics, "winning_trades", 0) or 0
+            losing_trades = getattr(metrics, "losing_trades", 0) or 0
+
+            win_rate = (winning_trades / completed_trades * 100.0) if completed_trades else 0.0
+            total_trades = len(getattr(self, "trade_history", []))
 
             # Create performance metrics structure
             performance_data = {
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": now.isoformat(),
                 "portfolio_value": total_portfolio_value,
                 "daily_pnl": daily_pnl,
                 "total_return": getattr(metrics, "total_return", 0.0),
                 "sharpe_ratio": getattr(metrics, "sharpe_ratio", 0.0),
                 "win_rate": win_rate,
                 "active_positions": active_positions,
-                "total_trades": len(getattr(self, "trade_history", [])),
+                "total_trades": total_trades,
+                "completed_trades": completed_trades,
+                "winning_trades": winning_trades,
+                "losing_trades": losing_trades,
                 "max_drawdown": getattr(metrics, "max_drawdown", 0.0),
                 "current_drawdown": getattr(metrics, "current_drawdown", 0.0),
                 "total_pnl": getattr(metrics, "total_pnl", 0.0),
+                "realized_pnl": getattr(metrics, "realized_pnl", 0.0),
+                "unrealized_pnl": getattr(metrics, "unrealized_pnl", 0.0),
             }
 
             # Write to performance_metrics.json
@@ -2776,6 +2802,8 @@ class EnhancedUnifiedPaperTrader:
                 json.dump(performance_data, f, indent=2, ensure_ascii=False)
 
             self.logger.logger.debug(f"Performance metrics exported to {perf_path}")
+
+            self._last_export_equity = total_equity
 
         except Exception as e:
             self.logger.logger.warning(f"Failed to export performance metrics: {e}")
@@ -2884,7 +2912,9 @@ class EnhancedUnifiedPaperTrader:
         except Exception as e:
             self.logger.logger.warning(f"Failed to send trade notification: {e}")
 
-    def _send_cycle_summary(self, signals: dict, cycle_start_ts: float, pre_trades: int, post_trades: int):
+    def _send_cycle_summary(
+        self, signals: dict, cycle_start_ts: float, pre_trades: int, post_trades: int
+    ):
         """Emit one Telegram summary per candle with decisions and executions."""
         # Check if cycle summaries are enabled
         if not self._is_notification_enabled("cycle_summaries"):
@@ -2900,7 +2930,9 @@ class EnhancedUnifiedPaperTrader:
             if hasattr(self, "trade_history") and self.trade_history and post_trades > pre_trades:
                 for t in self.trade_history[pre_trades:post_trades]:
                     try:
-                        if t.get("action") == "BUY" and float(t.get("timestamp", 0)) >= float(cycle_start_ts):
+                        if t.get("action") == "BUY" and float(t.get("timestamp", 0)) >= float(
+                            cycle_start_ts
+                        ):
                             executed.append(
                                 {
                                     "symbol": t.get("symbol"),
@@ -2916,6 +2948,7 @@ class EnhancedUnifiedPaperTrader:
 
             # Build message
             import time as _t
+
             lines = [
                 "🕒 <b>Cycle Summary</b>",
                 f"<b>Time:</b> {_t.strftime('%Y-%m-%d %H:%M:%S UTC', _t.gmtime(cycle_start_ts))}",
@@ -3555,6 +3588,7 @@ class EnhancedUnifiedPaperTrader:
             # Load latest performance metrics from logs for accuracy
             import json
             from pathlib import Path
+
             perf_path = Path("logs/performance_metrics.json")
             perf_data = {}
             if perf_path.exists():
@@ -3565,13 +3599,23 @@ class EnhancedUnifiedPaperTrader:
             metrics = self.get_performance_metrics()
 
             total_pnl = float(perf_data.get("total_pnl", getattr(metrics, "total_pnl", 0.0)))
-            total_return = float(perf_data.get("total_return", getattr(metrics, "total_return", 0.0)))
-            sharpe_ratio = float(perf_data.get("sharpe_ratio", getattr(metrics, "sharpe_ratio", 0.0)))
-            current_drawdown = float(perf_data.get("current_drawdown", getattr(metrics, "current_drawdown", 0.0)))
+            total_return = float(
+                perf_data.get("total_return", getattr(metrics, "total_return", 0.0))
+            )
+            sharpe_ratio = float(
+                perf_data.get("sharpe_ratio", getattr(metrics, "sharpe_ratio", 0.0))
+            )
+            current_drawdown = float(
+                perf_data.get("current_drawdown", getattr(metrics, "current_drawdown", 0.0))
+            )
             daily_pnl = float(perf_data.get("daily_pnl", 0.0))
             portfolio_value = float(perf_data.get("portfolio_value", 0.0))
             roi_pct = total_return * 100.0 if abs(total_return) <= 1.0 else total_return
-            daily_pnl_pct = (daily_pnl / (portfolio_value - daily_pnl) * 100.0) if portfolio_value > daily_pnl and portfolio_value > 0 else 0.0
+            daily_pnl_pct = (
+                (daily_pnl / (portfolio_value - daily_pnl) * 100.0)
+                if portfolio_value > daily_pnl and portfolio_value > 0
+                else 0.0
+            )
 
             # Calculate runtime
             if hasattr(self, "startup_time"):

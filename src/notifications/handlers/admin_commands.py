@@ -110,7 +110,7 @@ To proceed, send:
 """.strip(),
                     parse_mode="HTML",
                 )
-            return
+                return
 
             await update.message.reply_text(
                 """

@@ -41,6 +41,15 @@ training:
   gpu_enabled: false   # No GPU on production server
   gpu_memory_fraction: 0.8
 
+# Model management & deployment overrides
+model_management:
+  models_dir: './models'
+
+models:
+  ppo:
+    feature_mode: superior
+    expected_feature_count: 103
+    superior_sequence_length: 32
 # Advanced Performance Optimization Configuration
 performance_optimization:
   # Memory Management
@@ -264,19 +273,19 @@ trading:
     lightgbm: 0.55  # Increased weight for better performing model
     ppo: 0.1
 
-  # Signal generation thresholds - ULTRA AGGRESSIVE settings
-  confidence_threshold: 0.25  # Drastically reduced from 0.45
-  base_buy_threshold: 0.00005  # Ultra low from 0.0003
-  base_sell_threshold: -0.00005  # Ultra low from -0.0003
-  volatility_threshold_multiplier: 1.0  # Reduced sensitivity
+  # Signal generation thresholds - CALIBRATED settings for profitable trading
+  confidence_threshold: 0.75  # Increased from 0.25 to filter weak signals
+  base_buy_threshold: 0.005  # Increased from 0.00005 to 0.5% minimum return
+  base_sell_threshold: -0.005  # Increased from -0.00005 to -0.5% minimum loss
+  volatility_threshold_multiplier: 1.5  # Increased from 1.0 for better risk adjustment
 
   # Adaptive model weighting
   adaptive_weights: true       # Enable performance-based weight adjustment
   weight_adaptation_rate: 0.1  # Rate of weight adaptation (0.1 = 10% per update)
 
   # Legacy thresholds for backward compatibility
-  buy_threshold: 0.0003
-  sell_threshold: -0.0003
+  buy_threshold: 0.005
+  sell_threshold: -0.005
 
   # Advanced Risk Management Configuration
 risk_management:

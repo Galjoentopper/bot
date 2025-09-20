@@ -84,6 +84,9 @@ class ProfitOptimizer:
         self.min_time_between_trades = config.get("min_time_between_trades", 300)
         self.volatility_filter = config.get("volatility_filter", True)
         self.volatility_threshold = config.get("volatility_threshold", 0.03)
+        self.rebalance_buffer_pct = config.get("rebalance_buffer_pct", 0.05)
+        self.rebalance_target_buffer_pct = config.get("rebalance_target_buffer_pct", 0.01)
+        self.min_rebalance_notional = config.get("min_rebalance_notional", 75.0)
 
         # Trade tracking for daily limits
         self.daily_trade_count = 0
@@ -584,27 +587,47 @@ class ProfitOptimizer:
             if total_portfolio_value == 0:
                 return signals
 
+            rebalance_threshold = min(1.0, self.max_position_pct + self.rebalance_buffer_pct)
+            target_pct = max(0.0, self.max_position_pct - self.rebalance_target_buffer_pct)
+
             # Check for over-concentration
             for symbol, value in position_values.items():
                 position_pct = value / total_portfolio_value
 
-                # Reduce position if over-concentrated
-                if position_pct > self.max_position_pct:
-                    excess_pct = position_pct - self.max_position_pct
-                    sell_pct = min(0.5, excess_pct / position_pct)  # Sell up to 50%
+                if position_pct <= rebalance_threshold:
+                    continue
 
-                    signals[symbol] = TradeSignal(
-                        symbol=symbol,
-                        action="SELL",
-                        confidence=0.8,
-                        quantity_pct=sell_pct,
-                        reasoning=f"Rebalancing: over-concentrated at {position_pct:.1%} (target: {self.max_position_pct:.1%})",
-                        risk_score=0.2,
-                        expected_return=0.0,
+                target_value = target_pct * total_portfolio_value
+                sell_value = value - target_value
+
+                if sell_value <= self.min_rebalance_notional:
+                    logger.debug(
+                        f"Skipping rebalance for {symbol}: excess value €{sell_value:.2f} below minimum €{self.min_rebalance_notional:.2f}"
                     )
-                    logger.info(
-                        f"{symbol} rebalancing sell: {position_pct:.1%} concentration, selling {sell_pct:.1%}"
-                    )
+                    continue
+
+                sell_pct = sell_value / value if value > 0 else 0.0
+                if sell_pct <= 0:
+                    continue
+
+                sell_pct = min(0.5, sell_pct)
+
+                signals[symbol] = TradeSignal(
+                    symbol=symbol,
+                    action="SELL",
+                    confidence=0.8,
+                    quantity_pct=sell_pct,
+                    reasoning=(
+                        f"Rebalancing: position {position_pct:.1%} > {rebalance_threshold:.1%} "
+                        f"(target {target_pct:.1%}, min_notional €{self.min_rebalance_notional:.0f})"
+                    ),
+                    risk_score=0.2,
+                    expected_return=0.0,
+                )
+                logger.info(
+                    f"{symbol} rebalancing sell: {position_pct:.1%} concentration, trimming {sell_pct:.1%} "
+                    f"(buffer {self.rebalance_buffer_pct:.1%})"
+                )
 
             return signals
 

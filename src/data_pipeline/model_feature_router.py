@@ -15,9 +15,10 @@ Features:
 
 import json
 import logging
+import os
 import pickle
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -26,6 +27,11 @@ import yaml
 from .enhanced_feature_engine import EnhancedFeatureEngine
 from .feature_selector import FeatureSelector
 from .ppo_feature_expansion import PPOFeatureExpander
+
+try:  # Optional superior feature set
+    from .superior_ppo_feature_expander import SuperiorPPOFeatureExpander
+except Exception:  # pragma: no cover - defensive import
+    SuperiorPPOFeatureExpander = None
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +61,15 @@ class ModelFeatureRouter:
         # Initialize core components
         self.enhanced_engine = EnhancedFeatureEngine(config_path)
         self.feature_selector = FeatureSelector(self.config)
-        self.ppo_expander = PPOFeatureExpander()  # PPO-specific feature expander
+        self.ppo_mode = self._determine_ppo_mode()
+        self.ppo_expander = self._init_ppo_expander()
+        self.ppo_expected_features = getattr(self.ppo_expander, "expected_features", 104)
+
+        # Ensure configuration reflects the active PPO mode/feature count so downstream
+        # validators don't compare against stale defaults (classic 104 vs superior 103).
+        models_cfg = self.config.setdefault("models", {})
+        ppo_cfg = models_cfg.setdefault("ppo", {})
+        ppo_cfg["expected_feature_count"] = self.ppo_expected_features
 
         # Model metadata cache
         self.model_metadata_cache = {}
@@ -70,6 +84,11 @@ class ModelFeatureRouter:
 
         logger.info("🔀 Model Feature Router initialized")
         logger.info(f"Configuration: {self.config_path}")
+        logger.info(
+            "PPO feature mode: %s (%s features)",
+            self.ppo_mode.upper(),
+            self.ppo_expected_features,
+        )
 
     def route_features_for_model(
         self,
@@ -199,7 +218,7 @@ class ModelFeatureRouter:
     ) -> Tuple[Optional[pd.DataFrame], Dict[str, Any]]:
         """Route PPO features using dedicated PPO Feature Expander."""
         try:
-            logger.info(f"🚀 Using PPO Feature Expander for {symbol}")
+            logger.info(f"🚀 Using {self.ppo_mode.upper()} PPO Feature Expander for {symbol}")
 
             # Use PPO-specific feature expansion, with optional per-symbol pinning
             result_df = self.ppo_expander.expand_features(df, symbol=symbol)
@@ -207,7 +226,7 @@ class ModelFeatureRouter:
             # Validate the expansion
             if self.ppo_expander.validate_features(result_df):
                 feature_names = self.ppo_expander.get_feature_names()
-                logger.info(f"✅ PPO features expanded successfully: {len(feature_names)} features")
+                logger.info("✅ PPO features expanded successfully: %s features", len(feature_names))
 
                 return result_df, {
                     "expanded_features": len(feature_names),
@@ -412,7 +431,7 @@ class ModelFeatureRouter:
     def _get_expected_feature_count(self, model_type: str) -> int:
         """Get expected feature count for model type."""
         defaults = {
-            "ppo": 104,  # PPO models trained with 104 features
+            "ppo": self.ppo_expected_features,
             "gru": 100,
             "lightgbm": 100,
         }
@@ -424,6 +443,43 @@ class ModelFeatureRouter:
             return config_count
 
         return defaults.get(model_type, 100)
+
+    def _determine_ppo_mode(self) -> str:
+        """Decide which PPO feature generator to use."""
+        env_override = os.getenv("PPO_FEATURE_MODE")
+        if env_override:
+            return env_override.strip().lower()
+
+        config_mode = (
+            self.config.get("models", {}).get("ppo", {}).get("feature_mode")
+            if isinstance(self.config, dict)
+            else None
+        )
+        if isinstance(config_mode, str):
+            return config_mode.lower()
+
+        # Auto-detect superior models on disk
+        superior_dir = Path(os.getenv("SUPERIOR_MODELS_DIR", "models/superior"))
+        if not superior_dir.is_absolute():
+            superior_dir = Path.cwd() / superior_dir
+        if superior_dir.exists():
+            return "superior"
+
+        return "classic"
+
+    def _init_ppo_expander(self):
+        """Instantiate the appropriate PPO feature expander."""
+        if self.ppo_mode == "superior" and SuperiorPPOFeatureExpander is not None:
+            try:
+                return SuperiorPPOFeatureExpander()
+            except Exception as exc:  # pragma: no cover - fallback guard
+                logger.warning(
+                    "Superior PPO expander failed to initialize (%s); falling back to classic", exc
+                )
+                self.ppo_mode = "classic"
+
+        # Default to classic expander
+        return PPOFeatureExpander()
 
     def _get_feature_columns(self, df: pd.DataFrame) -> List[str]:
         """Get feature column names (excluding OHLCV)."""

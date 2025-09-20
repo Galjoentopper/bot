@@ -15,6 +15,7 @@ from .feature_selector import EnhancedDataPreprocessor, FeatureSelector
 from .features import FeatureEngine
 from .loader import DataLoader
 from .preprocess import DataPreprocessor
+from .superior_ppo_feature_expander import SuperiorPPOFeatureExpander
 
 __all__ = [
     "DataLoader",
@@ -23,4 +24,5 @@ __all__ = [
     "DatasetBuilder",
     "FeatureSelector",
     "EnhancedDataPreprocessor",
+    "SuperiorPPOFeatureExpander",
 ]

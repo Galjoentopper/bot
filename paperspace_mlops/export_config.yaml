@@ -1,0 +1,144 @@
+# Superior Ensemble Model Export Configuration
+# ============================================
+# Configuration for exporting trained models to S3 for production deployment
+
+# S3 Export Settings
+s3_export:
+  bucket_name: "${AWS_MODELS_BUCKET}"  # Set via environment variable
+  region: "${AWS_DEFAULT_REGION}"
+
+  # Directory structure for organized model storage
+  structure:
+    models_root: "models/"
+    metadata_root: "metadata/"
+    validation_root: "validation/"
+
+  # Model-specific paths
+  model_paths:
+    ppo: "models/ppo/{symbol}/"
+    gru: "models/gru/{symbol}/"
+    lightgbm: "models/lightgbm/{symbol}/"
+
+  # Files to export per model
+  export_files:
+    ppo:
+      - "model.zip"           # SB3 model file
+      - "vec_normalize.pkl"   # Normalization parameters
+      - "metadata.json"       # Model metadata
+      - "features.json"       # Feature definitions
+      - "validation_stats.json"  # Performance metrics
+
+    gru:
+      - "model.pt"            # PyTorch model
+      - "scaler.pkl"          # Feature scaler
+      - "metadata.json"       # Model metadata
+      - "features.json"       # Feature definitions
+      - "validation_stats.json"  # Performance metrics
+
+    lightgbm:
+      - "model.txt"           # LightGBM model
+      - "feature_importance.json"  # Feature importances
+      - "metadata.json"       # Model metadata
+      - "features.json"       # Feature definitions
+      - "validation_stats.json"  # Performance metrics
+
+# Validation Requirements
+validation:
+  # Minimum performance thresholds for export
+  min_thresholds:
+    sharpe_ratio: 0.5        # Minimum Sharpe ratio
+    win_rate: 0.45           # Minimum win rate (45%)
+    max_drawdown: -0.25      # Maximum drawdown (-25%)
+    profit_factor: 1.1       # Minimum profit factor
+
+  # Model-specific requirements
+  model_requirements:
+    ppo:
+      min_episodes: 1000      # Minimum training episodes
+      min_reward: 0.1         # Minimum average reward
+
+    gru:
+      min_epochs: 50          # Minimum training epochs
+      max_val_loss: 0.1       # Maximum validation loss
+
+    lightgbm:
+      min_iterations: 100     # Minimum boosting iterations
+      min_auc: 0.6           # Minimum AUC score
+
+# Export Metadata
+metadata:
+  # Training environment information
+  environment:
+    platform: "paperspace_gradient"
+    trainer_version: "superior_v1.0"
+    python_version: "${PYTHON_VERSION}"
+
+  # Model versioning
+  versioning:
+    scheme: "timestamp"      # timestamp | semantic | hash
+    format: "%Y%m%d_%H%M%S"  # For timestamp scheme
+
+  # Production compatibility
+  compatibility:
+    feature_consistency: true    # Ensure feature alignment
+    schema_validation: true      # Validate against production schema
+    performance_benchmark: true  # Include benchmark results
+
+# Quality Assurance
+quality_assurance:
+  # Pre-export validation
+  pre_export_checks:
+    - "model_file_exists"
+    - "metadata_complete"
+    - "feature_schema_valid"
+    - "performance_meets_threshold"
+    - "file_size_reasonable"
+
+  # Post-export verification
+  post_export_checks:
+    - "s3_upload_successful"
+    - "file_integrity_check"
+    - "download_test"
+    - "model_load_test"
+
+# Notification Settings
+notifications:
+  # Telegram notifications for export status
+  telegram:
+    enabled: true
+    bot_token: "${TELEGRAM_BOT_TOKEN}"
+    chat_id: "${TELEGRAM_CHAT_ID}"
+
+  # Messages
+  messages:
+    export_start: "🚀 Starting model export to S3..."
+    export_success: "✅ Models exported successfully: {models}"
+    export_failure: "❌ Export failed: {error}"
+    validation_failure: "⚠️ Model validation failed: {issues}"
+
+# Advanced Options
+advanced:
+  # Compression for large models
+  compression:
+    enabled: true
+    algorithm: "gzip"        # gzip | bzip2 | lzma
+    level: 6                 # Compression level (1-9)
+
+  # Parallel uploads
+  parallel_upload:
+    enabled: true
+    max_workers: 4           # Maximum concurrent uploads
+    chunk_size: "8MB"        # Upload chunk size
+
+  # Backup strategy
+  backup:
+    enabled: true
+    retention_days: 30       # Keep backups for 30 days
+    backup_prefix: "backup/" # S3 prefix for backups
+
+  # Model artifact organization
+  artifacts:
+    include_training_logs: false    # Don't upload training logs
+    include_hyperparams: true       # Include hyperparameter configs
+    include_dataset_stats: true     # Include dataset statistics
+    include_feature_analysis: true  # Include feature importance/analysis
