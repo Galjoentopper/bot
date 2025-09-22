@@ -213,6 +213,21 @@ class SuperiorFeatureEngine:
 
         # Add superior targets without losing the engineered feature matrix
         targets_df = self.target_engineer.create_trading_targets(features_df, price_col="close")
+
+        # Prefix target columns to prevent collisions with existing feature names
+        targets_df = targets_df.rename(
+            columns=lambda col: col if col.startswith("target_") else f"target_{col}"
+        )
+
+        # Drop any accidental overlaps after renaming (defensive)
+        overlapping = set(targets_df.columns) & set(features_df.columns)
+        if overlapping:
+            logger.warning(
+                "⚠️ Dropping overlapping target columns to avoid feature collisions: %s",
+                sorted(overlapping),
+            )
+            targets_df = targets_df.drop(columns=list(overlapping))
+
         features_df = features_df.join(targets_df, how="left")
 
         return features_df
@@ -427,7 +442,8 @@ class SuperiorModelTrainer:
                 }
 
                 model = self.lgb.LGBMRegressor(**params)
-                model.fit(train_X, train_y, eval_set=[(val_X, val_y)], verbose=False)
+                model.set_params(verbose=-1)
+                model.fit(train_X, train_y, eval_set=[(val_X, val_y)])
                 preds = model.predict(val_X)
 
             elif model_type == "gru":
@@ -518,11 +534,11 @@ class SuperiorModelTrainer:
 
         if model_type == "lightgbm":
             model = self.lgb.LGBMRegressor(**params)
+            model.set_params(verbose=-1)
             model.fit(
                 train_X,
                 train_y,
                 eval_set=[(val_X, val_y)],
-                verbose=False,
                 callbacks=[self.lgb.early_stopping(50)],
             )
             val_preds = model.predict(val_X)
