@@ -752,10 +752,8 @@ class SuperiorEnsembleTrainer:
                 key: value for key, value in training_config.items() if key in valid_fields
             }
 
-            logger.info(
-                "🔧 Sanitized training config (pre-pop): %s",
-                {k: sanitized_training_config[k] for k in sorted(sanitized_training_config.keys())},
-            )
+            sanitized_snapshot = {k: sanitized_training_config[k] for k in sorted(sanitized_training_config.keys())}
+            logger.info("🔧 Sanitized training config (pre-pop): %s", sanitized_snapshot)
 
             models_override = sanitized_training_config.pop("models", None)
             symbols_override = sanitized_training_config.pop("symbols", None)
@@ -773,10 +771,10 @@ class SuperiorEnsembleTrainer:
             if lookback_days is not None:
                 sanitized_training_config.setdefault("lookback_days", lookback_days)
 
-            logger.info(
-                "🔧 Sanitized training config (post-pop): %s",
-                {k: sanitized_training_config[k] for k in sorted(sanitized_training_config.keys())},
-            )
+            sanitized_post_snapshot = {
+                k: sanitized_training_config[k] for k in sorted(sanitized_training_config.keys())
+            }
+            logger.info("🔧 Sanitized training config (post-pop): %s", sanitized_post_snapshot)
 
             logger.info("📊 Final symbols: %s", symbols)
             logger.info("🤖 Model overrides: %s", models_override)
