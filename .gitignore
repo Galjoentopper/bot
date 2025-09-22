@@ -50,12 +50,20 @@ model_transfer_*.zip
 .env
 .env.local
 .env.backup_with_real_creds
+.env.hetzner
 envs/*.env
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+.venv_paperspace/
+.pre-commit-cache/
+.ssh/
+oldmodels/
+magweg/
+ChromeSetup.exe
+training_output.log
 
 # IDE files
 .vscode/
