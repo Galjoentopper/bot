@@ -52,6 +52,7 @@ class PaperspaceTrainingRunner:
 
     def __init__(self):
         self.setup_logging()
+        self.aws_export_enabled = False
         self.validate_environment()
         self.trainer = None
 
@@ -90,8 +91,13 @@ class PaperspaceTrainingRunner:
         aws_keys = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION"]
         missing_keys = [key for key in aws_keys if not os.getenv(key)]
         if missing_keys:
-            self.logger.error(f"Missing AWS credentials: {missing_keys}")
-            raise ValueError("AWS credentials required for S3 export")
+            self.logger.warning(
+                "AWS credentials missing (%s) - S3 export will be disabled",
+                ", ".join(missing_keys),
+            )
+            self.aws_export_enabled = False
+        else:
+            self.aws_export_enabled = True
 
         # Check memory
         try:
@@ -121,6 +127,12 @@ class PaperspaceTrainingRunner:
             trainer.config.memory_limit = "12GB"
             if trainer.config.max_workers:
                 trainer.config.max_workers = min(trainer.config.max_workers, 4)
+
+            # Disable export if AWS credentials are not available
+            if not self.aws_export_enabled:
+                if getattr(trainer.config, "export_to_s3", False):
+                    self.logger.info("Disabling S3 export due to missing AWS credentials")
+                trainer.config.export_to_s3 = False
 
             self.logger.info("Trainer initialized successfully")
             return trainer
