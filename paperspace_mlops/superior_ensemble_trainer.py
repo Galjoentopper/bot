@@ -52,7 +52,7 @@ import sys
 import time
 import warnings
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -76,9 +76,7 @@ from data_pipeline.superior_ppo_feature_expander import SuperiorPPOFeatureExpand
 from data_pipeline.target_engineering import TradingTargetEngine
 from data_pipeline.trading_features import TradingFeatureEngine
 
-# DatabaseBuilder not available, commenting out
-# # DatabaseBuilder not available, commenting out
-# from data_pipeline.db_builder import DatabaseBuilder
+from data_pipeline.db_builder import DatabaseBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -723,15 +721,35 @@ class SuperiorEnsembleTrainer:
                 config_dict = yaml.safe_load(f)
 
             # Extract relevant config sections
-            training_config = config_dict.get("training", {})
-            data_config = config_dict.get("data_acquisition", {})
+            training_config = config_dict.get("training", {}) or {}
+            data_config = config_dict.get("data_acquisition", {}) or {}
+
+            # Restrict inputs to dataclass-supported fields and remove duplicates
+            valid_fields = {field.name for field in fields(TrainingConfig)}
+            sanitized_training_config = {
+                key: value for key, value in training_config.items() if key in valid_fields
+            }
+
+            models_override = sanitized_training_config.pop("models", None)
+            symbols_override = sanitized_training_config.pop("symbols", None)
+
+            # Symbols and time horizon parameters come from data acquisition when available
+            symbols = data_config.get(
+                "symbols",
+                symbols_override or ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"],
+            )
+            interval = data_config.get("interval")
+            lookback_days = data_config.get("lookback_days")
+
+            if interval is not None:
+                sanitized_training_config.setdefault("interval", interval)
+            if lookback_days is not None:
+                sanitized_training_config.setdefault("lookback_days", lookback_days)
 
             self.config = TrainingConfig(
-                symbols=data_config.get(
-                    "symbols", ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
-                ),
-                models=training_config.get("models", ["ppo", "gru", "lightgbm"]),
-                **training_config,
+                symbols=symbols,
+                models=models_override or ["ppo", "gru", "lightgbm"],
+                **sanitized_training_config,
             )
         else:
             self.config = TrainingConfig()
