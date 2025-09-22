@@ -211,8 +211,9 @@ class SuperiorFeatureEngine:
                 f"✅ Generated {len(self._get_feature_columns(features_df))} {model_type.upper()} features"
             )
 
-        # Add superior targets
-        features_df = self.target_engineer.create_trading_targets(features_df, price_col="close")
+        # Add superior targets without losing the engineered feature matrix
+        targets_df = self.target_engineer.create_trading_targets(features_df, price_col="close")
+        features_df = features_df.join(targets_df, how="left")
 
         return features_df
 
