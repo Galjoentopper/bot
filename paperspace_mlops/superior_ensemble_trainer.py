@@ -212,7 +212,7 @@ class SuperiorFeatureEngine:
             )
 
         # Add superior targets
-        features_df = self.target_engineer.generate_trading_targets(features_df, symbol)
+        features_df = self.target_engineer.create_trading_targets(features_df, price_col="close")
 
         return features_df
 
