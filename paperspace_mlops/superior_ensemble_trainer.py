@@ -827,18 +827,20 @@ class SuperiorEnsembleTrainer:
 
         logger.info(f"📋 Created {len(tasks)} training tasks")
 
-        # Execute training in parallel
-        with ProcessPoolExecutor(max_workers=self.config.max_workers) as executor:
-            futures = []
+        # Check if running in notebook environment
+        def is_notebook():
+            try:
+                from IPython import get_ipython
+                return get_ipython() is not None
+            except ImportError:
+                return False
 
+        if is_notebook():
+            logger.info("📓 Notebook environment detected - using sequential training")
+            # Execute training sequentially in notebook
             for model_type, symbol, data in tasks:
-                future = executor.submit(self._train_single_task, model_type, symbol, data)
-                futures.append(future)
-
-            # Collect results
-            for future in futures:
                 try:
-                    result = future.result(timeout=self.config.max_training_time_hours * 3600)
+                    result = self._train_single_task(model_type, symbol, data)
                     if result and result.validation_score >= self.config.min_validation_score:
                         self.results.append(result)
                         logger.info(
@@ -850,6 +852,31 @@ class SuperiorEnsembleTrainer:
                         )
                 except Exception as e:
                     logger.error(f"💥 Training failed: {e}")
+        else:
+            logger.info("🖥️ Server environment detected - using parallel training")
+            # Execute training in parallel
+            with ProcessPoolExecutor(max_workers=self.config.max_workers) as executor:
+                futures = []
+
+                for model_type, symbol, data in tasks:
+                    future = executor.submit(self._train_single_task, model_type, symbol, data)
+                    futures.append(future)
+
+                # Collect results
+                for future in futures:
+                    try:
+                        result = future.result(timeout=self.config.max_training_time_hours * 3600)
+                        if result and result.validation_score >= self.config.min_validation_score:
+                            self.results.append(result)
+                            logger.info(
+                                f"✅ Accepted {result.model_type}-{result.symbol}: {result.validation_score:.4f}"
+                            )
+                        else:
+                            logger.warning(
+                                f"❌ Rejected {result.model_type}-{result.symbol}: Low quality"
+                            )
+                    except Exception as e:
+                        logger.error(f"💥 Training failed: {e}")
 
         total_time = time.time() - start_time
 
@@ -976,7 +1003,14 @@ class SuperiorEnsembleTrainer:
 
         try:
             # Import S3 export functionality
-            from export_to_s3 import export_models_to_s3
+            try:
+                from paperspace_mlops.export_to_s3 import export_models_to_s3
+            except ImportError:
+                try:
+                    from export_to_s3 import export_models_to_s3
+                except ImportError:
+                    logger.warning("⚠️ S3 export module not found - skipping S3 export")
+                    return
 
             # Export all trained models
             for result in self.results:
