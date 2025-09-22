@@ -21,6 +21,7 @@ Environment Requirements:
 """
 
 import argparse
+import importlib
 import json
 import logging
 import os
@@ -32,9 +33,14 @@ from typing import Dict, List, Optional
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
-from paperspace_mlops.superior_ensemble_trainer import SuperiorEnsembleTrainer
+# Always reload trainer module so notebook reruns pick up latest changes
+_trainer_module = importlib.import_module("paperspace_mlops.superior_ensemble_trainer")
+_trainer_module = importlib.reload(_trainer_module)
+SuperiorEnsembleTrainer = _trainer_module.SuperiorEnsembleTrainer
+
 from src.data_pipeline.superior_ppo_feature_expander import SuperiorPPOFeatureExpander
 
 
@@ -110,13 +116,11 @@ class PaperspaceTrainingRunner:
         try:
             trainer = SuperiorEnsembleTrainer(str(config_path))
 
-            # Paperspace optimizations
-            trainer.config["resource_management"] = {
-                "gpu_enabled": True,
-                "memory_limit_gb": 12,
-                "parallel_models": 2,  # Conservative for Paperspace
-                "batch_size_multiplier": 2.0 if trainer._gpu_available() else 1.0,
-            }
+            # Paperspace optimizations aligned with dataclass attributes
+            trainer.config.gpu_enabled = True
+            trainer.config.memory_limit = "12GB"
+            if trainer.config.max_workers:
+                trainer.config.max_workers = min(trainer.config.max_workers, 4)
 
             self.logger.info("Trainer initialized successfully")
             return trainer
@@ -159,38 +163,39 @@ class PaperspaceTrainingRunner:
             # Configure training parameters
             if quick_test:
                 self.logger.info("Running in quick test mode")
-                self.trainer.config["training"]["optuna_trials"] = 3
-                self.trainer.config["training"]["epochs"] = 5
-                self.trainer.config["data"]["lookback_days"] = 30
+                self.trainer.config.optuna_trials = 3
+                self.trainer.config.optuna_timeout = 1800
+                self.trainer.config.max_training_time_hours = 2
+                self.trainer.config.lookback_days = 30
+                self.trainer.config.min_samples = 200
+                self.trainer.config.export_to_s3 = False
 
             if symbols:
-                self.trainer.config["data"]["symbols"] = symbols
+                self.trainer.config.symbols = symbols
                 self.logger.info(f"Training symbols: {symbols}")
 
             if models:
-                self.trainer.config["training"]["models"] = models
+                self.trainer.config.models = models
                 self.logger.info(f"Training models: {models}")
 
             # Execute training pipeline
             self.logger.info("Starting superior ensemble training...")
-            training_results = self.trainer.train_all_models()
+            model_results = self.trainer.train_all()
 
             # Process training results
             results["status"] = "training_complete"
-            results["symbols_trained"] = list(training_results.keys())
-            results["models_trained"] = []
+            results["symbols_trained"] = sorted({model.symbol for model in model_results})
+            results["models_trained"] = sorted({model.model_type for model in model_results})
 
-            for symbol, symbol_results in training_results.items():
-                for model_type in symbol_results.keys():
-                    if model_type not in results["models_trained"]:
-                        results["models_trained"].append(model_type)
+            self.logger.info(
+                f"Training completed for {len(results['symbols_trained'])} symbols"
+            )
 
-            self.logger.info(f"Training completed for {len(results['symbols_trained'])} symbols")
-
-            # Export to S3
-            self.logger.info("Starting S3 export...")
-            export_results = self.trainer.export_to_s3()
-            results["export_status"] = export_results
+            # Export already handled inside trainer when enabled
+            results["export_status"] = {
+                "export_enabled": self.trainer.config.export_to_s3,
+                "models_exported": len(model_results) if self.trainer.config.export_to_s3 else 0,
+            }
             results["status"] = "complete"
 
             # Training summary
