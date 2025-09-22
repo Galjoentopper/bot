@@ -79,7 +79,7 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 if [[ -f "requirements.txt" ]]; then
   echo "Installing base requirements"
-  "$PYTHON_BIN" -m pip install -r requirements.txt
+  "$PYTHON_BIN" -m pip install --ignore-installed blinker -r requirements.txt
 fi
 
 if [[ -f "paperspace_mlops/requirements_paperspace.txt" ]]; then
