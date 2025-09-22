@@ -550,18 +550,20 @@ class SuperiorModelTrainer:
     def _create_gru_model(self, input_size: int, hidden_size: int, num_layers: int, dropout: float):
         """Create GRU model architecture."""
 
-        class GRUModel(self.nn.Module):
+        nn = self.nn
+
+        class GRUModel(nn.Module):
             def __init__(self, input_size, hidden_size, num_layers, dropout):
                 super().__init__()
-                self.gru = self.nn.GRU(
+                self.gru = nn.GRU(
                     input_size,
                     hidden_size,
                     num_layers,
                     batch_first=True,
                     dropout=dropout if num_layers > 1 else 0,
                 )
-                self.fc = self.nn.Linear(hidden_size, 1)
-                self.dropout = self.nn.Dropout(dropout)
+                self.fc = nn.Linear(hidden_size, 1)
+                self.dropout = nn.Dropout(dropout)
 
             def forward(self, x):
                 if len(x.shape) == 2:
