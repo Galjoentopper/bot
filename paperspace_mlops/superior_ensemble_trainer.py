@@ -442,7 +442,7 @@ class SuperiorModelTrainer:
                 }
 
                 model = self.lgb.LGBMRegressor(**params)
-                model.set_params(verbose=-1)
+                model.set_params(verbosity=-1)
                 model.fit(train_X, train_y, eval_set=[(val_X, val_y)])
                 preds = model.predict(val_X)
 
@@ -534,7 +534,7 @@ class SuperiorModelTrainer:
 
         if model_type == "lightgbm":
             model = self.lgb.LGBMRegressor(**params)
-            model.set_params(verbose=-1)
+            model.set_params(verbosity=-1)
             model.fit(
                 train_X,
                 train_y,
