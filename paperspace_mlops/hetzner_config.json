@@ -1,0 +1,11 @@
+{
+    "hetzner_host": "49.12.107.148",
+    "hetzner_user": "trader",
+    "ssh_key_path": "/notebooks/bot/.ssh/hetzner_key",
+    "ssh_port": 22,
+    "connection_timeout": 30,
+    "transfer_timeout": 3600,
+    "validation_enabled": true,
+    "backup_enabled": true,
+    "auto_restart": false
+}

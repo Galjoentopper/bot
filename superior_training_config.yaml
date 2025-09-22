@@ -1,0 +1,206 @@
+---
+# Superior Training Configuration - Multi-Timeframe PPO
+# Restores the profitable old model architecture with resource management
+#
+# This configuration brings back the superior multi-timeframe target engineering
+# that made the old BTCEUR model highly effective, while solving the resource
+# issues that killed recent training runs.
+
+# Data Acquisition Configuration
+data_acquisition:
+  symbols: ['BTCEUR', 'ETHEUR', 'ADAEUR', 'DOTEUR', 'LINKEUR']
+  interval: '30m'  # Optimized for multi-timeframe predictions
+  lookback_days: 365
+  use_local_databases: true
+  data_sources:
+    primary: 'binance'
+    fallback: 'yfinance'
+  output_directory: './data'
+
+# Superior Training Configuration
+training:
+  # Use superior resource-aware PPO trainer
+  models: ['resource_aware_ppo']
+  random_seed: 42
+
+  # Progressive training approach to prevent OOM
+  progressive_training: true
+  checkpoint_interval: 25000  # Save every 25k timesteps
+  auto_resource_management: true
+
+  # Cross-validation settings optimized for time series
+  validation_split: 0.2
+  test_split: 0.1
+  cv_splits: 3  # Reduced to save memory
+  embargo_period: 24  # hours
+
+  # Resource allocation (adaptive)
+  max_workers: 'auto'  # Will be calculated based on available memory
+  memory_limit: 'auto'  # Will be detected automatically
+  gpu_enabled: true
+  gpu_memory_fraction: 0.7  # Conservative GPU usage
+
+# Superior PPO Configuration - Based on Old Profitable Model
+model_parameters:
+  resource_aware_ppo:
+    # Core PPO parameters (from old successful model)
+    learning_rate: 0.0003
+    learning_rate_floor: 0.00005
+    n_steps: 4096  # From old model
+    batch_size: 256  # From old model, will be adjusted progressively
+    n_epochs: 20    # From old model
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_range: 0.2
+    ent_coef: 0.01
+    vf_coef: 0.5
+    max_grad_norm: 0.6
+
+    # Progressive training stages
+    training_stages:
+      - timesteps: 50000
+        n_envs: 1
+        batch_size: 128
+      - timesteps: 100000
+        n_envs: 2
+        batch_size: 256
+      - timesteps: 200000
+        n_envs: 4
+        batch_size: 512
+
+    # Resource management
+    max_memory_gb: 'auto'
+    optimal_n_envs: 'auto'
+    checkpoint_interval: 25000
+
+    # Superior feature engineering
+    feature_engineering: 'superior_multi_timeframe'
+    expected_features: 104
+
+    # Adaptive KL divergence control
+    adaptive_kl_target: 0.03
+    adaptive_kl_tolerance: 0.3
+    adaptive_kl_interval: 8192
+
+    # Reward configuration
+    reward_scaling: 0.2
+    volatility_normalize_rewards: true
+
+# Superior Feature Engineering Configuration
+# This recreates the old model's successful approach
+features:
+  # Core philosophy: PREDICTIVE not DESCRIPTIVE
+  engineering_type: 'superior_multi_timeframe'
+  expected_count: 104
+
+  # Multi-timeframe prediction horizons (30min intervals)
+  timeframes:
+    '1h': 2    # 2 * 30min = 1h
+    '3h': 6    # 6 * 30min = 3h
+    '6h': 12   # 12 * 30min = 6h
+    '12h': 24  # 24 * 30min = 12h
+    '24h': 48  # 48 * 30min = 24h
+
+  # Trading cost parameters (realistic)
+  transaction_cost_bps: 25  # 0.25% per trade
+  slippage_bps: 5          # 0.05% slippage
+
+  # Feature categories (totaling 104)
+  categories:
+    multiframe_returns: 10      # return_1h, log_return_1h, etc.
+    cost_adjusted: 10           # cost_adj_return_1h, profitable_1h, etc.
+    directional_signals: 15     # direction_1h, strong_direction_1h, etc.
+    magnitude_analysis: 15      # return_magnitude_1h, positive_magnitude_1h, etc.
+    risk_adjusted: 15           # risk_adj_return_1h, info_ratio_1h, etc.
+    confidence_scoring: 10      # confidence_1h, high_confidence_1h, etc.
+    regime_detection: 25        # regime_direction_1h, bull_return_1h, etc.
+    target_features: 4          # target, close, target_direction, target_confidence
+
+  # Risk adjustment parameters
+  volatility_window: 20
+  confidence_threshold: 0.7
+  strong_move_threshold: 0.01  # 1%
+
+# Target Engineering (Superior Approach)
+targets:
+  # Primary target: 1-hour cost-adjusted return
+  primary_target: 'cost_adj_return_1h'
+
+  # Multi-timeframe targets for training
+  horizons: ['1h', '3h', '6h', '12h', '24h']
+
+  # Cost-adjusted profitability
+  include_transaction_costs: true
+  include_slippage: true
+
+  # Direction and magnitude
+  include_direction: true
+  include_magnitude: true
+  include_confidence: true
+  include_risk_adjusted: true
+
+  # Market regime adjustment
+  include_regime_features: true
+
+# Model Export Configuration
+export:
+  base_directory: './models/superior'
+  include_metadata: true
+  include_feature_mapping: true
+  archive_name_template: 'superior_ppo_{symbol}_{timestamp}.zip'
+
+  # Enhanced metadata
+  feature_philosophy: 'forward_looking_prediction'
+  model_type: 'resource_aware_ppo'
+  training_approach: 'progressive_multi_stage'
+
+# Environment Configuration (for RL training)
+environment:
+  # Trading environment settings
+  initial_balance: 10000.0
+  transaction_fee: 0.0025  # 0.25%
+  slippage: 0.0005         # 0.05%
+  max_position_size: 0.5
+  lookback_window: 32      # Match observation shape [32, 104]
+
+  # Reward configuration
+  reward_mode: 'pnl_pct'
+  reward_scaling: 0.2
+  volatility_normalize_rewards: true
+
+  # Environment optimization
+  domain_randomization: true
+  sample_training_windows: true
+  min_episode_length: 512
+
+# Logging Configuration
+logging:
+  level: 'INFO'
+  log_file: 'logs/superior_training.log'
+  include_resource_monitoring: true
+  checkpoint_logging: true
+  feature_validation_logging: true
+
+# Comparison vs Old Model
+comparison:
+  old_model_philosophy: 'multi_timeframe_targets'
+  new_current_philosophy: 'technical_indicators'
+  superior_philosophy: 'restored_multi_timeframe_targets'
+
+  old_model_features:
+    - 'return_1h, return_3h, return_6h, return_12h, return_24h'
+    - 'cost_adj_return_1h, profitable_1h, direction_1h'
+    - 'risk_adj_return_1h, confidence_1h, regime_direction_1h'
+    - 'bull_return_1h, bear_return_1h, high_vol_return_1h'
+
+  current_inferior_features:
+    - 'rsi_14, sma_20, ema_12, macd, bb_upper'
+    - 'volatility_20, price_change_1, momentum_10, atr_14'
+    - 'volume_ma_20, obv, stoch_14, parkinson_vol_10'
+
+  why_superior_wins:
+    - 'Predictive vs Descriptive: Forward-looking returns vs historical patterns'
+    - 'Cost-Aware: Includes real trading costs in features'
+    - 'Multi-Timeframe: Captures different prediction horizons'
+    - 'Risk-Adjusted: Incorporates volatility and risk metrics'
+    - 'Regime-Aware: Adapts to different market conditions'

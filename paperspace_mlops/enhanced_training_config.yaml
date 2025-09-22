@@ -1,0 +1,156 @@
+---
+# Enhanced Training Configuration - Superior Multi-Timeframe Architecture
+# Based on analysis of the superior old BTCEUR model architecture
+
+# Data Acquisition Configuration
+data_acquisition:
+  symbols: ['BTCEUR', 'ETHEUR', 'ADAEUR', 'DOTEUR', 'LINKEUR']
+  interval: '30m'
+  lookback_days: 365
+  use_local_databases: true
+  data_sources:
+    primary: 'binance'
+    fallback: 'yfinance'
+  output_directory: './data'
+
+# Enhanced Training Configuration - Optimized for Memory & Quality
+training:
+  models: ['enhanced_ppo']  # Use enhanced PPO with superior feature engineering
+  random_seed: 42
+
+  # Resource-aware settings (prevent OOM kills)
+  max_workers: 2              # Reduced from 8 to prevent memory issues
+  memory_limit: '2GB'         # Conservative memory limit
+  gpu_enabled: false
+
+  # Cross-validation settings
+  validation_split: 0.2
+  test_split: 0.1
+  cv_splits: 3               # Reduced for memory efficiency
+  embargo_period: 24
+
+  # Checkpoint settings (critical for long training)
+  checkpoint_freq: 25000     # Save every 25k timesteps
+  checkpoint_dir: './checkpoints'
+
+# Enhanced PPO Configuration - Based on Superior Old Model
+model_parameters:
+  enhanced_ppo:
+    # Core PPO parameters (optimized for stability)
+    learning_rate: 0.0002     # Slightly lower for stability
+    learning_rate_floor: 0.00005
+    n_steps: 2048             # Reduced from 4096 for memory
+    batch_size: 128           # Reduced from 256 for memory
+    n_epochs: 10              # Reduced from 20 for stability
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_range: 0.2
+    ent_coef: 0.01
+    vf_coef: 0.7              # Increased for better value learning
+    max_grad_norm: 0.6
+
+    # Enhanced training parameters
+    total_timesteps: 300000   # Longer training for better convergence
+    eval_freq: 10000         # More frequent evaluation
+    n_eval_episodes: 5       # Reduced for memory
+
+    # Environment parameters (optimized for enhanced features)
+    n_envs: 2                # Conservative parallel environments
+    lookback_window: 32      # Matches old model: [32, 104]
+
+    # Enhanced feature engineering settings
+    feature_engineering_type: 'enhanced_multiframe'
+    use_cost_adjustment: true
+    use_regime_detection: true
+    use_risk_adjustment: true
+
+    # Multi-timeframe settings (recreate old model)
+    timeframes: [1, 3, 6, 12, 24]  # hours
+    transaction_cost_bps: 10       # 0.1% per trade
+    slippage_bps: 5               # 0.05% slippage
+    funding_cost_bps: 1           # 0.01% funding per period
+
+    # Adaptive learning
+    adaptive_kl_target: 0.03
+    adaptive_kl_tolerance: 0.35
+    adaptive_kl_interval: 4096
+
+# Enhanced Feature Engineering Configuration
+features:
+  # Use enhanced multi-timeframe approach (like old model)
+  feature_expander: 'enhanced_ppo'
+  expected_features: 104
+
+  # Multi-timeframe target engineering
+  multiframe_returns: true
+  cost_adjusted_targets: true
+  direction_magnitude_analysis: true
+  risk_adjusted_features: true
+  regime_detection: true
+
+  # Quality settings
+  min_periods_ratio: 0.8
+  remove_outliers: true
+  outlier_std_threshold: 4.0
+
+# Environment Configuration (optimized for enhanced features)
+environment:
+  initial_balance: 10000.0
+  transaction_fee: 0.001      # 0.1% (matches feature engineering)
+  slippage: 0.0005           # 0.05% (matches feature engineering)
+  max_position_size: 0.5
+  reward_mode: 'pnl_pct'
+  reward_scaling: 1.0
+  volatility_normalize_rewards: true
+
+# Resource Monitoring Configuration
+resource_monitoring:
+  enable_monitoring: true
+  memory_threshold_gb: 2.5    # Stop if memory usage exceeds this
+  cpu_threshold_pct: 85       # Warning if CPU exceeds this
+  checkpoint_on_resource_pressure: true
+  auto_reduce_batch_on_oom: true
+
+# Progressive Training Strategy
+progressive_training:
+  enable: true
+  stages:
+    - name: "warmup"
+      timesteps: 50000
+      n_envs: 1
+      batch_size: 64
+      learning_rate: 0.0001
+    - name: "intermediate"
+      timesteps: 150000
+      n_envs: 2
+      batch_size: 128
+      learning_rate: 0.0002
+    - name: "full"
+      timesteps: 300000
+      n_envs: 2
+      batch_size: 128
+      learning_rate: 0.0002
+
+# Model Export Configuration
+export:
+  base_directory: './models'
+  enhanced_metadata: true
+  include_feature_importance: true
+  include_training_history: true
+  validate_before_export: true
+
+# Logging Configuration
+logging:
+  level: 'INFO'
+  training_log: 'logs/enhanced_training.log'
+  detailed_metrics: true
+  feature_analysis: true
+
+# Error Handling & Recovery
+error_handling:
+  max_retries: 2
+  retry_delay: 10
+  auto_recovery: true
+  recovery_timeout: 600
+  save_on_crash: true
+  resume_from_checkpoint: true
