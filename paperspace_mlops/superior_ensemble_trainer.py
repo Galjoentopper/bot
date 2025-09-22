@@ -771,6 +771,10 @@ class SuperiorEnsembleTrainer:
             if lookback_days is not None:
                 sanitized_training_config.setdefault("lookback_days", lookback_days)
 
+            # Ensure models and symbols are completely removed to prevent duplicate keyword arguments
+            sanitized_training_config.pop("models", None)
+            sanitized_training_config.pop("symbols", None)
+
             sanitized_post_snapshot = {
                 k: sanitized_training_config[k] for k in sorted(sanitized_training_config.keys())
             }
@@ -778,6 +782,14 @@ class SuperiorEnsembleTrainer:
 
             logger.info("📊 Final symbols: %s", symbols)
             logger.info("🤖 Model overrides: %s", models_override)
+
+            # Final validation: ensure no conflicts in parameters
+            explicit_params = {"symbols", "models"}
+            conflicting_keys = set(sanitized_training_config.keys()) & explicit_params
+            if conflicting_keys:
+                logger.warning("🚨 Removing conflicting keys from sanitized config: %s", conflicting_keys)
+                for key in conflicting_keys:
+                    sanitized_training_config.pop(key, None)
 
             self.config = TrainingConfig(
                 symbols=symbols,

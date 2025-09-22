@@ -45,11 +45,7 @@ training:
 model_management:
   models_dir: './models'
 
-models:
-  ppo:
-    feature_mode: superior
-    expected_feature_count: 103
-    superior_sequence_length: 32
+# Model-specific configurations (moved to model_parameters section below)
 # Advanced Performance Optimization Configuration
 performance_optimization:
   # Memory Management
@@ -143,6 +139,10 @@ model_parameters:
     vf_coef: 0.5
     max_grad_norm: 0.5
     total_timesteps: 100000
+    # Superior PPO configuration
+    feature_mode: superior
+    expected_feature_count: 103
+    superior_sequence_length: 32
 
 # Feature Engineering
 features:
