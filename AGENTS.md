@@ -1,22 +1,19 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-Core code lives in `src/`: trading logic in `src/trading`, shared models in `src/models`, utilities in `src/utils`. Tests are grouped by scope (`tests/unit`, `tests/integration`, `tests/system`) so markers stay predictable. Configuration belongs in `config/`, automation in `scripts/`, while datasets and experiment outputs sit under `data/`, `models/`, `mlruns/`, `reports/`, and `logs/`.
+The trading engine lives in `src/`, with trading logic under `src/trading`, shared models in `src/models`, and helpers in `src/utils`. Configuration files sit in `config/`, automation and scripts in `scripts/`, while datasets, experiment artifacts, and logs belong in `data/`, `models/`, `mlruns/`, `reports/`, and `logs/`. Tests mirror the codebase: fast checks in `tests/unit`, broader coverage in `tests/integration`, and end-to-end flows in `tests/system`.
 
 ## Build, Test, and Development Commands
-Run `make setup` to bootstrap the virtualenv and install editable dependencies. Use `make test` for the fast suite, `make test-cov` for coverage, and targeted selectors like `pytest -m unit` or `pytest -m "integration and not slow"` during debugging. Enforce quality with `make lint` (flake8), `make format` (Black + top-level Python files), and keep Git hooks active via `make pre-commit-install` and `make pre-commit-run`.
+Run `make setup` once to create the virtualenv and install editable deps. Use `make test` for the default pytest suite and `make test-cov` when you need coverage numbers. Developers often target `pytest -m unit` or `pytest -m "integration and not slow"` during debugging. Keep quality gates green with `make lint`, `make format`, and reinstall Git hooks through `make pre-commit-install` followed by `make pre-commit-run`.
 
 ## Coding Style & Naming Conventions
-We target Python 3, four-space indentation, and a 100-character line guide. Black handles formatting, isort (profile `black`) sorts imports, and flake8 runs with ignores E203, W503, E501. Keep modules, functions, and variables in snake_case, classes in CamelCase, and constants in SCREAMING_SNAKE_CASE. Touching code should pass mypy; prefer adding precise type hints over muting errors.
+Code targets Python 3 with four-space indentation and a 100-character guideline. Black enforces formatting, while isort (profile `black`) keeps imports sorted, and flake8 runs with ignores E203, W503, E501. Prefer explicit type hints; lint and mypy must stay clean. Stick to snake_case for modules, functions, and variables, CamelCase for classes, and SCREAMING_SNAKE_CASE for constants.
 
 ## Testing Guidelines
-Pytest discovers files named `test_*.py` or `*_test.py` with test functions `def test_*`. Hold coverage at or above 80%; confirm with `make test-cov` and review reports before merging. Apply markers (`unit`, `integration`, `performance`, `model`, `trading`, `config`, `slow`, `external`) consistently so CI selectors remain stable. Use fixtures or factories to share setup; mock network calls unless the test is tagged `external`.
+Pytest discovers files named `test_*.py` or `*_test.py` and functions beginning `test_`. Aim for ≥80% coverage; confirm via `make test-cov` and review the generated report. Use shared fixtures for setup, mock external services unless a test is tagged `external`, and apply markers like `unit`, `integration`, `trading`, or `slow` so CI selectors remain reliable.
 
 ## Commit & Pull Request Guidelines
-Adopt Conventional Commits (`feat: add hedging agent`, `fix: correct order sizing`, `chore: refresh docs`) and reference issue IDs when helpful. Keep commits focused, run lint + tests before pushing, and document schema or API shifts in the message body. Pull requests must explain motivation, summarize changes, and list the exact verification commands; attach logs or screenshots for trading simulations and wait for green CI before review.
+Follow Conventional Commits such as `feat: add hedging agent` or `fix: correct order sizing`, referencing issue IDs when useful. Each PR should explain motivation, summarise changes, list verification commands, and attach logs or screenshots for trading simulations. Wait for green CI before requesting review and document any schema or API shifts in the PR body.
 
 ## Security & Configuration Tips
-Copy `.env.template` to `.env`, keep credentials outside version control, and never commit secrets. Validate local setups with `python validate_environment.py` ahead of training or deployments. Consult `SECURITY_IMPLEMENTATION_SUMMARY.md` when touching integrations, and tag long or network-heavy tests with `slow` or `external` to protect pipelines.
-
-## Architecture & Planning Standards
-Outline significant design changes in `docs/` or the linked issue, capturing dependencies and failure modes. Break complex efforts into scoped TODOs and rely on logs in `logs/` for debugging.
+Copy `.env.template` to `.env`, keep secrets out of Git, and run `python validate_environment.py` to confirm local setups. Review `SECURITY_IMPLEMENTATION_SUMMARY.md` before touching integrations, and tag long-running or network-dependent tests with `slow` or `external` to protect the pipeline.
