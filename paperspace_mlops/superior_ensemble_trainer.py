@@ -76,7 +76,26 @@ from data_pipeline.superior_ppo_feature_expander import SuperiorPPOFeatureExpand
 from data_pipeline.target_engineering import TradingTargetEngine
 from data_pipeline.trading_features import TradingFeatureEngine
 
-from data_pipeline.db_builder import DatabaseBuilder
+try:  # Optional dependency; fall back to simple reader if unavailable
+    from data_pipeline.db_builder import DatabaseBuilder  # type: ignore
+except Exception:  # pragma: no cover - runtime fallback
+
+    class DatabaseBuilder:  # type: ignore
+        """Lightweight replacement that can read SQLite market data files."""
+
+        def read_database(self, db_path: Union[str, Path]) -> pd.DataFrame:
+            import sqlite3
+
+            db_path = Path(db_path)
+            if not db_path.exists():
+                raise FileNotFoundError(f"Database file not found: {db_path}")
+
+            with sqlite3.connect(str(db_path)) as conn:
+                return pd.read_sql(
+                    "SELECT * FROM market_data ORDER BY timestamp",
+                    conn,
+                    parse_dates=["datetime"],
+                )
 
 logger = logging.getLogger(__name__)
 
@@ -724,11 +743,19 @@ class SuperiorEnsembleTrainer:
             training_config = config_dict.get("training", {}) or {}
             data_config = config_dict.get("data_acquisition", {}) or {}
 
+            logger.info("📄 Loaded training config keys: %s", list(training_config.keys()))
+            logger.info("📄 Loaded data config keys: %s", list(data_config.keys()))
+
             # Restrict inputs to dataclass-supported fields and remove duplicates
             valid_fields = {field.name for field in fields(TrainingConfig)}
             sanitized_training_config = {
                 key: value for key, value in training_config.items() if key in valid_fields
             }
+
+            logger.info(
+                "🔧 Sanitized training config (pre-pop): %s",
+                {k: sanitized_training_config[k] for k in sorted(sanitized_training_config.keys())},
+            )
 
             models_override = sanitized_training_config.pop("models", None)
             symbols_override = sanitized_training_config.pop("symbols", None)
@@ -745,6 +772,14 @@ class SuperiorEnsembleTrainer:
                 sanitized_training_config.setdefault("interval", interval)
             if lookback_days is not None:
                 sanitized_training_config.setdefault("lookback_days", lookback_days)
+
+            logger.info(
+                "🔧 Sanitized training config (post-pop): %s",
+                {k: sanitized_training_config[k] for k in sorted(sanitized_training_config.keys())},
+            )
+
+            logger.info("📊 Final symbols: %s", symbols)
+            logger.info("🤖 Model overrides: %s", models_override)
 
             self.config = TrainingConfig(
                 symbols=symbols,
