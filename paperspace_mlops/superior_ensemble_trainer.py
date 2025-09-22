@@ -925,7 +925,7 @@ class SuperiorEnsembleTrainer:
                 if Path(db_path).exists():
                     data = self.db_builder.read_database(db_path)
                     if not data.empty:
-                        data_dict[symbol] = data
+                        data_dict[symbol] = self._ensure_datetime_index(data, symbol)
                         logger.info(f"✅ Loaded {len(data)} records for {symbol}")
                     else:
                         logger.warning(f"⚠️ Empty data for {symbol}")
@@ -936,6 +936,54 @@ class SuperiorEnsembleTrainer:
                 logger.error(f"💥 Failed to load {symbol}: {e}")
 
         return data_dict
+
+    @staticmethod
+    def _ensure_datetime_index(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+        """Ensure dataframe uses a DatetimeIndex for time-based features."""
+
+        if isinstance(df.index, pd.DatetimeIndex):
+            return df.sort_index()
+
+        df_fixed = df.copy()
+        candidate_cols = [
+            col
+            for col in ["timestamp", "datetime", "date", "time"]
+            if col in df_fixed.columns
+        ]
+
+        for col in candidate_cols:
+            series = df_fixed[col]
+            try:
+                if np.issubdtype(series.dtype, np.number):
+                    converted = pd.to_datetime(series, unit="s", errors="coerce")
+                else:
+                    converted = pd.to_datetime(series, errors="coerce")
+
+                if converted.notnull().sum() == 0:
+                    continue
+
+                df_fixed = df_fixed.loc[converted.notnull()].copy()
+                df_fixed.index = converted[converted.notnull()]
+                df_fixed.sort_index(inplace=True)
+                logger.info(
+                    "🗓️ Applied DatetimeIndex fix for %s using column '%s'",
+                    symbol,
+                    col,
+                )
+                return df_fixed
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.debug(
+                    "Failed to convert column '%s' to datetime for %s: %s",
+                    col,
+                    symbol,
+                    exc,
+                )
+
+        logger.warning(
+            "⚠️ Could not establish DatetimeIndex for %s - using existing index",
+            symbol,
+        )
+        return df_fixed
 
     def _train_single_task(
         self, model_type: str, symbol: str, data: pd.DataFrame
