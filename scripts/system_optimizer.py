@@ -237,7 +237,10 @@ class LightweightSystemOptimizer:
             "optimal_threads": self.optimal_threads,
             "cache_statistics": self.get_cache_statistics(),
             "active_threads": threading.active_count(),
-            "memory_info": {"gc_counts": gc.get_count(), "gc_thresholds": gc.get_threshold()},
+            "memory_info": {
+                "gc_counts": gc.get_count(),
+                "gc_thresholds": gc.get_threshold(),
+            },
         }
 
     def optimize_system(self) -> Dict[str, Any]:

@@ -15,7 +15,7 @@ import pandas as pd
 from scipy import stats
 
 logger = logging.getLogger(__name__)
-warnings.filterwarnings('ignore', category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 class StableMath:
@@ -36,7 +36,7 @@ class StableMath:
         numerator: Union[float, np.ndarray, pd.Series],
         denominator: Union[float, np.ndarray, pd.Series],
         max_value: Optional[float] = None,
-        fill_value: float = 0.0
+        fill_value: float = 0.0,
     ) -> Union[float, np.ndarray, pd.Series]:
         """
         Safe division with numerical stability guarantees.
@@ -57,9 +57,15 @@ class StableMath:
         if isinstance(numerator, pd.Series) or isinstance(denominator, pd.Series):
             # Ensure both are Series for consistent indexing
             if not isinstance(numerator, pd.Series):
-                numerator = pd.Series(numerator, index=denominator.index if isinstance(denominator, pd.Series) else None)
+                numerator = pd.Series(
+                    numerator,
+                    index=(denominator.index if isinstance(denominator, pd.Series) else None),
+                )
             if not isinstance(denominator, pd.Series):
-                denominator = pd.Series(denominator, index=numerator.index if isinstance(numerator, pd.Series) else None)
+                denominator = pd.Series(
+                    denominator,
+                    index=numerator.index if isinstance(numerator, pd.Series) else None,
+                )
 
             # Safe division for Series
             safe_denom = denominator.copy()
@@ -83,7 +89,7 @@ class StableMath:
         safe_denom = np.where(np.abs(denominator) < cls.EPSILON, cls.EPSILON, denominator)
 
         # Perform division
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             result = numerator / safe_denom
 
         # Handle NaN and infinity
@@ -96,9 +102,7 @@ class StableMath:
 
     @classmethod
     def safe_log(
-        cls,
-        values: Union[float, np.ndarray, pd.Series],
-        fill_value: float = 0.0
+        cls, values: Union[float, np.ndarray, pd.Series], fill_value: float = 0.0
     ) -> Union[float, np.ndarray, pd.Series]:
         """
         Safe logarithm with handling for non-positive values.
@@ -121,7 +125,7 @@ class StableMath:
         values = np.asarray(values)
         safe_values = np.where(values <= 0, cls.EPSILON, values)
 
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             result = np.log(safe_values)
 
         result = np.where(np.isnan(result) | np.isinf(result), fill_value, result)
@@ -129,9 +133,7 @@ class StableMath:
 
     @classmethod
     def safe_sqrt(
-        cls,
-        values: Union[float, np.ndarray, pd.Series],
-        fill_value: float = 0.0
+        cls, values: Union[float, np.ndarray, pd.Series], fill_value: float = 0.0
     ) -> Union[float, np.ndarray, pd.Series]:
         """
         Safe square root with handling for negative values.
@@ -151,7 +153,7 @@ class StableMath:
         values = np.asarray(values)
         safe_values = np.where(values < 0, 0, values)
 
-        with np.errstate(invalid='ignore'):
+        with np.errstate(invalid="ignore"):
             result = np.sqrt(safe_values)
 
         result = np.where(np.isnan(result), fill_value, result)
@@ -164,7 +166,7 @@ class StableMath:
         window: int,
         risk_free_rate: float = 0.0,
         annualize: bool = True,
-        periods_per_year: int = 17520  # 30-min periods per year
+        periods_per_year: int = 17520,  # 30-min periods per year
     ) -> pd.Series:
         """
         Calculate stable Sharpe ratio with robust numerical handling.
@@ -210,7 +212,7 @@ class StableMath:
         window: int,
         target_return: float = 0.0,
         annualize: bool = True,
-        periods_per_year: int = 17520
+        periods_per_year: int = 17520,
     ) -> pd.Series:
         """
         Calculate stable Sortino ratio with robust downside deviation.
@@ -259,7 +261,7 @@ class StableMath:
         returns: pd.Series,
         window: int,
         annualize: bool = True,
-        periods_per_year: int = 17520
+        periods_per_year: int = 17520,
     ) -> pd.Series:
         """
         Calculate stable Calmar ratio with robust max drawdown calculation.
@@ -302,9 +304,9 @@ class StableMath:
     def clean_extreme_values(
         cls,
         data: pd.Series,
-        method: str = 'iqr',
+        method: str = "iqr",
         threshold: float = 3.0,
-        cap_method: str = 'percentile'
+        cap_method: str = "percentile",
     ) -> pd.Series:
         """
         Clean extreme values using robust statistical methods.
@@ -323,7 +325,7 @@ class StableMath:
 
         cleaned_data = data.copy()
 
-        if method == 'iqr':
+        if method == "iqr":
             Q1 = data.quantile(0.25)
             Q3 = data.quantile(0.75)
             IQR = Q3 - Q1
@@ -331,20 +333,20 @@ class StableMath:
             lower_bound = Q1 - threshold * IQR
             upper_bound = Q3 + threshold * IQR
 
-        elif method == 'zscore':
+        elif method == "zscore":
             mean_val = data.mean()
             std_val = data.std()
 
             lower_bound = mean_val - threshold * std_val
             upper_bound = mean_val + threshold * std_val
 
-        elif method == 'modified_zscore':
+        elif method == "modified_zscore":
             median_val = data.median()
             mad = np.median(np.abs(data - median_val))
             modified_z_scores = 0.6745 * (data - median_val) / (mad + cls.EPSILON)
 
             outliers = np.abs(modified_z_scores) > threshold
-            if cap_method == 'percentile':
+            if cap_method == "percentile":
                 lower_bound = data.quantile(0.01)
                 upper_bound = data.quantile(0.99)
             else:
@@ -354,12 +356,12 @@ class StableMath:
             return cleaned_data  # Unknown method
 
         # Apply capping method
-        if cap_method == 'percentile':
+        if cap_method == "percentile":
             # Use percentiles instead of calculated bounds
             lower_bound = data.quantile(0.005)  # 0.5th percentile
             upper_bound = data.quantile(0.995)  # 99.5th percentile
 
-        elif cap_method == 'winsorize':
+        elif cap_method == "winsorize":
             # Winsorize at specified percentiles
             lower_pct = 0.01
             upper_pct = 0.99
@@ -376,7 +378,7 @@ class StableMath:
         cls,
         df: pd.DataFrame,
         feature_cols: Optional[list] = None,
-        max_zscore: float = 5.0
+        max_zscore: float = 5.0,
     ) -> pd.DataFrame:
         """
         Stabilize all features in a dataframe using robust methods.
@@ -399,15 +401,13 @@ class StableMath:
                 # Clean extreme values
                 stabilized_df[col] = cls.clean_extreme_values(
                     df[col],
-                    method='modified_zscore',
+                    method="modified_zscore",
                     threshold=max_zscore,
-                    cap_method='percentile'
+                    cap_method="percentile",
                 )
 
                 # Handle remaining NaN/inf
                 stabilized_df[col] = stabilized_df[col].fillna(0)
-                stabilized_df[col] = np.where(
-                    np.isinf(stabilized_df[col]), 0, stabilized_df[col]
-                )
+                stabilized_df[col] = np.where(np.isinf(stabilized_df[col]), 0, stabilized_df[col])
 
         return stabilized_df

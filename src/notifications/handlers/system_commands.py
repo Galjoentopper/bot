@@ -251,7 +251,8 @@ class SystemCommandHandler:
                 [f"• {r.symbol} {r.interval}: {r.rows} rows -> {r.db_path.name}" for r in results]
             )
             await update.message.reply_text(
-                f"✅ Rebuild complete ({len(results)} DBs)\n{summary}", parse_mode="HTML"
+                f"✅ Rebuild complete ({len(results)} DBs)\n{summary}",
+                parse_mode="HTML",
             )
 
             if do_push:
@@ -507,7 +508,13 @@ class SystemCommandHandler:
                 for arg in context.args:
                     if arg.isdigit():
                         lines = max(1, min(int(arg), 300))
-                    elif arg.upper() in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+                    elif arg.upper() in [
+                        "DEBUG",
+                        "INFO",
+                        "WARNING",
+                        "ERROR",
+                        "CRITICAL",
+                    ]:
                         level = arg.upper()
                     elif arg.lower() in ["trading", "telegram", "system", "health"]:
                         target = arg.lower()
@@ -560,7 +567,13 @@ class SystemCommandHandler:
 
     def _tail_log_filtered(self, file_path: str, lines: int, min_level: str) -> List[str]:
         """Tail last N lines of a log file and filter by min_level."""
-        level_order = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40, "CRITICAL": 50}
+        level_order = {
+            "DEBUG": 10,
+            "INFO": 20,
+            "WARNING": 30,
+            "ERROR": 40,
+            "CRITICAL": 50,
+        }
         min_val = level_order.get(min_level.upper(), 20)
         try:
             data = Path(file_path).read_text(encoding="utf-8", errors="ignore").splitlines()

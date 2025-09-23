@@ -17,15 +17,15 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yaml
-import numpy as np
 
 # Configure logging first
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,9 @@ logger = logging.getLogger(__name__)
 def check_imports():
     """Check if all required modules can be imported."""
     try:
-        import torch
         import stable_baselines3
+        import torch
+
         logger.info("✅ PyTorch and Stable-Baselines3 available")
         return True
     except ImportError as e:
@@ -46,6 +47,7 @@ def load_real_data(symbol: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load real trading data from SQLite database."""
     try:
         from load_training_data import prepare_training_data
+
         return prepare_training_data(symbol)
     except Exception as e:
         logger.warning(f"⚠️  Could not load real data for {symbol}: {e}")
@@ -74,13 +76,15 @@ def create_sample_data(symbol: str, num_samples: int = 10000) -> pd.DataFrame:
         low = min(open_price, close) * (1 - np.random.uniform(0, 0.01))
         volume = np.random.uniform(100, 1000)
 
-        data.append({
-            'open': open_price,
-            'high': high,
-            'low': low,
-            'close': close,
-            'volume': volume,
-        })
+        data.append(
+            {
+                "open": open_price,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
+            }
+        )
 
     df = pd.DataFrame(data)
     logger.info(f"📊 Created sample data for {symbol}: {len(df)} rows")
@@ -92,60 +96,60 @@ def apply_superior_features(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("🔄 Applying superior multi-timeframe features...")
 
     # Timeframes (in 30-min periods)
-    timeframes = {
-        '1h': 2, '3h': 6, '6h': 12, '12h': 24, '24h': 48
-    }
+    timeframes = {"1h": 2, "3h": 6, "6h": 12, "12h": 24, "24h": 48}
 
     # Multi-timeframe returns (forward-looking)
     for horizon, periods in timeframes.items():
-        future_close = df['close'].shift(-periods)
-        df[f'return_{horizon}'] = (future_close / df['close']) - 1
-        df[f'log_return_{horizon}'] = np.log(future_close / df['close'])
+        future_close = df["close"].shift(-periods)
+        df[f"return_{horizon}"] = (future_close / df["close"]) - 1
+        df[f"log_return_{horizon}"] = np.log(future_close / df["close"])
 
     # Cost-adjusted features
     transaction_cost = 0.0025
     for horizon in timeframes.keys():
-        raw_return = df[f'return_{horizon}']
-        df[f'cost_adj_return_{horizon}'] = raw_return - transaction_cost
-        df[f'profitable_{horizon}'] = (df[f'cost_adj_return_{horizon}'] > 0).astype(float)
+        raw_return = df[f"return_{horizon}"]
+        df[f"cost_adj_return_{horizon}"] = raw_return - transaction_cost
+        df[f"profitable_{horizon}"] = (df[f"cost_adj_return_{horizon}"] > 0).astype(float)
 
     # Directional signals
     for horizon in timeframes.keys():
-        raw_return = df[f'return_{horizon}']
-        df[f'direction_{horizon}'] = np.where(raw_return > 0, 1,
-                                    np.where(raw_return < 0, -1, 0))
-        df[f'strong_direction_{horizon}'] = np.where(
-            raw_return > 0.01, 1,
-            np.where(raw_return < -0.01, -1, 0)
+        raw_return = df[f"return_{horizon}"]
+        df[f"direction_{horizon}"] = np.where(raw_return > 0, 1, np.where(raw_return < 0, -1, 0))
+        df[f"strong_direction_{horizon}"] = np.where(
+            raw_return > 0.01, 1, np.where(raw_return < -0.01, -1, 0)
         )
 
     # Risk-adjusted features
-    returns = df['close'].pct_change()
+    returns = df["close"].pct_change()
     volatility = returns.rolling(window=20, min_periods=1).std()
 
     for horizon in timeframes.keys():
-        raw_return = df[f'return_{horizon}']
-        df[f'risk_adj_return_{horizon}'] = raw_return / (volatility + 1e-6)
-        df[f'confidence_{horizon}'] = np.tanh(np.abs(raw_return) * 10)
+        raw_return = df[f"return_{horizon}"]
+        df[f"risk_adj_return_{horizon}"] = raw_return / (volatility + 1e-6)
+        df[f"confidence_{horizon}"] = np.tanh(np.abs(raw_return) * 10)
 
     # Fill NaN values
-    df = df.fillna(method='ffill').fillna(0)
+    df = df.fillna(method="ffill").fillna(0)
 
     # Ensure we have exactly 104 features (excluding OHLCV)
-    feature_cols = [col for col in df.columns if col not in ['open', 'high', 'low', 'close', 'volume']]
+    feature_cols = [
+        col for col in df.columns if col not in ["open", "high", "low", "close", "volume"]
+    ]
 
     # Pad or truncate to 104 features
     target_features = 104
     if len(feature_cols) < target_features:
         for i in range(len(feature_cols), target_features):
-            df[f'padding_feature_{i}'] = 0.0
+            df[f"padding_feature_{i}"] = 0.0
     elif len(feature_cols) > target_features:
         # Keep first 104 features
         keep_features = feature_cols[:target_features]
         drop_features = feature_cols[target_features:]
         df = df.drop(columns=drop_features)
 
-    final_feature_cols = [col for col in df.columns if col not in ['open', 'high', 'low', 'close', 'volume']]
+    final_feature_cols = [
+        col for col in df.columns if col not in ["open", "high", "low", "close", "volume"]
+    ]
     logger.info(f"✅ Superior features created: {len(final_feature_cols)} features")
 
     return df
@@ -189,7 +193,9 @@ def run_training_simulation(symbol: str, timesteps: int):
     logger.info("     ✅ Philosophy: 'Predict future + account for costs'")
 
     # Show data summary
-    feature_cols = [col for col in train_data.columns if col not in ['open', 'high', 'low', 'close', 'volume']]
+    feature_cols = [
+        col for col in train_data.columns if col not in ["open", "high", "low", "close", "volume"]
+    ]
     logger.info(f"\n📊 Training Data Summary:")
     logger.info(f"   Train samples: {len(train_data):,}")
     logger.info(f"   Eval samples: {len(eval_data):,}")
@@ -206,8 +212,10 @@ def run_training_simulation(symbol: str, timesteps: int):
     logger.info(f"\n🎯 Progressive Training Strategy:")
     for i, stage in enumerate(stages):
         if timesteps >= stage["timesteps"]:
-            logger.info(f"   Stage {i+1}: {stage['timesteps']:,} timesteps, "
-                       f"{stage['n_envs']} envs, batch size {stage['batch_size']}")
+            logger.info(
+                f"   Stage {i+1}: {stage['timesteps']:,} timesteps, "
+                f"{stage['n_envs']} envs, batch size {stage['batch_size']}"
+            )
 
     # Show key differences
     logger.info(f"\n💡 KEY IMPROVEMENTS OVER OLD MODEL:")
@@ -226,25 +234,29 @@ def run_training_simulation(symbol: str, timesteps: int):
         "eval_samples": len(eval_data),
         "features": len(feature_cols),
         "target_timesteps": timesteps,
-        "architecture": "superior_multi_timeframe"
+        "architecture": "superior_multi_timeframe",
     }
 
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description='Superior PPO Training Script')
-    parser.add_argument('--symbol', type=str, default='BTCEUR',
-                       help='Trading symbol (default: BTCEUR)')
-    parser.add_argument('--timesteps', type=int, default=200000,
-                       help='Training timesteps (default: 200000)')
-    parser.add_argument('--demo', action='store_true',
-                       help='Run quick demo')
+    parser = argparse.ArgumentParser(description="Superior PPO Training Script")
+    parser.add_argument(
+        "--symbol", type=str, default="BTCEUR", help="Trading symbol (default: BTCEUR)"
+    )
+    parser.add_argument(
+        "--timesteps",
+        type=int,
+        default=200000,
+        help="Training timesteps (default: 200000)",
+    )
+    parser.add_argument("--demo", action="store_true", help="Run quick demo")
 
     args = parser.parse_args()
 
     # Fix common typos
-    if args.symbol.upper() == 'BICEUR':
-        args.symbol = 'BTCEUR'
+    if args.symbol.upper() == "BICEUR":
+        args.symbol = "BTCEUR"
         logger.info("🔧 Fixed symbol: BICEUR → BTCEUR")
 
     if args.demo:

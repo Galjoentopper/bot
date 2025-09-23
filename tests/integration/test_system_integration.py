@@ -181,7 +181,10 @@ class TestSystemIntegration:
                 assert config is not None
                 assert "bot" in config or "telegram" in config
 
-    @patch.dict("os.environ", {"TELEGRAM_BOT_TOKEN": "test_token", "TELEGRAM_CHAT_ID": "123456789"})
+    @patch.dict(
+        "os.environ",
+        {"TELEGRAM_BOT_TOKEN": "test_token", "TELEGRAM_CHAT_ID": "123456789"},
+    )
     def test_environment_variables(self):
         """Test environment variable loading."""
         import os

@@ -46,7 +46,9 @@ class TelegramService:
         # Core components
         self.client = get_telegram_client()
         self.message_queue = MessageQueue(
-            queue_file="logs/telegram_queue.json", max_queue_size=1000, persistence_enabled=True
+            queue_file="logs/telegram_queue.json",
+            max_queue_size=1000,
+            persistence_enabled=True,
         )
         self.command_registry = get_command_registry()
 
@@ -291,7 +293,8 @@ class TelegramService:
 
             # Send shutdown notification
             await self.send_notification(
-                "🛑 Trading Bot Telegram Service Shutting Down", priority=MessagePriority.HIGH
+                "🛑 Trading Bot Telegram Service Shutting Down",
+                priority=MessagePriority.HIGH,
             )
 
             # Stop worker task

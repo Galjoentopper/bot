@@ -80,7 +80,11 @@ class PPOFeatureRecovery:
                 except Exception as e:
                     logger.error(f"❌ {symbol}: Error reading PPO features: {e}")
                     analysis["corrupted_files"].append(
-                        {"symbol": symbol, "file": str(ppo_feature_file), "error": str(e)}
+                        {
+                            "symbol": symbol,
+                            "file": str(ppo_feature_file),
+                            "error": str(e),
+                        }
                     )
             else:
                 logger.warning(f"⚠️ {symbol}: PPO feature file missing")

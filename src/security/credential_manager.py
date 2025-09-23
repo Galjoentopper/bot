@@ -135,7 +135,12 @@ class CredentialManager:
         Returns:
             Dict with validation results
         """
-        validation_result = {"valid": True, "errors": [], "warnings": [], "credentials_found": {}}
+        validation_result = {
+            "valid": True,
+            "errors": [],
+            "warnings": [],
+            "credentials_found": {},
+        }
 
         # Check for required environment variables
         required_vars = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]

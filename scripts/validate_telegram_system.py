@@ -78,7 +78,10 @@ async def validate_imports():
 
     imports_to_test = [
         ("src.security", "get_credential_manager, TelegramCredentials"),
-        ("src.notifications.core", "get_telegram_client, MessageQueue, MessagePriority"),
+        (
+            "src.notifications.core",
+            "get_telegram_client, MessageQueue, MessagePriority",
+        ),
         ("src.notifications.core", "get_command_registry, telegram_command"),
         ("src.notifications", "get_telegram_service, TelegramService"),
         ("src.notifications.integrations.trader_integration", "TradingBotIntegration"),
@@ -235,7 +238,10 @@ async def validate_command_registry():
             pass
 
         success = registry.register_command(
-            name="test", handler=test_command, description="Test command", admin_only=False
+            name="test",
+            handler=test_command,
+            description="Test command",
+            admin_only=False,
         )
 
         if success:
@@ -335,7 +341,8 @@ async def validate_integration_layer():
             result.add_pass("Trade significance assessment")
         else:
             result.add_fail(
-                "Trade significance assessment", f"Expected CRITICAL, got {significance}"
+                "Trade significance assessment",
+                f"Expected CRITICAL, got {significance}",
             )
 
         # Test adapter creation

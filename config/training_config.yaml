@@ -17,7 +17,7 @@ data_acquisition:
 # Training Configuration
 training:
   # Model types to train
-  models: ['gru', 'lightgbm', 'ppo']  # PPO enabled with intelligent fallback
+  models: ['ppo', 'gru', 'lightgbm']  # Full ensemble with PPO first
   random_seed: 42
 
   # Cross-validation settings
@@ -204,7 +204,7 @@ features:
 # Target Engineering Configuration
 targets:
   # Transaction costs (in basis points)
-  transaction_cost_bps: 10  # 0.1% per trade (typical for crypto)
+  transaction_cost_bps: 25  # 0.25% per trade (updated for PPO)
   slippage_bps: 5  # 0.05% slippage
   funding_cost_bps: 1  # 0.01% funding cost per period
 

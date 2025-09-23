@@ -441,7 +441,9 @@ class TradingEnsemble:
         lengths = {name: len(pred) for name, pred in model_predictions.items()}
         min_length = min(lengths.values())
         if len(set(lengths.values())) > 1:
-            logger.warning(f"Prediction length mismatch across models: {lengths}. Truncating to {min_length}")
+            logger.warning(
+                f"Prediction length mismatch across models: {lengths}. Truncating to {min_length}"
+            )
         for name in model_predictions:
             model_predictions[name] = model_predictions[name][:min_length]
 
@@ -518,15 +520,27 @@ class TradingEnsemble:
         try:
             import numpy as np
             import pandas as pd
+
             from ..data_pipeline.model_feature_router import ModelFeatureRouter
 
             if isinstance(X, pd.DataFrame):
                 router = ModelFeatureRouter()
                 routed_df, info = router.route_features_for_model(
-                    X, model_type="ppo", symbol=symbol or "GENERIC", use_enhanced_engine=False
+                    X,
+                    model_type="ppo",
+                    symbol=symbol or "GENERIC",
+                    use_enhanced_engine=False,
                 )
                 # Build observation from the last 32 timesteps of routed features (excluding OHLCV)
-                excluded = {"open", "high", "low", "close", "volume", "timestamp", "target"}
+                excluded = {
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "timestamp",
+                    "target",
+                }
                 feature_cols = [c for c in routed_df.columns if c not in excluded]
                 seq_len = min(32, len(routed_df))
                 obs = routed_df[feature_cols].iloc[-seq_len:].to_numpy(dtype=np.float32)
@@ -548,7 +562,9 @@ class TradingEnsemble:
             try:
                 return model.predict(X)
             except Exception:
-                return np.zeros((len(X),), dtype=float) if hasattr(X, "__len__") else np.array([0.0])
+                return (
+                    np.zeros((len(X),), dtype=float) if hasattr(X, "__len__") else np.array([0.0])
+                )
 
     def update_performance(self, actuals: np.ndarray, prices: Optional[np.ndarray] = None):
         """

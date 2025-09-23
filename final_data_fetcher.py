@@ -65,11 +65,13 @@ class FinalDataFetcher:
         env_path = os.environ.get("TRAINING_CONFIG_PATH")
         if env_path:
             candidates.append(env_path)
-        candidates.extend([
-            "config.yaml",
-            os.path.join("config", "training_config.yaml"),
-            "training_config.yaml",
-        ])
+        candidates.extend(
+            [
+                "config.yaml",
+                os.path.join("config", "training_config.yaml"),
+                "training_config.yaml",
+            ]
+        )
 
         config = {}
         used = None
@@ -90,10 +92,7 @@ class FinalDataFetcher:
 
         # Accept several common layouts
         data_block = (
-            config.get("data_acquisition")
-            or config.get("data")
-            or config.get("dataset")
-            or {}
+            config.get("data_acquisition") or config.get("data") or config.get("dataset") or {}
         )
         trading_block = config.get("trading", {})
 
@@ -108,9 +107,7 @@ class FinalDataFetcher:
         self.interval = self.data_config.get("interval", trading_block.get("interval", "30m"))
         self.lookback_days = 365  # Always 1 year
         self.data_dir = Path(
-            self.data_config.get("output_directory")
-            or config.get("data_dir")
-            or "./data"
+            self.data_config.get("output_directory") or config.get("data_dir") or "./data"
         )
 
         # Calculate expected samples for validation

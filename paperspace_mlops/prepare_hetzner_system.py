@@ -7,15 +7,15 @@ Prepares the Hetzner trading system to work seamlessly with superior models.
 Updates model loading logic, configuration, and system integration.
 """
 
-import os
-import sys
 import json
 import logging
+import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -23,7 +23,7 @@ class HetznerSystemPreparator:
     """Prepares Hetzner trading system for superior models."""
 
     def __init__(self, config_path):
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             self.config = json.load(f)
 
         self.remote_base = "/opt/trading_bot"
@@ -362,7 +362,7 @@ if __name__ == "__main__":
         return self._deploy_code_file(
             model_manager_code,
             f"{self.remote_base}/src/models/superior_model_manager.py",
-            "Enhanced Model Manager"
+            "Enhanced Model Manager",
         )
 
     def prepare_trading_integration(self):
@@ -517,7 +517,7 @@ if __name__ == "__main__":
         return self._deploy_code_file(
             integration_code,
             f"{self.remote_base}/src/trading/superior_integration.py",
-            "Trading Integration"
+            "Trading Integration",
         )
 
     def update_system_manager(self):
@@ -525,7 +525,7 @@ if __name__ == "__main__":
         logger.info("🚀 Updating system_manager for superior models...")
 
         # Create a patch for system_manager
-        system_manager_patch = '''
+        system_manager_patch = """
 #!/bin/bash
 # Superior Models Detection Patch for system_manager
 # Add this to your existing system_manager script
@@ -598,38 +598,42 @@ except Exception as e:
 }
 
 # Usage: Replace your existing start_trading_bot call with start_trading_bot_enhanced
-'''
+"""
 
         return self._deploy_code_file(
             system_manager_patch,
             f"{self.remote_base}/bin/superior_models_patch.sh",
-            "System Manager Patch"
+            "System Manager Patch",
         )
 
     def _deploy_code_file(self, content: str, remote_path: str, description: str) -> bool:
         """Deploy code file to remote server."""
         try:
             # Write content to temporary file
-            with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
                 f.write(content)
                 temp_file = f.name
 
             # Copy to remote server
             copy_cmd = [
-                "scp", "-i", self.config["ssh_key_path"],
+                "scp",
+                "-i",
+                self.config["ssh_key_path"],
                 temp_file,
-                f"{self.config['hetzner_user']}@{self.config['hetzner_host']}:{remote_path}"
+                f"{self.config['hetzner_user']}@{self.config['hetzner_host']}:{remote_path}",
             ]
 
             result = subprocess.run(copy_cmd, capture_output=True, text=True)
 
             if result.returncode == 0:
                 # Make executable if it's a script
-                if remote_path.endswith('.sh'):
+                if remote_path.endswith(".sh"):
                     chmod_cmd = [
-                        "ssh", "-i", self.config["ssh_key_path"],
+                        "ssh",
+                        "-i",
+                        self.config["ssh_key_path"],
                         f"{self.config['hetzner_user']}@{self.config['hetzner_host']}",
-                        f"chmod +x {remote_path}"
+                        f"chmod +x {remote_path}",
                     ]
                     subprocess.run(chmod_cmd)
 
@@ -657,7 +661,7 @@ except Exception as e:
         preparations = [
             ("Model Manager", self.prepare_model_manager),
             ("Trading Integration", self.prepare_trading_integration),
-            ("System Manager", self.update_system_manager)
+            ("System Manager", self.update_system_manager),
         ]
 
         successful = 0
@@ -690,9 +694,12 @@ def main():
     """Main execution."""
     import argparse
 
-    parser = argparse.ArgumentParser(description='Prepare Hetzner System for Superior Models')
-    parser.add_argument('--config', default='/notebooks/bot/paperspace_mlops/hetzner_config.json',
-                       help='Configuration file path')
+    parser = argparse.ArgumentParser(description="Prepare Hetzner System for Superior Models")
+    parser.add_argument(
+        "--config",
+        default="/notebooks/bot/paperspace_mlops/hetzner_config.json",
+        help="Configuration file path",
+    )
 
     args = parser.parse_args()
 

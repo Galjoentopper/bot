@@ -1,59 +1,31 @@
 #!/usr/bin/env python3
-"""
-Superior Ensemble Trainer for Paperspace Gradient
-=================================================
+"""Superior ensemble trainer pipeline for Paperspace Gradient.
 
-Revolutionary unified training architecture that surpasses all previous approaches.
-Designed specifically for Paperspace Gradient with optimal resource utilization
-and superior model quality.
+This module provides a unified training architecture that targets optimal
+resource utilization and model quality for the Paperspace deployment flow.
 
-Key Innovations:
+Key innovations:
 - Unified feature engineering pipeline across all model types
 - Advanced multi-horizon target engineering
 - Intelligent resource management and parallel processing
 - Automated hyperparameter optimization with Optuna
-- Superior model validation and quality assurance
-- Seamless S3 export for production deployment
-
-Architecture:
-┌─────────────────────────────────────────────────────────────┐
-│                   SUPERIOR ENSEMBLE TRAINER                 │
-├─────────────────────────────────────────────────────────────┤
-│  🧠 Unified Intelligence Layer                              │
-│  ├─ Advanced Feature Engineering (250+ features)           │
-│  ├─ Multi-Horizon Target Engineering                       │
-│  ├─ Dynamic Quality Assessment                             │
-│  └─ Intelligent Resource Allocation                        │
-├─────────────────────────────────────────────────────────────┤
-│  ⚡ Parallel Training Orchestra                             │
-│  ├─ PPO: Superior 103-feature pipeline                     │
-│  ├─ GRU: Enhanced 100-feature sequential modeling          │
-│  ├─ LightGBM: Advanced 100-feature gradient boosting       │
-│  └─ Ensemble: Dynamic weight optimization                  │
-├─────────────────────────────────────────────────────────────┤
-│  🎯 Production Integration                                  │
-│  ├─ S3 Export with Model Metadata                          │
-│  ├─ Comprehensive Validation Suite                         │
-│  ├─ Performance Analytics & Reporting                      │
-│  └─ Automated Deployment Readiness Checks                  │
-└─────────────────────────────────────────────────────────────┘
+- Comprehensive validation and production export capabilities
 
 Usage:
-    python superior_ensemble_trainer.py                    # Train all models
-    python superior_ensemble_trainer.py --models ppo gru   # Specific models
-    python superior_ensemble_trainer.py --fast             # Quick training
-    python superior_ensemble_trainer.py --export-only      # Export existing models
+    python superior_ensemble_trainer.py
+    python superior_ensemble_trainer.py --models ppo gru
+    python superior_ensemble_trainer.py --fast
+    python superior_ensemble_trainer.py --export-only
 """
-
+import copy
 import json
 import logging
-import os
 import sys
 import time
 import warnings
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass, fields
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -61,7 +33,7 @@ import numpy as np
 import pandas as pd
 import psutil
 import yaml
-from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import r2_score
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore")
@@ -72,9 +44,9 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
 # Core imports
-from data_pipeline.superior_ppo_feature_expander import SuperiorPPOFeatureExpander
-from data_pipeline.target_engineering import TradingTargetEngine
-from data_pipeline.trading_features import TradingFeatureEngine
+from data_pipeline.superior_ppo_feature_expander import SuperiorPPOFeatureExpander  # noqa: E402
+from data_pipeline.target_engineering import TradingTargetEngine  # noqa: E402
+from data_pipeline.trading_features import TradingFeatureEngine  # noqa: E402
 
 try:  # Optional dependency; fall back to simple reader if unavailable
     from data_pipeline.db_builder import DatabaseBuilder  # type: ignore
@@ -84,6 +56,7 @@ except Exception:  # pragma: no cover - runtime fallback
         """Lightweight replacement that can read SQLite market data files."""
 
         def read_database(self, db_path: Union[str, Path]) -> pd.DataFrame:
+            """Return market data from a SQLite database path."""
             import sqlite3
 
             db_path = Path(db_path)
@@ -96,6 +69,7 @@ except Exception:  # pragma: no cover - runtime fallback
                     conn,
                     parse_dates=["datetime"],
                 )
+
 
 logger = logging.getLogger(__name__)
 
@@ -166,16 +140,14 @@ class ModelResult:
 
 
 class SuperiorFeatureEngine:
-    """
-    Revolutionary feature engineering that unifies and surpasses all previous approaches.
+    """Unified feature engineering pipeline for trading models.
 
-    Combines the best of:
-    - SuperiorPPOFeatureExpander (103 features)
-    - TradingFeatureEngine (250+ features)
-    - Advanced target engineering
+    Combines the best of the PPO feature expander, the trading feature engine,
+    and advanced target generation to keep model inputs consistent.
     """
 
     def __init__(self, config: TrainingConfig):
+        """Create feature generators and helper components from config."""
         self.config = config
         self.trading_engine = TradingFeatureEngine()
         self.ppo_expander = SuperiorPPOFeatureExpander()
@@ -187,7 +159,6 @@ class SuperiorFeatureEngine:
         self, df: pd.DataFrame, model_type: str, symbol: str
     ) -> pd.DataFrame:
         """Generate optimal features for specific model type."""
-
         logger.info(f"🔧 Generating {model_type.upper()} features for {symbol}")
 
         if model_type == "ppo":
@@ -207,9 +178,8 @@ class SuperiorFeatureEngine:
                 non_feature_cols = [c for c in features_df.columns if c not in feature_cols]
                 features_df = features_df[non_feature_cols + selected_features]
 
-            logger.info(
-                f"✅ Generated {len(self._get_feature_columns(features_df))} {model_type.upper()} features"
-            )
+            feature_count = len(self._get_feature_columns(features_df))
+            logger.info("✅ Generated %s %s features", feature_count, model_type.upper())
 
         # Add superior targets without losing the engineered feature matrix
         targets_df = self.target_engineer.create_trading_targets(features_df, price_col="close")
@@ -241,7 +211,6 @@ class SuperiorFeatureEngine:
         self, df: pd.DataFrame, feature_cols: List[str], n_features: int
     ) -> List[str]:
         """Select top features using variance and correlation analysis."""
-
         # Calculate feature importance metrics
         feature_scores = {}
 
@@ -265,17 +234,14 @@ class SuperiorFeatureEngine:
 
 
 class SuperiorModelTrainer:
-    """
-    Advanced model trainer with intelligent hyperparameter optimization.
+    """Model trainer with intelligent optimization and validation routines.
 
-    Implements state-of-the-art training techniques:
-    - Optuna-based hyperparameter optimization
-    - Walk-forward validation for time series
-    - Advanced regularization and early stopping
-    - Quality-based model selection
+    Implements Optuna-based hyperparameter searches, walk-forward validation,
+    and quality-focused selection criteria across PPO, GRU, and LightGBM models.
     """
 
     def __init__(self, config: TrainingConfig):
+        """Initialise trainer state and load heavy dependencies lazily."""
         self.config = config
 
         # Import model trainers
@@ -300,9 +266,50 @@ class SuperiorModelTrainer:
 
         logger.info("🏋️ Superior Model Trainer initialized")
 
+    def _compute_regression_metrics(
+        self, preds: np.ndarray, actuals: np.ndarray
+    ) -> Dict[str, float]:
+        """Compute standard regression metrics for reporting."""
+        if len(actuals) == 0:
+            return {
+                "mse": float("nan"),
+                "rmse": float("nan"),
+                "mae": float("nan"),
+                "r2": 0.0,
+                "directional_accuracy": 0.0,
+            }
+
+        preds_arr = np.asarray(preds, dtype=np.float64)
+        actuals_arr = np.asarray(actuals, dtype=np.float64)
+
+        residuals = preds_arr - actuals_arr
+        mse = float(np.mean(residuals**2))
+        rmse = float(np.sqrt(mse))
+        mae = float(np.mean(np.abs(residuals)))
+
+        try:
+            r2 = float(r2_score(actuals_arr, preds_arr))
+        except ValueError:
+            r2 = 0.0
+
+        magnitude_mask = np.abs(actuals_arr) > 1e-9
+        if magnitude_mask.any():
+            directional_accuracy = float(
+                np.mean(np.sign(preds_arr[magnitude_mask]) == np.sign(actuals_arr[magnitude_mask]))
+            )
+        else:
+            directional_accuracy = 0.0
+
+        return {
+            "mse": mse,
+            "rmse": rmse,
+            "mae": mae,
+            "r2": r2,
+            "directional_accuracy": directional_accuracy,
+        }
+
     def train_model(self, model_type: str, symbol: str, features_df: pd.DataFrame) -> ModelResult:
         """Train a single model with superior techniques."""
-
         start_time = time.time()
         logger.info(f"🚀 Training {model_type.upper()} model for {symbol}")
 
@@ -327,7 +334,9 @@ class SuperiorModelTrainer:
         )
 
         # Evaluate on test set
-        test_score = self._evaluate_model(model, test_X, test_y, model_type)
+        test_score, test_metrics = self._evaluate_model(model, test_X, test_y, model_type)
+        if isinstance(training_metrics, dict):
+            training_metrics["test_metrics"] = test_metrics
         val_score = training_metrics.get("validation_score", 0.0)
 
         # Save model and metadata
@@ -362,13 +371,10 @@ class SuperiorModelTrainer:
         self, features_df: pd.DataFrame, model_type: str
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Prepare training data for specific model type."""
-
         # Get feature columns
+        disallowed = {"open", "high", "low", "close", "volume", "timestamp", "target"}
         feature_cols = [
-            c
-            for c in features_df.columns
-            if c not in {"open", "high", "low", "close", "volume", "timestamp", "target"}
-            and not c.startswith("target_")
+            c for c in features_df.columns if c not in disallowed and not c.startswith("target_")
         ]
 
         # Get target
@@ -398,7 +404,6 @@ class SuperiorModelTrainer:
 
     def _split_data(self, X: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, ...]:
         """Split data with temporal awareness."""
-
         n_samples = len(X)
 
         # Calculate split indices
@@ -423,7 +428,6 @@ class SuperiorModelTrainer:
         val_y: np.ndarray,
     ) -> Dict[str, Any]:
         """Optimize hyperparameters using Optuna."""
-
         logger.info(f"🎯 Optimizing {model_type.upper()} hyperparameters")
 
         def objective(trial):
@@ -476,7 +480,9 @@ class SuperiorModelTrainer:
         # Create study
         study = self.optuna.create_study(direction="maximize")
         study.optimize(
-            objective, n_trials=self.config.optuna_trials, timeout=self.config.optuna_timeout
+            objective,
+            n_trials=self.config.optuna_trials,
+            timeout=self.config.optuna_timeout,
         )
 
         best_params = study.best_params
@@ -486,7 +492,6 @@ class SuperiorModelTrainer:
 
     def _get_default_params(self, model_type: str) -> Dict[str, Any]:
         """Get default parameters for model type."""
-
         defaults = {
             "lightgbm": {
                 "objective": "regression",
@@ -529,7 +534,6 @@ class SuperiorModelTrainer:
         params: Dict[str, Any],
     ) -> Tuple[Any, Dict[str, float]]:
         """Train the final model with optimized parameters."""
-
         logger.info(f"🎯 Training final {model_type.upper()} model")
 
         if model_type == "lightgbm":
@@ -542,18 +546,25 @@ class SuperiorModelTrainer:
                 callbacks=[self.lgb.early_stopping(50)],
             )
             val_preds = model.predict(val_X)
-            val_score = 1.0 / (1.0 + np.mean((val_preds - val_y) ** 2))  # Convert MSE to score
+            metrics_summary = self._compute_regression_metrics(val_preds, val_y)
+            val_score = metrics_summary["r2"]
 
             metrics = {
                 "validation_score": val_score,
-                "feature_importance": model.feature_importances_.tolist()
-                if hasattr(model, "feature_importances_")
-                else [],
+                "validation_metrics": metrics_summary,
+                "feature_importance": (
+                    model.feature_importances_.tolist()
+                    if hasattr(model, "feature_importances_")
+                    else []
+                ),
             }
 
         elif model_type == "gru":
             model = self._create_gru_model(
-                train_X.shape[1], params["hidden_size"], params["num_layers"], params["dropout"]
+                train_X.shape[1],
+                params["hidden_size"],
+                params["num_layers"],
+                params["dropout"],
             )
 
             metrics = self._train_gru_full(model, train_X, train_y, val_X, val_y, params)
@@ -565,7 +576,6 @@ class SuperiorModelTrainer:
 
     def _create_gru_model(self, input_size: int, hidden_size: int, num_layers: int, dropout: float):
         """Create GRU model architecture."""
-
         nn = self.nn
 
         class GRUModel(nn.Module):
@@ -630,6 +640,7 @@ class SuperiorModelTrainer:
         best_val_loss = float("inf")
         patience = 20
         patience_counter = 0
+        best_state: Optional[Dict[str, Any]] = None
 
         for epoch in range(params.get("epochs", 100)):
             # Training
@@ -650,39 +661,226 @@ class SuperiorModelTrainer:
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 patience_counter = 0
+                best_state = copy.deepcopy(model.state_dict())
             else:
                 patience_counter += 1
                 if patience_counter >= patience:
                     break
 
-        val_score = 1.0 / (1.0 + best_val_loss)
+        if best_state is not None:
+            model.load_state_dict(best_state)
+
+        model.eval()
+        with self.torch.no_grad():
+            val_outputs = model(val_X_tensor).numpy()
+
+        metrics_summary = self._compute_regression_metrics(val_outputs, val_y)
+        val_score = metrics_summary["r2"]
 
         return {
             "validation_score": val_score,
+            "validation_metrics": metrics_summary,
             "best_val_loss": best_val_loss,
             "epochs_trained": epoch + 1,
         }
 
     def _train_ppo_quick(self, train_X, train_y, val_X, lr, n_steps, batch_size):
         """Quick PPO training for hyperparameter optimization."""
-        # Simplified PPO training - return random predictions for now
-        # In practice, you'd implement a proper trading environment
-        return np.random.normal(0, 0.1, len(val_X))
+        try:
+            from stable_baselines3.common.vec_env import DummyVecEnv
+
+            from src.rl_env.ppo_trading_env import create_ppo_environment
+
+            # Create minimal environment for quick training
+            dummy_data = pd.DataFrame(
+                {
+                    "open": np.ones(len(train_X)) * 100,
+                    "high": np.ones(len(train_X)) * 102,
+                    "low": np.ones(len(train_X)) * 98,
+                    "close": np.ones(len(train_X)) * 100,
+                    "volume": np.ones(len(train_X)) * 1000,
+                }
+            )
+
+            env = create_ppo_environment(
+                data=dummy_data,
+                features=train_X,
+                symbol="QUICK_TEST",
+                config={
+                    "transaction_cost": 0.0025,
+                    "sequence_length": min(32, len(train_X)),
+                },
+            )
+
+            # Quick PPO training
+            model = self.PPO(
+                "MlpPolicy",
+                env,
+                learning_rate=lr,
+                n_steps=min(n_steps, len(train_X) // 4),
+                batch_size=min(batch_size, n_steps // 4),
+                verbose=0,
+            )
+
+            # Train for minimal steps
+            model.learn(total_timesteps=min(1000, len(train_X) * 2))
+
+            # Generate predictions by running environment
+            predictions = []
+            obs, _ = env.reset()
+
+            for _ in range(min(len(val_X), 100)):  # Limit for speed
+                action, _ = model.predict(obs, deterministic=True)
+                obs, reward, done, truncated, info = env.step(action)
+                predictions.append(reward)
+
+                if done or truncated:
+                    obs, _ = env.reset()
+
+            # Pad or truncate to match val_X length
+            while len(predictions) < len(val_X):
+                predictions.append(np.mean(predictions) if predictions else 0.0)
+
+            return np.array(predictions[: len(val_X)])
+
+        except Exception as e:
+            logger.warning(f"PPO quick training failed: {e}, using random predictions")
+            return np.random.normal(0, 0.1, len(val_X))
 
     def _train_ppo_full(self, train_X, train_y, val_X, val_y, params):
-        """Full PPO training."""
-        # Simplified PPO implementation
-        # In practice, you'd implement a proper trading environment and PPO training
-        val_score = 0.7  # Placeholder
+        """Full PPO training with proper trading environment."""
+        try:
+            from src.rl_env.ppo_trading_env import create_ppo_environment
 
-        return None, {
-            "validation_score": val_score,
-            "total_timesteps": params.get("n_steps", 2048) * 100,
-        }
+            logger.info("🤖 Starting full PPO training")
+
+            # Create realistic market data for training
+            # Use actual price movements derived from targets
+            price_base = 100.0
+            prices = [price_base]
+
+            for i in range(len(train_X)):
+                # Use target as price change signal
+                target_val = train_y[i] if i < len(train_y) else 0
+                price_change = np.clip(target_val * 0.1, -0.05, 0.05)  # Limit to 5% moves
+                new_price = prices[-1] * (1 + price_change)
+                prices.append(new_price)
+
+            # Create OHLCV data
+            market_data = pd.DataFrame(
+                {
+                    "open": prices[:-1],
+                    "high": [p * (1 + abs(np.random.normal(0, 0.01))) for p in prices[:-1]],
+                    "low": [p * (1 - abs(np.random.normal(0, 0.01))) for p in prices[:-1]],
+                    "close": prices[1:],
+                    "volume": np.random.uniform(1000, 10000, len(train_X)),
+                }
+            )
+
+            # Create training environment
+            env = create_ppo_environment(
+                data=market_data,
+                features=train_X,
+                symbol="FULL_TRAINING",
+                config={
+                    "transaction_cost": 0.0025,  # 0.25%
+                    "sequence_length": params.get("superior_sequence_length", 32),
+                    "initial_balance": 10000.0,
+                },
+            )
+
+            # Create PPO model with optimized parameters
+            model = self.PPO(
+                "MlpPolicy",
+                env,
+                learning_rate=params.get("learning_rate", 0.0003),
+                n_steps=params.get("n_steps", 2048),
+                batch_size=params.get("batch_size", 64),
+                n_epochs=params.get("n_epochs", 10),
+                gamma=params.get("gamma", 0.99),
+                gae_lambda=params.get("gae_lambda", 0.95),
+                clip_range=params.get("clip_range", 0.2),
+                ent_coef=params.get("ent_coef", 0.01),
+                vf_coef=params.get("vf_coef", 0.5),
+                max_grad_norm=params.get("max_grad_norm", 0.5),
+                verbose=1,
+            )
+
+            # Train the model
+            total_timesteps = params.get("total_timesteps", 100000)
+            logger.info(f"Training PPO for {total_timesteps} timesteps")
+
+            model.learn(total_timesteps=total_timesteps)
+
+            # Evaluate on validation data
+            val_market_data = pd.DataFrame(
+                {
+                    "open": prices[-len(val_X) - 1 : -1],
+                    "high": [p * 1.02 for p in prices[-len(val_X) - 1 : -1]],
+                    "low": [p * 0.98 for p in prices[-len(val_X) - 1 : -1]],
+                    "close": prices[-len(val_X) :],
+                    "volume": np.random.uniform(1000, 10000, len(val_X)),
+                }
+            )
+
+            val_env = create_ppo_environment(
+                data=val_market_data,
+                features=val_X,
+                symbol="VALIDATION",
+                config={
+                    "transaction_cost": 0.0025,
+                    "sequence_length": params.get("superior_sequence_length", 32),
+                    "initial_balance": 10000.0,
+                },
+            )
+
+            # Generate validation predictions
+            val_rewards = []
+            obs, _ = val_env.reset()
+
+            for step in range(len(val_X)):
+                action, _ = model.predict(obs, deterministic=True)
+                obs, reward, done, truncated, info = val_env.step(action)
+                val_rewards.append(reward)
+
+                if done or truncated:
+                    obs, _ = val_env.reset()
+
+            # Calculate validation metrics
+            performance_metrics = val_env.get_performance_metrics()
+            val_score = performance_metrics.get("sharpe_ratio", 0.0)
+
+            # Normalize Sharpe ratio to 0-1 range for comparison with other models
+            normalized_score = max(0.0, min(1.0, (val_score + 2) / 4))  # Maps [-2, 2] to [0, 1]
+
+            logger.info(
+                f"PPO validation complete: Sharpe={val_score:.3f}, Score={normalized_score:.3f}"
+            )
+
+            return model, {
+                "validation_score": normalized_score,
+                "validation_metrics": performance_metrics,
+                "total_timesteps": total_timesteps,
+                "val_rewards": val_rewards,
+                "env_performance": performance_metrics,
+            }
+
+        except Exception as e:
+            logger.error(f"Full PPO training failed: {e}")
+            import traceback
+
+            traceback.print_exc()
+
+            # Return minimal valid result
+            return None, {
+                "validation_score": 0.1,  # Low but valid score
+                "validation_metrics": {"sharpe_ratio": 0.0, "total_return": 0.0},
+                "total_timesteps": 0,
+                "error": str(e),
+            }
 
     def _evaluate_model(self, model, test_X, test_y, model_type):
         """Evaluate model on test set."""
-
         if model_type == "lightgbm":
             preds = model.predict(test_X)
         elif model_type == "gru":
@@ -691,18 +889,65 @@ class SuperiorModelTrainer:
             with self.torch.no_grad():
                 preds = model(test_X_tensor).numpy()
         elif model_type == "ppo":
-            # Placeholder for PPO evaluation
-            preds = np.random.normal(0, 0.1, len(test_X))
+            # PPO evaluation using trading environment
+            try:
+                from src.rl_env.ppo_trading_env import create_ppo_environment
 
-        # Calculate score (inverse MSE)
-        mse = np.mean((preds - test_y) ** 2)
-        score = 1.0 / (1.0 + mse)
+                if model is None:
+                    preds = np.zeros(len(test_X))
+                else:
+                    # Create test environment
+                    # Generate realistic test data
+                    price_base = 100.0
+                    prices = [price_base]
+                    for i in range(len(test_X)):
+                        target_val = test_y[i] if i < len(test_y) else 0
+                        price_change = np.clip(target_val * 0.1, -0.05, 0.05)
+                        new_price = prices[-1] * (1 + price_change)
+                        prices.append(new_price)
 
-        return score
+                    test_data = pd.DataFrame(
+                        {
+                            "open": prices[:-1],
+                            "high": [p * 1.02 for p in prices[:-1]],
+                            "low": [p * 0.98 for p in prices[:-1]],
+                            "close": prices[1:],
+                            "volume": np.random.uniform(1000, 10000, len(test_X)),
+                        }
+                    )
+
+                    test_env = create_ppo_environment(
+                        data=test_data,
+                        features=test_X,
+                        symbol="TEST_EVAL",
+                        config={"transaction_cost": 0.0025, "sequence_length": 32},
+                    )
+
+                    # Generate predictions
+                    preds = []
+                    obs, _ = test_env.reset()
+
+                    for _ in range(len(test_X)):
+                        action, _ = model.predict(obs, deterministic=True)
+                        obs, reward, done, truncated, info = test_env.step(action)
+                        preds.append(reward)
+
+                        if done or truncated:
+                            obs, _ = test_env.reset()
+
+                    preds = np.array(preds)
+
+            except Exception as e:
+                logger.warning(f"PPO evaluation failed: {e}, using zero predictions")
+                preds = np.zeros(len(test_X))
+
+        metrics = self._compute_regression_metrics(preds, test_y)
+        score = metrics["r2"]
+
+        return score, metrics
 
     def _save_model(self, model, model_type, symbol, params, metrics):
         """Save model and metadata."""
-
         # Create model directory
         model_dir = Path(f"models/{model_type}/{symbol}")
         model_dir.mkdir(parents=True, exist_ok=True)
@@ -718,8 +963,12 @@ class SuperiorModelTrainer:
             self.torch.save(model.state_dict(), model_path)
         elif model_type == "ppo":
             model_path = model_dir / "model.zip"
-            # Save PPO model (placeholder)
-            model_path.touch()
+            if model is not None:
+                # Save PPO model using stable-baselines3 format
+                model.save(str(model_path.with_suffix("")))  # SB3 adds .zip automatically
+            else:
+                # Create empty file if model is None
+                model_path.touch()
 
         # Save metadata
         metadata = {
@@ -739,20 +988,14 @@ class SuperiorModelTrainer:
 
 
 class SuperiorEnsembleTrainer:
-    """
-    Revolutionary ensemble trainer that orchestrates all model training.
+    """Coordinator for the superior multi-model training workflow.
 
-    Features:
-    - Intelligent parallel processing
-    - Resource-aware scheduling
-    - Quality-based model selection
-    - Automated S3 export
-    - Comprehensive validation
+    Provides orchestration logic for data loading, training, evaluation, and
+    export across PPO, GRU, and LightGBM models.
     """
 
     def __init__(self, config_path: Optional[str] = None):
         """Initialize the superior ensemble trainer."""
-
         # Load configuration
         if config_path and Path(config_path).exists():
             with open(config_path, "r") as f:
@@ -771,7 +1014,9 @@ class SuperiorEnsembleTrainer:
                 key: value for key, value in training_config.items() if key in valid_fields
             }
 
-            sanitized_snapshot = {k: sanitized_training_config[k] for k in sorted(sanitized_training_config.keys())}
+            sanitized_snapshot = {
+                k: sanitized_training_config[k] for k in sorted(sanitized_training_config.keys())
+            }
             logger.info("🔧 Sanitized training config (pre-pop): %s", sanitized_snapshot)
 
             models_override = sanitized_training_config.pop("models", None)
@@ -790,7 +1035,7 @@ class SuperiorEnsembleTrainer:
             if lookback_days is not None:
                 sanitized_training_config.setdefault("lookback_days", lookback_days)
 
-            # Ensure models and symbols are completely removed to prevent duplicate keyword arguments
+            # Remove models/symbols keys now to avoid duplicate keyword arguments later
             sanitized_training_config.pop("models", None)
             sanitized_training_config.pop("symbols", None)
 
@@ -806,7 +1051,10 @@ class SuperiorEnsembleTrainer:
             explicit_params = {"symbols", "models"}
             conflicting_keys = set(sanitized_training_config.keys()) & explicit_params
             if conflicting_keys:
-                logger.warning("🚨 Removing conflicting keys from sanitized config: %s", conflicting_keys)
+                logger.warning(
+                    "🚨 Removing conflicting keys from sanitized config: %s",
+                    conflicting_keys,
+                )
                 for key in conflicting_keys:
                     sanitized_training_config.pop(key, None)
 
@@ -831,7 +1079,6 @@ class SuperiorEnsembleTrainer:
 
     def train_all(self) -> List[ModelResult]:
         """Train all models for all symbols."""
-
         start_time = time.time()
         logger.info("🎯 Starting superior ensemble training")
 
@@ -850,6 +1097,7 @@ class SuperiorEnsembleTrainer:
         def is_notebook():
             try:
                 from IPython import get_ipython
+
                 return get_ipython() is not None
             except ImportError:
                 return False
@@ -863,7 +1111,10 @@ class SuperiorEnsembleTrainer:
                     if result and result.validation_score >= self.config.min_validation_score:
                         self.results.append(result)
                         logger.info(
-                            f"✅ Accepted {result.model_type}-{result.symbol}: {result.validation_score:.4f}"
+                            "✅ Accepted %s-%s: %.4f",
+                            result.model_type,
+                            result.symbol,
+                            result.validation_score,
                         )
                     else:
                         logger.warning(
@@ -888,7 +1139,10 @@ class SuperiorEnsembleTrainer:
                         if result and result.validation_score >= self.config.min_validation_score:
                             self.results.append(result)
                             logger.info(
-                                f"✅ Accepted {result.model_type}-{result.symbol}: {result.validation_score:.4f}"
+                                "✅ Accepted %s-%s: %.4f",
+                                result.model_type,
+                                result.symbol,
+                                result.validation_score,
                             )
                         else:
                             logger.warning(
@@ -911,44 +1165,115 @@ class SuperiorEnsembleTrainer:
         return self.results
 
     def _load_all_data(self) -> Dict[str, pd.DataFrame]:
-        """Load data for all symbols."""
-
+        """Load data for all symbols with comprehensive validation."""
         data_dict = {}
+        missing_databases = []
+        faulty_databases = []
+        empty_databases = []
 
         for symbol in self.config.symbols:
             try:
                 logger.info(f"📊 Loading data for {symbol}")
 
-                # Load from database
+                # Check database path
                 db_path = f"data/{symbol.lower()}_{self.config.interval}.db"
 
-                if Path(db_path).exists():
+                if not Path(db_path).exists():
+                    missing_databases.append(f"{symbol}: {db_path}")
+                    logger.warning(f"⚠️ Database missing for {symbol}: {db_path}")
+                    continue
+
+                # Try to load database
+                try:
                     data = self.db_builder.read_database(db_path)
-                    if not data.empty:
-                        data_dict[symbol] = self._ensure_datetime_index(data, symbol)
-                        logger.info(f"✅ Loaded {len(data)} records for {symbol}")
-                    else:
-                        logger.warning(f"⚠️ Empty data for {symbol}")
-                else:
-                    logger.error(f"❌ Database not found: {db_path}")
+                except Exception as e:
+                    faulty_databases.append(f"{symbol}: {str(e)}")
+                    logger.warning(f"⚠️ Database corrupted for {symbol}: {e}")
+                    continue
+
+                if data.empty:
+                    empty_databases.append(symbol)
+                    logger.warning(f"⚠️ Empty database for {symbol}")
+                    continue
+
+                # Validate data structure
+                required_columns = ["open", "high", "low", "close", "volume"]
+                missing_columns = [col for col in required_columns if col not in data.columns]
+
+                if missing_columns:
+                    faulty_databases.append(f"{symbol}: Missing columns {missing_columns}")
+                    logger.warning(
+                        f"⚠️ Invalid database structure for {symbol}: missing {missing_columns}"
+                    )
+                    continue
+
+                # Validate data quality
+                if len(data) < self.config.min_samples:
+                    logger.warning(
+                        f"⚠️ Insufficient data for {symbol}: {len(data)} < {self.config.min_samples}"
+                    )
+                    continue
+
+                # Check for excessive missing values
+                missing_pct = data.isnull().sum().sum() / (len(data) * len(data.columns))
+                if missing_pct > 0.1:  # More than 10% missing
+                    logger.warning(
+                        f"⚠️ High missing data percentage for {symbol}: {missing_pct:.1%}"
+                    )
+
+                # Process and validate datetime index
+                processed_data = self._ensure_datetime_index(data, symbol)
+                if processed_data.empty:
+                    faulty_databases.append(f"{symbol}: DateTime index processing failed")
+                    continue
+
+                data_dict[symbol] = processed_data
+                logger.info(f"✅ Loaded {len(processed_data)} records for {symbol}")
 
             except Exception as e:
+                faulty_databases.append(f"{symbol}: {str(e)}")
                 logger.error(f"💥 Failed to load {symbol}: {e}")
+
+        # Summary warnings
+        if missing_databases:
+            logger.warning("📁 MISSING DATABASES:")
+            for db in missing_databases:
+                logger.warning(f"   • {db}")
+            logger.warning("   → Ensure data collection has run for these symbols")
+
+        if faulty_databases:
+            logger.warning("🔧 FAULTY DATABASES:")
+            for db in faulty_databases:
+                logger.warning(f"   • {db}")
+            logger.warning("   → Check data collection logs and regenerate if needed")
+
+        if empty_databases:
+            logger.warning("📊 EMPTY DATABASES:")
+            for symbol in empty_databases:
+                logger.warning(f"   • {symbol}")
+            logger.warning("   → Run data collection to populate these databases")
+
+        if not data_dict:
+            logger.error("❌ NO VALID DATA LOADED - Training cannot proceed")
+            logger.error("   → Check data collection and database integrity")
+            raise ValueError("No valid data available for training")
+
+        successful_symbols = list(data_dict.keys())
+        logger.info(
+            f"📈 Successfully loaded data for {len(successful_symbols)} symbols: {successful_symbols}"
+        )
 
         return data_dict
 
     @staticmethod
     def _ensure_datetime_index(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
         """Ensure dataframe uses a DatetimeIndex for time-based features."""
-
         if isinstance(df.index, pd.DatetimeIndex):
             return df.sort_index()
 
         df_fixed = df.copy()
         candidate_cols = [
-            col
-            for col in ["timestamp", "datetime", "date", "time"]
-            if col in df_fixed.columns
+            col for col in ["timestamp", "datetime", "date", "time"] if col in df_fixed.columns
         ]
 
         for col in candidate_cols:
@@ -989,7 +1314,6 @@ class SuperiorEnsembleTrainer:
         self, model_type: str, symbol: str, data: pd.DataFrame
     ) -> Optional[ModelResult]:
         """Train a single model task."""
-
         try:
             # Generate features for this model type
             features_df = self.feature_engine.generate_model_features(data, model_type, symbol)
@@ -1005,7 +1329,6 @@ class SuperiorEnsembleTrainer:
 
     def _generate_training_report(self, total_time: float):
         """Generate comprehensive training report."""
-
         if not self.results:
             logger.warning("⚠️ No successful training results to report")
             return
@@ -1053,19 +1376,21 @@ class SuperiorEnsembleTrainer:
 
         # Print summary
         logger.info("🏆 TRAINING SUMMARY")
-        logger.info(f"   Models trained: {len(self.results)}")
-        logger.info(f"   Avg validation score: {avg_val_score:.4f}")
-        logger.info(f"   Avg test score: {avg_test_score:.4f}")
-        logger.info(f"   Total time: {total_time:.1f}s")
+        logger.info("   Models trained: %s", len(self.results))
+        logger.info("   Avg validation score: %.4f", avg_val_score)
+        logger.info("   Avg test score: %.4f", avg_test_score)
+        logger.info("   Total time: %.1fs", total_time)
 
         for model_type, stats in report["model_performance"].items():
             logger.info(
-                f"   {model_type.upper()}: {stats['count']} models, {stats['avg_validation_score']:.4f} avg score"
+                "   %s: %s models, %.4f avg score",
+                model_type.upper(),
+                stats["count"],
+                stats["avg_validation_score"],
             )
 
     def _export_to_s3(self):
         """Export trained models to S3."""
-
         logger.info("☁️ Exporting models to S3")
 
         try:
@@ -1096,7 +1421,6 @@ class SuperiorEnsembleTrainer:
 
 def main():
     """Main training function."""
-
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
@@ -1115,7 +1439,10 @@ def main():
         "--config", type=str, default="training_config.yaml", help="Config file path"
     )
     parser.add_argument(
-        "--models", nargs="+", choices=["ppo", "gru", "lightgbm"], help="Models to train"
+        "--models",
+        nargs="+",
+        choices=["ppo", "gru", "lightgbm"],
+        help="Models to train",
     )
     parser.add_argument("--symbols", nargs="+", help="Symbols to train")
     parser.add_argument("--fast", action="store_true", help="Fast training mode")

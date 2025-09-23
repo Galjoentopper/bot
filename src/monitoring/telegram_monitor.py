@@ -202,7 +202,9 @@ class TelegramSystemMonitor:
                 except Exception as e:
                     self.logger.error(f"Health check {name} failed: {e}")
                     self._last_health_results[name] = HealthCheck(
-                        name=name, status=HealthStatus.CRITICAL, message=f"Health check failed: {e}"
+                        name=name,
+                        status=HealthStatus.CRITICAL,
+                        message=f"Health check failed: {e}",
                     )
 
         except Exception as e:
@@ -226,13 +228,19 @@ class TelegramSystemMonitor:
             uptime_seconds = (timestamp - self._performance_stats["uptime_start"]).total_seconds()
             self._record_metric("uptime_seconds", uptime_seconds, timestamp)
             self._record_metric(
-                "messages_sent_total", self._performance_stats["messages_sent"], timestamp
+                "messages_sent_total",
+                self._performance_stats["messages_sent"],
+                timestamp,
             )
             self._record_metric(
-                "messages_failed_total", self._performance_stats["messages_failed"], timestamp
+                "messages_failed_total",
+                self._performance_stats["messages_failed"],
+                timestamp,
             )
             self._record_metric(
-                "commands_executed_total", self._performance_stats["commands_executed"], timestamp
+                "commands_executed_total",
+                self._performance_stats["commands_executed"],
+                timestamp,
             )
             self._record_metric(
                 "errors_count_total", self._performance_stats["errors_count"], timestamp
@@ -251,7 +259,11 @@ class TelegramSystemMonitor:
             self.logger.error(f"Error collecting metrics: {e}")
 
     def _record_metric(
-        self, name: str, value: float, timestamp: datetime, metadata: Dict[str, Any] = None
+        self,
+        name: str,
+        value: float,
+        timestamp: datetime,
+        metadata: Dict[str, Any] = None,
     ):
         """Record a metric point."""
         if name not in self._metrics:
@@ -730,7 +742,8 @@ class TelegramSystemMonitor:
             "warnings": warning_count,
             "total_checks": len(self._last_health_results),
             "last_check": max(
-                (hc.timestamp for hc in self._last_health_results.values()), default=None
+                (hc.timestamp for hc in self._last_health_results.values()),
+                default=None,
             ),
             "checks": {
                 name: {
@@ -750,7 +763,7 @@ class TelegramSystemMonitor:
                 name: {
                     "latest_value": points[-1].value if points else None,
                     "data_points": len(points),
-                    "latest_timestamp": points[-1].timestamp.isoformat() if points else None,
+                    "latest_timestamp": (points[-1].timestamp.isoformat() if points else None),
                 }
                 for name, points in self._metrics.items()
             },
@@ -761,10 +774,12 @@ class TelegramSystemMonitor:
         return {
             "running": self._running,
             "uptime": (
-                datetime.now(timezone.utc) - self._performance_stats["uptime_start"]
-            ).total_seconds()
-            if self._running
-            else 0,
+                (
+                    datetime.now(timezone.utc) - self._performance_stats["uptime_start"]
+                ).total_seconds()
+                if self._running
+                else 0
+            ),
             "health_checks_registered": len(self._health_checks),
             "alert_handlers_registered": len(self._alert_handlers),
             "recent_alerts": len(self._alert_history),

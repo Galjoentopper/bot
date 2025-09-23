@@ -226,7 +226,10 @@ class ModelFeatureRouter:
             # Validate the expansion
             if self.ppo_expander.validate_features(result_df):
                 feature_names = self.ppo_expander.get_feature_names()
-                logger.info("✅ PPO features expanded successfully: %s features", len(feature_names))
+                logger.info(
+                    "✅ PPO features expanded successfully: %s features",
+                    len(feature_names),
+                )
 
                 return result_df, {
                     "expanded_features": len(feature_names),
@@ -474,7 +477,8 @@ class ModelFeatureRouter:
                 return SuperiorPPOFeatureExpander()
             except Exception as exc:  # pragma: no cover - fallback guard
                 logger.warning(
-                    "Superior PPO expander failed to initialize (%s); falling back to classic", exc
+                    "Superior PPO expander failed to initialize (%s); falling back to classic",
+                    exc,
                 )
                 self.ppo_mode = "classic"
 

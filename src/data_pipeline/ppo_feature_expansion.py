@@ -365,7 +365,15 @@ class PPOFeatureExpander:
     def _ensure_feature_count(self, df: pd.DataFrame) -> pd.DataFrame:
         """Ensure exactly 104 features (excluding OHLCV and metadata columns)."""
         # Get feature columns (excluding OHLCV and metadata) - aligned with ModelFeatureRouter
-        excluded_cols = ["open", "high", "low", "close", "volume", "timestamp", "target"]
+        excluded_cols = [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "timestamp",
+            "target",
+        ]
         feature_cols = [col for col in df.columns if col not in excluded_cols]
 
         current_count = len(feature_cols)
@@ -457,7 +465,15 @@ class PPOFeatureExpander:
             self.feature_names = ordered
             preserved_cols = [
                 c
-                for c in ["open", "high", "low", "close", "volume", "timestamp", "target"]
+                for c in [
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "timestamp",
+                    "target",
+                ]
                 if c in df.columns
             ]
             return pinned_df[preserved_cols + ordered]
@@ -490,7 +506,15 @@ class PPOFeatureExpander:
             True if valid, False otherwise
         """
         # Use same exclusion logic as _ensure_feature_count and ModelFeatureRouter
-        excluded_cols = ["open", "high", "low", "close", "volume", "timestamp", "target"]
+        excluded_cols = [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "timestamp",
+            "target",
+        ]
         feature_cols = [col for col in df.columns if col not in excluded_cols]
 
         is_valid = len(feature_cols) == self.expected_features

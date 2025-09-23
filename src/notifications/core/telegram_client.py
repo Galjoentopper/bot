@@ -234,7 +234,10 @@ class TelegramClient:
         try:
             with open(photo_path, "rb") as photo_file:
                 await self._bot.send_photo(
-                    chat_id=self._chat_id, photo=photo_file, caption=caption, parse_mode=parse_mode
+                    chat_id=self._chat_id,
+                    photo=photo_file,
+                    caption=caption,
+                    parse_mode=parse_mode,
                 )
 
             self.logger.debug(f"Photo sent successfully: {photo_path}")

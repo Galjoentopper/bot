@@ -13,7 +13,6 @@ Usage:
 """
 
 import argparse
-import boto3
 import json
 import logging
 import os
@@ -22,6 +21,8 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
+
+import boto3
 
 # Setup logging
 logging.basicConfig(
@@ -40,7 +41,7 @@ class S3ModelExporter:
         if not self.bucket_name:
             raise ValueError("No S3 bucket specified. Set AWS_MODELS_BUCKET environment variable.")
 
-        self.s3_client = boto3.client('s3')
+        self.s3_client = boto3.client("s3")
         logger.info(f"Initialized S3 exporter for bucket: {self.bucket_name}")
 
     def export_models(self, models_dir: Path, include_validation: bool = True) -> Dict:
@@ -50,16 +51,16 @@ class S3ModelExporter:
             raise FileNotFoundError(f"Models directory not found: {models_dir}")
 
         # Create timestamped archive
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        archive_name = f'models_export_{timestamp}.zip'
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive_name = f"models_export_{timestamp}.zip"
         archive_path = models_dir.parent / archive_name
 
         logger.info(f"Creating model archive: {archive_name}")
 
         files_added = 0
-        with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zipf:
             # Add all model files
-            for file_path in models_dir.rglob('*'):
+            for file_path in models_dir.rglob("*"):
                 if file_path.is_file():
                     arcname = file_path.relative_to(models_dir.parent)
                     zipf.write(file_path, arcname)
@@ -67,51 +68,53 @@ class S3ModelExporter:
 
             # Add validation stats if requested
             if include_validation:
-                validation_dir = models_dir.parent / 'validation'
+                validation_dir = models_dir.parent / "validation"
                 if validation_dir.exists():
-                    for val_file in validation_dir.glob('*.json'):
+                    for val_file in validation_dir.glob("*.json"):
                         arcname = val_file.relative_to(models_dir.parent)
                         zipf.write(val_file, arcname)
                         files_added += 1
 
             # Add metadata
             metadata = {
-                'export_timestamp': timestamp,
-                'export_date': datetime.now().isoformat(),
-                'files_included': files_added,
-                'models_structure': self._get_models_structure(models_dir)
+                "export_timestamp": timestamp,
+                "export_date": datetime.now().isoformat(),
+                "files_included": files_added,
+                "models_structure": self._get_models_structure(models_dir),
             }
 
             metadata_json = json.dumps(metadata, indent=2)
-            zipf.writestr('export_metadata.json', metadata_json)
+            zipf.writestr("export_metadata.json", metadata_json)
             files_added += 1
 
-        logger.info(f"Archive created with {files_added} files ({archive_path.stat().st_size / 1024 / 1024:.1f} MB)")
+        logger.info(
+            f"Archive created with {files_added} files ({archive_path.stat().st_size / 1024 / 1024:.1f} MB)"
+        )
 
         # Upload to S3
-        s3_key = f'exports/{archive_name}'
+        s3_key = f"exports/{archive_name}"
         logger.info(f"Uploading to s3://{self.bucket_name}/{s3_key}")
 
         try:
-            with open(archive_path, 'rb') as f:
+            with open(archive_path, "rb") as f:
                 self.s3_client.upload_fileobj(f, self.bucket_name, s3_key)
 
             # Generate presigned URL for easy download
             download_url = self.s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': self.bucket_name, 'Key': s3_key},
-                ExpiresIn=86400  # 24 hours
+                "get_object",
+                Params={"Bucket": self.bucket_name, "Key": s3_key},
+                ExpiresIn=86400,  # 24 hours
             )
 
             result = {
-                'success': True,
-                'archive_name': archive_name,
-                's3_key': s3_key,
-                's3_url': f's3://{self.bucket_name}/{s3_key}',
-                'download_url': download_url,
-                'files_count': files_added,
-                'archive_size_mb': archive_path.stat().st_size / 1024 / 1024,
-                'metadata': metadata
+                "success": True,
+                "archive_name": archive_name,
+                "s3_key": s3_key,
+                "s3_url": f"s3://{self.bucket_name}/{s3_key}",
+                "download_url": download_url,
+                "files_count": files_added,
+                "archive_size_mb": archive_path.stat().st_size / 1024 / 1024,
+                "metadata": metadata,
             }
 
             # Clean up local archive
@@ -142,8 +145,8 @@ class S3ModelExporter:
                         symbol = symbol_dir.name
                         files = [f.name for f in symbol_dir.iterdir() if f.is_file()]
                         structure[model_type][symbol] = {
-                            'files': files,
-                            'file_count': len(files)
+                            "files": files,
+                            "file_count": len(files),
                         }
 
         return structure
@@ -151,25 +154,24 @@ class S3ModelExporter:
     def list_exports(self) -> List[Dict]:
         """List previous exports in S3 bucket"""
         try:
-            response = self.s3_client.list_objects_v2(
-                Bucket=self.bucket_name,
-                Prefix='exports/'
-            )
+            response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Prefix="exports/")
 
             exports = []
-            for obj in response.get('Contents', []):
-                exports.append({
-                    'key': obj['Key'],
-                    'size_mb': obj['Size'] / 1024 / 1024,
-                    'last_modified': obj['LastModified'].isoformat(),
-                    'download_url': self.s3_client.generate_presigned_url(
-                        'get_object',
-                        Params={'Bucket': self.bucket_name, 'Key': obj['Key']},
-                        ExpiresIn=3600  # 1 hour
-                    )
-                })
+            for obj in response.get("Contents", []):
+                exports.append(
+                    {
+                        "key": obj["Key"],
+                        "size_mb": obj["Size"] / 1024 / 1024,
+                        "last_modified": obj["LastModified"].isoformat(),
+                        "download_url": self.s3_client.generate_presigned_url(
+                            "get_object",
+                            Params={"Bucket": self.bucket_name, "Key": obj["Key"]},
+                            ExpiresIn=3600,  # 1 hour
+                        ),
+                    }
+                )
 
-            return sorted(exports, key=lambda x: x['last_modified'], reverse=True)
+            return sorted(exports, key=lambda x: x["last_modified"], reverse=True)
 
         except Exception as e:
             logger.error(f"Failed to list exports: {e}")
@@ -177,14 +179,22 @@ class S3ModelExporter:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Export trained models to S3')
-    parser.add_argument('--models-dir', type=Path, default=Path('/notebooks/bot/models'),
-                       help='Path to models directory')
-    parser.add_argument('--bucket', type=str, help='S3 bucket name (overrides env var)')
-    parser.add_argument('--no-validation', action='store_true',
-                       help='Do not include validation stats in export')
-    parser.add_argument('--list-exports', action='store_true',
-                       help='List previous exports and exit')
+    parser = argparse.ArgumentParser(description="Export trained models to S3")
+    parser.add_argument(
+        "--models-dir",
+        type=Path,
+        default=Path("/notebooks/bot/models"),
+        help="Path to models directory",
+    )
+    parser.add_argument("--bucket", type=str, help="S3 bucket name (overrides env var)")
+    parser.add_argument(
+        "--no-validation",
+        action="store_true",
+        help="Do not include validation stats in export",
+    )
+    parser.add_argument(
+        "--list-exports", action="store_true", help="List previous exports and exit"
+    )
 
     args = parser.parse_args()
 
@@ -196,26 +206,27 @@ def main():
             if exports:
                 logger.info(f"Found {len(exports)} previous exports:")
                 for exp in exports[:10]:  # Show last 10
-                    logger.info(f"  {exp['key']} ({exp['size_mb']:.1f} MB) - {exp['last_modified']}")
+                    logger.info(
+                        f"  {exp['key']} ({exp['size_mb']:.1f} MB) - {exp['last_modified']}"
+                    )
             else:
                 logger.info("No previous exports found")
             return
 
         result = exporter.export_models(
-            models_dir=args.models_dir,
-            include_validation=not args.no_validation
+            models_dir=args.models_dir, include_validation=not args.no_validation
         )
 
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🚀 EXPORT COMPLETED SUCCESSFULLY!")
-        print("="*60)
+        print("=" * 60)
         print(f"Archive: {result['archive_name']}")
         print(f"S3 Location: {result['s3_url']}")
         print(f"Files: {result['files_count']}")
         print(f"Size: {result['archive_size_mb']:.1f} MB")
         print(f"\n🔗 Download URL (valid 24h):")
-        print(result['download_url'])
-        print("="*60)
+        print(result["download_url"])
+        print("=" * 60)
 
     except Exception as e:
         logger.error(f"Export failed: {e}")

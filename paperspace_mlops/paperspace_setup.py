@@ -155,7 +155,8 @@ class PaperspaceSetup:
             try:
                 logger.info(f"  📦 Installing {package}...")
                 subprocess.run(
-                    [sys.executable, "-m", "pip", "install", package, "--quiet"], check=True
+                    [sys.executable, "-m", "pip", "install", package, "--quiet"],
+                    check=True,
                 )
                 logger.info(f"  ✅ Installed {package}")
             except subprocess.CalledProcessError as e:
@@ -247,10 +248,12 @@ class PaperspaceSetup:
                 # Configure git if not already configured
                 try:
                     subprocess.run(
-                        ["git", "config", "user.name", "Paperspace Training"], check=True
+                        ["git", "config", "user.name", "Paperspace Training"],
+                        check=True,
                     )
                     subprocess.run(
-                        ["git", "config", "user.email", "training@paperspace.com"], check=True
+                        ["git", "config", "user.email", "training@paperspace.com"],
+                        check=True,
                     )
                     logger.info("  ✅ Git configured")
                 except subprocess.CalledProcessError:

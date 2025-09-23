@@ -454,13 +454,15 @@ class TradingBotIntegration:
     def _check_trade_rate_limit(self) -> bool:
         """Check if trade notifications are within rate limits."""
         return self._check_rate_limit(
-            self._trade_notification_history, self._notification_config["rate_limit_trades"]
+            self._trade_notification_history,
+            self._notification_config["rate_limit_trades"],
         )
 
     def _check_signal_rate_limit(self) -> bool:
         """Check if signal notifications are within rate limits."""
         return self._check_rate_limit(
-            self._signal_notification_history, self._notification_config["rate_limit_signals"]
+            self._signal_notification_history,
+            self._notification_config["rate_limit_signals"],
         )
 
     def _check_rate_limit(self, history: List[datetime], limit: int) -> bool:

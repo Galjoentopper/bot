@@ -6,13 +6,14 @@ Load Training Data from SQLite Databases
 This script loads real trading data from the SQLite databases in the data folder.
 """
 
-import sqlite3
-import pandas as pd
 import logging
 import os
+import sqlite3
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
+import pandas as pd
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -49,30 +50,30 @@ def load_data_from_db(symbol: str, data_dir: str = "data") -> pd.DataFrame:
         logger.info(f"   Columns: {list(df.columns)}")
 
         # Handle duplicate timestamp columns - keep only required ones
-        required_cols = ['open', 'high', 'low', 'close', 'volume']
+        required_cols = ["open", "high", "low", "close", "volume"]
 
         # Add timestamp column (prefer datetime over timestamp if both exist)
-        if 'datetime' in df.columns:
-            df['timestamp'] = df['datetime']
-        elif 'timestamp' in df.columns:
+        if "datetime" in df.columns:
+            df["timestamp"] = df["datetime"]
+        elif "timestamp" in df.columns:
             # Keep existing timestamp
             pass
 
         # Select only the columns we need
-        available_cols = ['timestamp'] + [col for col in required_cols if col in df.columns]
+        available_cols = ["timestamp"] + [col for col in required_cols if col in df.columns]
         df = df[available_cols]
 
         # Ensure we have required columns
-        required_cols = ['open', 'high', 'low', 'close', 'volume']
+        required_cols = ["open", "high", "low", "close", "volume"]
         missing_cols = [col for col in required_cols if col not in df.columns]
 
         if missing_cols:
             raise ValueError(f"Missing required columns: {missing_cols}")
 
         # Convert timestamp if needed
-        if 'timestamp' in df.columns:
+        if "timestamp" in df.columns:
             try:
-                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df["timestamp"] = pd.to_datetime(df["timestamp"])
             except:
                 pass  # Keep as is if conversion fails
 
@@ -80,13 +81,13 @@ def load_data_from_db(symbol: str, data_dir: str = "data") -> pd.DataFrame:
         df = df.dropna()
 
         # Sort by timestamp
-        if 'timestamp' in df.columns:
-            df = df.sort_values('timestamp').reset_index(drop=True)
+        if "timestamp" in df.columns:
+            df = df.sort_values("timestamp").reset_index(drop=True)
 
         logger.info(f"✅ Loaded {len(df):,} rows for {symbol}")
         if len(df) > 0:
             logger.info(f"   Price range: {df['close'].min():.2f} - {df['close'].max():.2f}")
-            if 'timestamp' in df.columns:
+            if "timestamp" in df.columns:
                 logger.info(f"   Date range: {df['timestamp'].min()} to {df['timestamp'].max()}")
 
         return df
@@ -123,8 +124,8 @@ def test_data_loading():
     data_dir = "data"
 
     # Find all database files
-    db_files = [f for f in os.listdir(data_dir) if f.endswith('_30m.db')]
-    symbols = [f.replace('_30m.db', '').upper() for f in db_files]
+    db_files = [f for f in os.listdir(data_dir) if f.endswith("_30m.db")]
+    symbols = [f.replace("_30m.db", "").upper() for f in db_files]
 
     logger.info(f"🔍 Found databases for symbols: {symbols}")
 

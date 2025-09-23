@@ -319,12 +319,14 @@ class TelegramAdapter:
         return {
             "initialized": self._initialized,
             "config": self.get_config(),
-            "telegram_service_running": self.telegram_service._running
-            if hasattr(self.telegram_service, "_running")
-            else False,
-            "integration_statistics": self.trading_integration.get_statistics()
-            if self._initialized
-            else {},
+            "telegram_service_running": (
+                self.telegram_service._running
+                if hasattr(self.telegram_service, "_running")
+                else False
+            ),
+            "integration_statistics": (
+                self.trading_integration.get_statistics() if self._initialized else {}
+            ),
         }
 
     @property

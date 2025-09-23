@@ -553,7 +553,12 @@ Shutdown begins in 15 seconds...
     async def _get_maintenance_status(self) -> Dict[str, Any]:
         """Get maintenance mode status."""
         # TODO: Integrate with actual maintenance system
-        return {"enabled": False, "enabled_time": None, "duration": None, "reason": "Admin request"}
+        return {
+            "enabled": False,
+            "enabled_time": None,
+            "duration": None,
+            "reason": "Admin request",
+        }
 
     async def _create_backup(self, backup_type: str) -> Dict[str, Any]:
         """Create system backup."""
@@ -662,7 +667,11 @@ Shutdown begins in 15 seconds...
         try:
             cutoff_date = datetime.now() - timedelta(days=days)
 
-            log_directories = [Path("logs"), Path("src/notifications/logs"), Path("models/logs")]
+            log_directories = [
+                Path("logs"),
+                Path("src/notifications/logs"),
+                Path("models/logs"),
+            ]
 
             files_removed = 0
             space_freed = 0

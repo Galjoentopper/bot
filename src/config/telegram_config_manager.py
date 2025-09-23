@@ -159,17 +159,37 @@ class TelegramConfigManager:
             "queue.dead_letter_max_size": {"min": 10, "max": 1000, "type": int},
             "queue.cleanup_interval": {"min": 60, "max": 86400, "type": int},
             "rate_limits.messages_per_minute": {"min": 1, "max": 100, "type": int},
-            "rate_limits.commands_per_user_per_minute": {"min": 1, "max": 50, "type": int},
+            "rate_limits.commands_per_user_per_minute": {
+                "min": 1,
+                "max": 50,
+                "type": int,
+            },
             "rate_limits.burst_messages": {"min": 1, "max": 20, "type": int},
             "rate_limits.burst_window": {"min": 1, "max": 60, "type": int},
-            "notifications.min_trade_confidence": {"min": 0.0, "max": 1.0, "type": float},
-            "notifications.min_trade_amount": {"min": 0.0, "max": 1000000.0, "type": float},
-            "notifications.min_pnl_threshold": {"min": 0.0, "max": 10000.0, "type": float},
+            "notifications.min_trade_confidence": {
+                "min": 0.0,
+                "max": 1.0,
+                "type": float,
+            },
+            "notifications.min_trade_amount": {
+                "min": 0.0,
+                "max": 1000000.0,
+                "type": float,
+            },
+            "notifications.min_pnl_threshold": {
+                "min": 0.0,
+                "max": 10000.0,
+                "type": float,
+            },
             "formatting.max_message_length": {"min": 100, "max": 4096, "type": int},
             "monitoring.max_consecutive_failures": {"min": 1, "max": 100, "type": int},
             "monitoring.max_queue_size_warning": {"min": 10, "max": 5000, "type": int},
             "monitoring.max_memory_usage_warning": {"min": 50, "max": 100, "type": int},
-            "monitoring.max_response_time_warning": {"min": 100, "max": 30000, "type": int},
+            "monitoring.max_response_time_warning": {
+                "min": 100,
+                "max": 30000,
+                "type": int,
+            },
         }
 
     def load_config(self) -> TelegramConfig:
@@ -547,7 +567,7 @@ class TelegramConfigManager:
 
         return {
             "config_file": str(self.config_file),
-            "last_modified": self.last_modified.isoformat() if self.last_modified else None,
+            "last_modified": (self.last_modified.isoformat() if self.last_modified else None),
             "service_enabled": config.service.enabled,
             "auth_required": config.security.auth_required,
             "queue_enabled": config.queue.enabled,

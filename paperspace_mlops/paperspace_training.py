@@ -166,11 +166,11 @@ class PaperspaceTraining:
         """Run environment validation checks and log actionable feedback."""
         try:
             from validate_environment import (
-                validate_python_environment,
-                validate_directories,
                 validate_config_file,
+                validate_directories,
                 validate_environment_variables,
                 validate_permissions,
+                validate_python_environment,
             )
 
             py_ok, py_errs = validate_python_environment()
@@ -323,6 +323,7 @@ class PaperspaceTraining:
                 sys.path.insert(0, "/notebooks/bot")
                 sys.path.insert(0, "/notebooks/bot/src")
                 from src.data_pipeline.dataset_builder import DatasetBuilder
+
                 logger.info("✅ Fixed import path for DatasetBuilder")
             except ImportError as e:
                 raise ImportError(f"Could not import DatasetBuilder. Import error: {e}")
@@ -367,9 +368,7 @@ class PaperspaceTraining:
                             f"  ✅ {symbol}: {len(X)} samples, {len(feature_names)} features (validated)"
                         )
                     else:
-                        logger.error(
-                            f"  ❌ {symbol}: Dataset validation failed -> {errors[:3]}"
-                        )
+                        logger.error(f"  ❌ {symbol}: Dataset validation failed -> {errors[:3]}")
                         failed_symbols.append(symbol)
                 else:
                     logger.error(f"  ❌ {symbol}: Failed to build dataset")
@@ -377,6 +376,7 @@ class PaperspaceTraining:
 
             except Exception as e:
                 import traceback
+
                 logger.error(f"  ❌ {symbol}: {e}")
                 logger.debug(traceback.format_exc())
                 failed_symbols.append(symbol)
@@ -498,12 +498,15 @@ class PaperspaceTraining:
             try:
                 if model_type == "gru":
                     from src.models.gru_trainer import GRUTrainer
+
                     trainer = GRUTrainer(self.config)
                 elif model_type == "lightgbm":
                     from src.models.lgbm_trainer import LightGBMTrainer
+
                     trainer = LightGBMTrainer(self.config)
                 elif model_type == "ppo":
                     from src.models.ppo_trainer import PPOTrainer
+
                     trainer = PPOTrainer(self.config)
                 else:
                     raise ValueError(f"Unknown model type: {model_type}")
@@ -512,12 +515,15 @@ class PaperspaceTraining:
                 sys.path.insert(0, "/notebooks/bot/src")
                 if model_type == "gru":
                     from src.models.gru_trainer import GRUTrainer
+
                     trainer = GRUTrainer(self.config)
                 elif model_type == "lightgbm":
                     from src.models.lgbm_trainer import LightGBMTrainer
+
                     trainer = LightGBMTrainer(self.config)
                 elif model_type == "ppo":
                     from src.models.ppo_trainer import PPOTrainer
+
                     trainer = PPOTrainer(self.config)
                 else:
                     raise ValueError(f"Unknown model type: {model_type}")
@@ -588,13 +594,15 @@ class PaperspaceTraining:
                 # Prefer raw OHLCV reconstructed by DatasetBuilder for stable expansion
                 raw_runtime = None
                 try:
-                    raw_runtime = (
-                        task["dataset"]["metadata"].get("_runtime", {}).get("full_data")
-                    )
+                    raw_runtime = task["dataset"]["metadata"].get("_runtime", {}).get("full_data")
                 except Exception:
                     raw_runtime = None
 
-                if raw_runtime is None or not isinstance(raw_runtime, pd.DataFrame) or raw_runtime.empty:
+                if (
+                    raw_runtime is None
+                    or not isinstance(raw_runtime, pd.DataFrame)
+                    or raw_runtime.empty
+                ):
                     logger.warning(
                         "PPO: No runtime OHLCV in metadata; reconstructing minimal OHLCV from available data"
                     )
@@ -605,7 +613,9 @@ class PaperspaceTraining:
                     proxy_close = (1 + proxy_close.shift(1).fillna(0)).cumprod() * 1000.0
                     df_tmp["close"] = proxy_close
                     df_tmp["open"] = df_tmp["close"].shift(1).fillna(df_tmp["close"]).astype(float)
-                    df_tmp["high"] = pd.concat([df_tmp["open"], df_tmp["close"]], axis=1).max(axis=1)
+                    df_tmp["high"] = pd.concat([df_tmp["open"], df_tmp["close"]], axis=1).max(
+                        axis=1
+                    )
                     df_tmp["low"] = pd.concat([df_tmp["open"], df_tmp["close"]], axis=1).min(axis=1)
                     df_tmp["volume"] = 1.0
                     ohclv_df = df_tmp
@@ -623,7 +633,10 @@ class PaperspaceTraining:
 
                     router = ModelFeatureRouter()
                     routed_df, routing_info = router.route_features_for_model(
-                        ohclv_df, model_type="ppo", symbol=task["symbol"], use_enhanced_engine=False
+                        ohclv_df,
+                        model_type="ppo",
+                        symbol=task["symbol"],
+                        use_enhanced_engine=False,
                     )
                     logger.info(
                         f"PPO routed features: {routing_info.get('feature_count')} via {routing_info.get('method_used')}"
@@ -689,7 +702,11 @@ class PaperspaceTraining:
             # Log full traceback for faster diagnosis
             logger.error(f"Training error for {task.get('symbol')} {task.get('model_type')}: {e}")
             logger.debug(tb)
-            return {"success": False, "error": f"Training error: {str(e)}", "traceback": tb}
+            return {
+                "success": False,
+                "error": f"Training error: {str(e)}",
+                "traceback": tb,
+            }
         finally:
             # Clear timeout
             if hasattr(signal, "SIGALRM"):
@@ -1000,7 +1017,10 @@ Please check the training logs for more details.
                 ):
                     s3_result = self.upload_to_s3(export_result)
                 else:
-                    s3_result = {"success": False, "error": "Skipped or insufficient time"}
+                    s3_result = {
+                        "success": False,
+                        "error": "Skipped or insufficient time",
+                    }
 
             # Final summary
             elapsed = (datetime.now() - self.start_time).total_seconds() / 3600
@@ -1034,7 +1054,11 @@ Please check the training logs for more details.
 
         except Exception as e:
             logger.error(f"❌ Pipeline failed: {e}")
-            return {"success": False, "error": str(e), "pipeline_state": self.pipeline_state}
+            return {
+                "success": False,
+                "error": str(e),
+                "pipeline_state": self.pipeline_state,
+            }
 
 
 def main():

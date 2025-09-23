@@ -199,14 +199,12 @@ class PaperspaceTrainingRunner:
             results["symbols_trained"] = sorted({model.symbol for model in model_results})
             results["models_trained"] = sorted({model.model_type for model in model_results})
 
-            self.logger.info(
-                f"Training completed for {len(results['symbols_trained'])} symbols"
-            )
+            self.logger.info(f"Training completed for {len(results['symbols_trained'])} symbols")
 
             # Export already handled inside trainer when enabled
             results["export_status"] = {
                 "export_enabled": self.trainer.config.export_to_s3,
-                "models_exported": len(model_results) if self.trainer.config.export_to_s3 else 0,
+                "models_exported": (len(model_results) if self.trainer.config.export_to_s3 else 0),
             }
             results["status"] = "complete"
 
@@ -266,10 +264,14 @@ def main():
     """Main entry point for Paperspace training execution"""
     parser = argparse.ArgumentParser(description="Paperspace Superior Ensemble Training")
     parser.add_argument(
-        "--symbols", type=str, help="Comma-separated list of symbols (e.g., BTCEUR,ETHEUR)"
+        "--symbols",
+        type=str,
+        help="Comma-separated list of symbols (e.g., BTCEUR,ETHEUR)",
     )
     parser.add_argument(
-        "--models", type=str, help="Comma-separated list of models (e.g., ppo,gru,lightgbm)"
+        "--models",
+        type=str,
+        help="Comma-separated list of models (e.g., ppo,gru,lightgbm)",
     )
     parser.add_argument("--config", type=str, help="Path to training configuration file")
     parser.add_argument(

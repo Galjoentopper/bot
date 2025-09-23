@@ -1,19 +1,16 @@
-"""
-Trading-Specific Feature Engineering Module
-==========================================
+"""Trading-specific feature engineering module.
 
-Advanced feature engineering specifically designed for cryptocurrency trading.
-Focuses on multi-timeframe analysis, market microstructure, and trading profitability.
+Provides feature generation tailored to cryptocurrency markets with an emphasis on
+multi-timeframe analysis, microstructure, and profitability signals.
 """
 
 import logging
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
 import ta  # Technical Analysis library
-from scipy import stats
 from scipy.signal import find_peaks
 
 from .stable_math import StableMath
@@ -23,25 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 class TradingFeatureEngine:
-    """
-    Advanced feature engineering class optimized for cryptocurrency trading.
+    """Feature engineering helpers optimized for cryptocurrency trading.
 
-    Focuses on:
-    - Multi-timeframe momentum and volatility
-    - Market microstructure indicators
-    - Risk-adjusted returns
-    - Regime detection
-    - Support/resistance levels
-    - Volume-price relationships
+    Focus areas include multi-timeframe and microstructure indicators,
+    risk-adjusted returns, regime detection, and volume-price relationships.
     """
 
     def __init__(self, config: Optional[Dict] = None):
-        """
-        Initialize TradingFeatureEngine.
-
-        Args:
-            config: Configuration dictionary with feature parameters
-        """
+        """Initialize feature configuration and apply any overrides."""
         # Start with defaults and merge provided config
         self.config = self._get_default_config()
         if config:
@@ -52,11 +38,8 @@ class TradingFeatureEngine:
     def _merge_config(self, base_config: Dict, new_config: Dict) -> None:
         """Recursively merge configuration dictionaries."""
         for key, value in new_config.items():
-            if (
-                key in base_config
-                and isinstance(base_config[key], dict)
-                and isinstance(value, dict)
-            ):
+            has_nested_config = isinstance(base_config.get(key), dict) and isinstance(value, dict)
+            if key in base_config and has_nested_config:
                 self._merge_config(base_config[key], value)
             else:
                 base_config[key] = value
@@ -98,8 +81,7 @@ class TradingFeatureEngine:
         }
 
     def generate_trading_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Generate comprehensive trading features.
+        """Generate comprehensive trading features for the supplied OHLCV data.
 
         Args:
             df: OHLCV DataFrame with DatetimeIndex
@@ -108,6 +90,9 @@ class TradingFeatureEngine:
             DataFrame with trading features
         """
         logger.info("🔧 Generating trading-specific features")
+
+        # Ensure time awareness before feature generation
+        df = self._ensure_datetime_index(df)
 
         # Validate input data
         self._validate_input_data(df)
@@ -143,6 +128,50 @@ class TradingFeatureEngine:
 
         logger.info(f"✅ Generated {len(features_df.columns)} trading features")
         return features_df
+
+    def _ensure_datetime_index(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Return a copy of the dataframe that uses a DatetimeIndex when possible."""
+        if isinstance(df.index, pd.DatetimeIndex):
+            return df
+
+        df_fixed = df.copy()
+        candidate_cols = [
+            col for col in ["timestamp", "datetime", "date", "time"] if col in df_fixed.columns
+        ]
+
+        for col in candidate_cols:
+            series = df_fixed[col]
+            try:
+                if np.issubdtype(series.dtype, np.number):
+                    converted = pd.to_datetime(series, unit="s", errors="coerce")
+                else:
+                    converted = pd.to_datetime(series, errors="coerce")
+            except Exception:  # pragma: no cover - defensive conversion
+                continue
+
+            if converted.notna().any():
+                valid_mask = converted.notna()
+                df_fixed = df_fixed.loc[valid_mask].copy()
+                df_fixed.index = converted.loc[valid_mask]
+                df_fixed.sort_index(inplace=True)
+                logger.info("🗓️ Converted '%s' column to DatetimeIndex", col)
+                return df_fixed
+
+        try:
+            converted_index = pd.to_datetime(df_fixed.index, errors="coerce")
+        except Exception:  # pragma: no cover - defensive conversion
+            converted_index = pd.DatetimeIndex([])
+
+        if getattr(converted_index, "notna", None) is not None and converted_index.notna().any():
+            valid_mask = converted_index.notna()
+            df_fixed = df_fixed.loc[valid_mask].copy()
+            df_fixed.index = converted_index[valid_mask]
+            df_fixed.sort_index(inplace=True)
+            logger.info("🗓️ Converted existing index to DatetimeIndex")
+            return df_fixed
+
+        logger.warning("Index is not DatetimeIndex and no convertible columns were found")
+        return df_fixed
 
     def _validate_input_data(self, df: pd.DataFrame):
         """Validate input DataFrame."""
@@ -291,10 +320,9 @@ class TradingFeatureEngine:
             df[f"parkinson_vol_{period}"] = parkinson.rolling(period).mean() * np.sqrt(24 * 365)
 
             # Garman-Klass volatility
-            gk = (
-                0.5 * np.log(df["high"] / df["low"]) ** 2
-                - (2 * np.log(2) - 1) * np.log(df["close"] / df["open"]) ** 2
-            )
+            log_hl = np.log(df["high"] / df["low"])
+            log_co = np.log(df["close"] / df["open"])
+            gk = 0.5 * log_hl**2 - (2 * np.log(2) - 1) * log_co**2
             df[f"gk_volatility_{period}"] = gk.rolling(period).mean() * np.sqrt(24 * 365)
 
             # Volatility of volatility
@@ -340,7 +368,10 @@ class TradingFeatureEngine:
         for window in sharpe_windows:
             # Stable Sharpe ratio calculation
             df[f"sharpe_{window}"] = StableMath.calculate_sharpe_ratio(
-                returns, window, annualize=True, periods_per_year=17520  # 30min periods/year
+                returns,
+                window,
+                annualize=True,
+                periods_per_year=17520,  # 30min periods/year
             )
 
             # Rolling mean return used by Sortino/Calmar calculations
@@ -597,8 +628,7 @@ class TradingFeatureEngine:
 
 
 def generate_trading_features(df: pd.DataFrame, config: Optional[Dict] = None) -> pd.DataFrame:
-    """
-    Convenience function to generate trading features.
+    """Convenience wrapper to generate trading features.
 
     Args:
         df: OHLCV DataFrame
@@ -613,9 +643,6 @@ def generate_trading_features(df: pd.DataFrame, config: Optional[Dict] = None) -
 
 if __name__ == "__main__":
     # Example usage
-    import numpy as np
-    import pandas as pd
-
     # Create sample data
     dates = pd.date_range("2023-01-01", periods=1000, freq="30T")
     sample_data = pd.DataFrame(
@@ -642,6 +669,8 @@ if __name__ == "__main__":
     features = engine.generate_trading_features(sample_data)
 
     print(f"Generated {len(features.columns)} features")
-    print(
-        f"Feature categories: {[col for col in features.columns if not col in ['open', 'high', 'low', 'close', 'volume']][:10]}"
-    )
+    informative_cols = [
+        col for col in features.columns if col not in ["open", "high", "low", "close", "volume"]
+    ]
+    preview = informative_cols[:10]
+    print(f"Feature categories preview: {preview}")

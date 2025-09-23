@@ -9,13 +9,13 @@ validation, and rollback capabilities.
 Author: Professional Code Architect
 """
 
-import os
-import sys
 import json
-import time
 import logging
+import os
 import subprocess
+import sys
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -23,17 +23,18 @@ from typing import Dict, List, Optional, Tuple
 # Configure professional logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s | %(levelname)-8s | %(message)s',
+    format="%(asctime)s | %(levelname)-8s | %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('/notebooks/bot/logs/hetzner_export.log', mode='a')
-    ]
+        logging.FileHandler("/notebooks/bot/logs/hetzner_export.log", mode="a"),
+    ],
 )
 logger = logging.getLogger(__name__)
 
 
 class HetznerExportError(Exception):
     """Custom exception for export failures."""
+
     pass
 
 
@@ -46,13 +47,15 @@ class ProfessionalHetznerExporter:
         """Initialize with configuration."""
         self.config = self._load_config(config_path)
         self.export_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.symbols = ['BTCEUR', 'ETHEUR', 'ADAEUR', 'DOTEUR', 'LINKEUR']
+        self.symbols = ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
 
         # Paths
         self.local_models_path = Path("models/superior")
         self.remote_base_path = "/opt/trading_bot"
         self.remote_models_path = f"{self.remote_base_path}/models/superior"
-        self.remote_backup_path = f"{self.remote_base_path}/models/backups/backup_{self.export_timestamp}"
+        self.remote_backup_path = (
+            f"{self.remote_base_path}/models/backups/backup_{self.export_timestamp}"
+        )
 
         logger.info(f"🚀 Professional Hetzner Exporter initialized")
         logger.info(f"   Target: {self.config['hetzner_user']}@{self.config['hetzner_host']}")
@@ -69,11 +72,11 @@ class ProfessionalHetznerExporter:
             "transfer_timeout": 3600,  # 1 hour
             "validation_enabled": True,
             "backup_enabled": True,
-            "auto_restart": False
+            "auto_restart": False,
         }
 
         if config_path and os.path.exists(config_path):
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 user_config = json.load(f)
                 default_config.update(user_config)
 
@@ -110,11 +113,15 @@ class ProfessionalHetznerExporter:
         """Test SSH connection to Hetzner server."""
         try:
             cmd = [
-                "ssh", "-i", self.config["ssh_key_path"],
-                "-o", "ConnectTimeout=10",
-                "-o", "StrictHostKeyChecking=no",
+                "ssh",
+                "-i",
+                self.config["ssh_key_path"],
+                "-o",
+                "ConnectTimeout=10",
+                "-o",
+                "StrictHostKeyChecking=no",
                 f"{self.config['hetzner_user']}@{self.config['hetzner_host']}",
-                "echo 'SSH_TEST_SUCCESS'"
+                "echo 'SSH_TEST_SUCCESS'",
             ]
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
@@ -136,9 +143,11 @@ class ProfessionalHetznerExporter:
         """Check available disk space on remote server."""
         try:
             cmd = [
-                "ssh", "-i", self.config["ssh_key_path"],
+                "ssh",
+                "-i",
+                self.config["ssh_key_path"],
                 f"{self.config['hetzner_user']}@{self.config['hetzner_host']}",
-                f"df -h {self.remote_base_path} | tail -1 | awk '{{print $4}}'"
+                f"df -h {self.remote_base_path} | tail -1 | awk '{{print $4}}'",
             ]
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
@@ -258,17 +267,21 @@ class ProfessionalHetznerExporter:
         try:
             # Use rsync for robust, resumable transfer
             cmd = [
-                "rsync", "-avz", "--delete", "--progress",
-                "-e", f"ssh -i {self.config['ssh_key_path']} -o StrictHostKeyChecking=no",
+                "rsync",
+                "-avz",
+                "--delete",
+                "--progress",
+                "-e",
+                f"ssh -i {self.config['ssh_key_path']} -o StrictHostKeyChecking=no",
                 f"{local_symbol_path}/",
-                f"{self.config['hetzner_user']}@{self.config['hetzner_host']}:{self.remote_models_path}/{symbol}/"
+                f"{self.config['hetzner_user']}@{self.config['hetzner_host']}:{self.remote_models_path}/{symbol}/",
             ]
 
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=self.config["transfer_timeout"]
+                timeout=self.config["transfer_timeout"],
             )
 
             if result.returncode == 0:
@@ -339,20 +352,24 @@ else:
 
         try:
             # Write validation script to temporary file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
                 f.write(validation_script)
                 temp_script = f.name
 
             # Copy script to remote and execute
             copy_cmd = [
-                "scp", "-i", self.config["ssh_key_path"],
+                "scp",
+                "-i",
+                self.config["ssh_key_path"],
                 temp_script,
-                f"{self.config['hetzner_user']}@{self.config['hetzner_host']}:/tmp/validate_models.py"
+                f"{self.config['hetzner_user']}@{self.config['hetzner_host']}:/tmp/validate_models.py",
             ]
             subprocess.run(copy_cmd, check=True)
 
             # Execute validation
-            result = self._run_remote_command(f"cd {self.remote_base_path} && python3 /tmp/validate_models.py")
+            result = self._run_remote_command(
+                f"cd {self.remote_base_path} && python3 /tmp/validate_models.py"
+            )
 
             # Cleanup
             os.unlink(temp_script)
@@ -514,10 +531,13 @@ fi
     def _run_remote_command(self, command: str) -> subprocess.CompletedProcess:
         """Execute command on remote server."""
         cmd = [
-            "ssh", "-i", self.config["ssh_key_path"],
-            "-o", "StrictHostKeyChecking=no",
+            "ssh",
+            "-i",
+            self.config["ssh_key_path"],
+            "-o",
+            "StrictHostKeyChecking=no",
             f"{self.config['hetzner_user']}@{self.config['hetzner_host']}",
-            command
+            command,
         ]
 
         return subprocess.run(cmd, capture_output=True, text=True, timeout=60)
@@ -581,6 +601,7 @@ fi
         except Exception as e:
             logger.error(f"💥 Unexpected error: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 
@@ -589,26 +610,26 @@ def main():
     """Main execution function."""
     import argparse
 
-    parser = argparse.ArgumentParser(description='Professional Hetzner Model Export')
-    parser.add_argument('--config', help='Configuration file path')
-    parser.add_argument('--host', help='Hetzner host IP/domain')
-    parser.add_argument('--user', help='Hetzner username')
-    parser.add_argument('--dry-run', action='store_true', help='Validate only, no export')
-    parser.add_argument('--auto-restart', action='store_true', help='Auto-restart trading system')
+    parser = argparse.ArgumentParser(description="Professional Hetzner Model Export")
+    parser.add_argument("--config", help="Configuration file path")
+    parser.add_argument("--host", help="Hetzner host IP/domain")
+    parser.add_argument("--user", help="Hetzner username")
+    parser.add_argument("--dry-run", action="store_true", help="Validate only, no export")
+    parser.add_argument("--auto-restart", action="store_true", help="Auto-restart trading system")
 
     args = parser.parse_args()
 
     # Override config with command line args
     if args.host:
-        os.environ['HETZNER_HOST'] = args.host
+        os.environ["HETZNER_HOST"] = args.host
     if args.user:
-        os.environ['HETZNER_USER'] = args.user
+        os.environ["HETZNER_USER"] = args.user
 
     # Create exporter
     exporter = ProfessionalHetznerExporter(args.config)
 
     if args.auto_restart:
-        exporter.config['auto_restart'] = True
+        exporter.config["auto_restart"] = True
 
     if args.dry_run:
         logger.info("🧪 DRY RUN MODE - Validation only")

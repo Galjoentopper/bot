@@ -6,13 +6,14 @@ Get Trading Data for Superior PPO Training
 This script fetches real BTCEUR trading data for training the superior PPO model.
 """
 
+import logging
 import os
+from datetime import datetime, timedelta
+
 import pandas as pd
 import yfinance as yf
-from datetime import datetime, timedelta
-import logging
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -21,16 +22,16 @@ def fetch_crypto_data(symbol: str, days: int = 365) -> pd.DataFrame:
     logger.info(f"📊 Fetching {symbol} data for {days} days...")
 
     # Convert crypto symbol to Yahoo Finance format
-    if symbol == 'BTCEUR':
-        yf_symbol = 'BTC-EUR'
-    elif symbol == 'ETHEUR':
-        yf_symbol = 'ETH-EUR'
-    elif symbol == 'ADAEUR':
-        yf_symbol = 'ADA-EUR'
-    elif symbol == 'DOTEUR':
-        yf_symbol = 'DOT-EUR'
-    elif symbol == 'LINKEUR':
-        yf_symbol = 'LINK-EUR'
+    if symbol == "BTCEUR":
+        yf_symbol = "BTC-EUR"
+    elif symbol == "ETHEUR":
+        yf_symbol = "ETH-EUR"
+    elif symbol == "ADAEUR":
+        yf_symbol = "ADA-EUR"
+    elif symbol == "DOTEUR":
+        yf_symbol = "DOT-EUR"
+    elif symbol == "LINKEUR":
+        yf_symbol = "LINK-EUR"
     else:
         yf_symbol = symbol
 
@@ -44,9 +45,9 @@ def fetch_crypto_data(symbol: str, days: int = 365) -> pd.DataFrame:
         data = ticker.history(
             start=start_date,
             end=end_date,
-            interval='30m',  # 30-minute intervals for multi-timeframe analysis
+            interval="30m",  # 30-minute intervals for multi-timeframe analysis
             auto_adjust=True,
-            prepost=True
+            prepost=True,
         )
 
         if data.empty:
@@ -58,10 +59,10 @@ def fetch_crypto_data(symbol: str, days: int = 365) -> pd.DataFrame:
 
         # Reset index to have timestamp as column
         data = data.reset_index()
-        data.rename(columns={'datetime': 'timestamp'}, inplace=True)
+        data.rename(columns={"datetime": "timestamp"}, inplace=True)
 
         # Keep only OHLCV columns
-        required_cols = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+        required_cols = ["timestamp", "open", "high", "low", "close", "volume"]
         available_cols = [col for col in required_cols if col in data.columns]
         data = data[available_cols]
 
@@ -79,7 +80,7 @@ def fetch_crypto_data(symbol: str, days: int = 365) -> pd.DataFrame:
         return None
 
 
-def save_data(data: pd.DataFrame, symbol: str, output_dir: str = 'data'):
+def save_data(data: pd.DataFrame, symbol: str, output_dir: str = "data"):
     """Save data to parquet format."""
     os.makedirs(output_dir, exist_ok=True)
 
@@ -92,7 +93,7 @@ def save_data(data: pd.DataFrame, symbol: str, output_dir: str = 'data'):
 
 def main():
     """Main function to fetch and save trading data."""
-    symbols = ['BTCEUR', 'ETHEUR', 'ADAEUR', 'DOTEUR', 'LINKEUR']
+    symbols = ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
 
     logger.info("🚀 Starting trading data collection...")
 

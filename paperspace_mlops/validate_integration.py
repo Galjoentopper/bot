@@ -7,14 +7,14 @@ Validates that superior models integrate correctly with the existing
 Hetzner trading system and can be loaded by system_manager.
 """
 
-import os
-import sys
 import json
 import logging
+import os
 import subprocess
+import sys
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -22,10 +22,10 @@ class IntegrationValidator:
     """Validates superior model integration on Hetzner server."""
 
     def __init__(self, config_path):
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             self.config = json.load(f)
 
-        self.symbols = ['BTCEUR', 'ETHEUR', 'ADAEUR', 'DOTEUR', 'LINKEUR']
+        self.symbols = ["BTCEUR", "ETHEUR", "ADAEUR", "DOTEUR", "LINKEUR"]
         self.remote_base = "/opt/trading_bot"
 
     def run_remote_validation(self):
@@ -258,16 +258,19 @@ if __name__ == "__main__":
 
         # Write validation script to temporary file
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(validation_script)
             temp_script = f.name
 
         try:
             # Copy script to remote server
             copy_cmd = [
-                "scp", "-i", self.config["ssh_key_path"],
+                "scp",
+                "-i",
+                self.config["ssh_key_path"],
                 temp_script,
-                f"{self.config['hetzner_user']}@{self.config['hetzner_host']}:/tmp/validate_integration.py"
+                f"{self.config['hetzner_user']}@{self.config['hetzner_host']}:/tmp/validate_integration.py",
             ]
             subprocess.run(copy_cmd, check=True)
 
@@ -275,18 +278,22 @@ if __name__ == "__main__":
             logger.info("🚀 Running validation on Hetzner server...")
 
             run_cmd = [
-                "ssh", "-i", self.config["ssh_key_path"],
+                "ssh",
+                "-i",
+                self.config["ssh_key_path"],
                 f"{self.config['hetzner_user']}@{self.config['hetzner_host']}",
-                f"cd {self.remote_base} && python3 /tmp/validate_integration.py"
+                f"cd {self.remote_base} && python3 /tmp/validate_integration.py",
             ]
 
             result = subprocess.run(run_cmd, capture_output=False, text=True)
 
             # Cleanup
             cleanup_cmd = [
-                "ssh", "-i", self.config["ssh_key_path"],
+                "ssh",
+                "-i",
+                self.config["ssh_key_path"],
                 f"{self.config['hetzner_user']}@{self.config['hetzner_host']}",
-                "rm -f /tmp/validate_integration.py"
+                "rm -f /tmp/validate_integration.py",
             ]
             subprocess.run(cleanup_cmd)
 
@@ -307,9 +314,12 @@ def main():
     """Main execution."""
     import argparse
 
-    parser = argparse.ArgumentParser(description='Validate Superior Model Integration')
-    parser.add_argument('--config', default='/notebooks/bot/paperspace_mlops/hetzner_config.json',
-                       help='Configuration file path')
+    parser = argparse.ArgumentParser(description="Validate Superior Model Integration")
+    parser.add_argument(
+        "--config",
+        default="/notebooks/bot/paperspace_mlops/hetzner_config.json",
+        help="Configuration file path",
+    )
 
     args = parser.parse_args()
 

@@ -25,25 +25,26 @@ import yaml
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
+from src.data_pipeline.superior_ppo_feature_expander import SuperiorPPOFeatureExpander
+
 # Fix import paths
 from src.models.resource_aware_ppo_trainer import ResourceAwarePPOTrainer
-from src.data_pipeline.superior_ppo_feature_expander import SuperiorPPOFeatureExpander
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | %(message)s',
+    format="%(asctime)s | %(levelname)s | %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('logs/superior_training.log', mode='a')
-    ]
+        logging.FileHandler("logs/superior_training.log", mode="a"),
+    ],
 )
 logger = logging.getLogger(__name__)
 
 
 def load_config(config_path: str = "superior_training_config.yaml") -> dict:
     """Load training configuration."""
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         config = yaml.safe_load(f)
     logger.info(f"✅ Configuration loaded from {config_path}")
     return config
@@ -64,7 +65,7 @@ def load_training_data(symbol: str, config: dict) -> tuple[pd.DataFrame, pd.Data
     logger.info(f"📊 Loaded {len(df)} rows of data for {symbol}")
 
     # Ensure required columns
-    required_cols = ['open', 'high', 'low', 'close', 'volume']
+    required_cols = ["open", "high", "low", "close", "volume"]
     missing_cols = [col for col in required_cols if col not in df.columns]
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
@@ -82,7 +83,7 @@ def train_superior_ppo(
     symbol: str,
     total_timesteps: int = 200000,
     config_path: str = "superior_training_config.yaml",
-    resume_from: str = None
+    resume_from: str = None,
 ):
     """Train superior PPO model with multi-timeframe features."""
 
@@ -118,7 +119,7 @@ def train_superior_ppo(
             eval_data=eval_data,
             total_timesteps=total_timesteps,
             experiment_name=f"superior_ppo_{symbol}",
-            save_path=model_path
+            save_path=model_path,
         )
 
         # Log results
@@ -151,17 +152,29 @@ def train_superior_ppo(
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description='Train Superior PPO Model')
-    parser.add_argument('--symbol', type=str, default='BTCEUR',
-                       help='Trading symbol to train (default: BTCEUR)')
-    parser.add_argument('--timesteps', type=int, default=200000,
-                       help='Total training timesteps (default: 200000)')
-    parser.add_argument('--config', type=str, default='superior_training_config.yaml',
-                       help='Configuration file path')
-    parser.add_argument('--resume', type=str, default=None,
-                       help='Path to model to resume training from')
-    parser.add_argument('--demo', action='store_true',
-                       help='Run with reduced timesteps for demo')
+    parser = argparse.ArgumentParser(description="Train Superior PPO Model")
+    parser.add_argument(
+        "--symbol",
+        type=str,
+        default="BTCEUR",
+        help="Trading symbol to train (default: BTCEUR)",
+    )
+    parser.add_argument(
+        "--timesteps",
+        type=int,
+        default=200000,
+        help="Total training timesteps (default: 200000)",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="superior_training_config.yaml",
+        help="Configuration file path",
+    )
+    parser.add_argument(
+        "--resume", type=str, default=None, help="Path to model to resume training from"
+    )
+    parser.add_argument("--demo", action="store_true", help="Run with reduced timesteps for demo")
 
     args = parser.parse_args()
 
@@ -171,7 +184,7 @@ def main():
         logger.info("🎮 Demo mode: Reduced to 50k timesteps")
 
     # Create logs directory
-    os.makedirs('logs', exist_ok=True)
+    os.makedirs("logs", exist_ok=True)
 
     try:
         # Train the model
@@ -179,7 +192,7 @@ def main():
             symbol=args.symbol,
             total_timesteps=args.timesteps,
             config_path=args.config,
-            resume_from=args.resume
+            resume_from=args.resume,
         )
 
         logger.info("🎉 Training completed successfully!")

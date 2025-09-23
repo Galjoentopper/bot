@@ -60,7 +60,11 @@ class FixVerificationTool:
 
             # Test 3: Health check script runs without errors
             result = subprocess.run(
-                [str(health_script)], capture_output=True, text=True, timeout=30, cwd=self.bot_root
+                [str(health_script)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=self.bot_root,
             )
 
             if result.returncode != 0 and result.returncode != 1:  # 0=healthy, 1=warnings allowed

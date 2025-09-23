@@ -9,16 +9,17 @@ it with the current inferior technical indicator approach.
 No dependencies required - pure analysis and demonstration.
 """
 
-import pandas as pd
-import numpy as np
 import json
 from datetime import datetime
+
+import numpy as np
+import pandas as pd
 
 
 def load_old_model_metadata():
     """Load the old superior model metadata for comparison."""
     try:
-        with open('/notebooks/bot/magweg/models/ppo/model_metadata.json', 'r') as f:
+        with open("/notebooks/bot/magweg/models/ppo/model_metadata.json", "r") as f:
             return json.load(f)
     except:
         return None
@@ -44,13 +45,15 @@ def create_sample_data(num_samples=1000):
         low = min(open_price, close) * (1 - np.random.uniform(0, 0.005))
         volume = np.random.uniform(100, 1000)
 
-        data.append({
-            'open': open_price,
-            'high': high,
-            'low': low,
-            'close': close,
-            'volume': volume,
-        })
+        data.append(
+            {
+                "open": open_price,
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
+            }
+        )
 
     return pd.DataFrame(data)
 
@@ -60,80 +63,116 @@ def apply_old_superior_features(df):
     print("🔄 Applying OLD MODEL superior features...")
 
     # Timeframes from old model metadata
-    timeframes = {'1h': 2, '3h': 6, '6h': 12, '12h': 24, '24h': 48}
+    timeframes = {"1h": 2, "3h": 6, "6h": 12, "12h": 24, "24h": 48}
     features = []
 
     # 1. Multi-timeframe returns (forward-looking)
     for horizon, periods in timeframes.items():
-        future_close = df['close'].shift(-periods)
-        df[f'return_{horizon}'] = (future_close / df['close']) - 1
-        df[f'log_return_{horizon}'] = np.log(future_close / df['close'])
-        features.extend([f'return_{horizon}', f'log_return_{horizon}'])
+        future_close = df["close"].shift(-periods)
+        df[f"return_{horizon}"] = (future_close / df["close"]) - 1
+        df[f"log_return_{horizon}"] = np.log(future_close / df["close"])
+        features.extend([f"return_{horizon}", f"log_return_{horizon}"])
 
     # 2. Cost-adjusted returns
     transaction_cost = 0.0025
     for horizon in timeframes.keys():
-        raw_return = df[f'return_{horizon}']
-        df[f'cost_adj_return_{horizon}'] = raw_return - transaction_cost
-        df[f'profitable_{horizon}'] = (df[f'cost_adj_return_{horizon}'] > 0).astype(float)
-        features.extend([f'cost_adj_return_{horizon}', f'profitable_{horizon}'])
+        raw_return = df[f"return_{horizon}"]
+        df[f"cost_adj_return_{horizon}"] = raw_return - transaction_cost
+        df[f"profitable_{horizon}"] = (df[f"cost_adj_return_{horizon}"] > 0).astype(float)
+        features.extend([f"cost_adj_return_{horizon}", f"profitable_{horizon}"])
 
     # 3. Directional signals
     for horizon in timeframes.keys():
-        raw_return = df[f'return_{horizon}']
-        df[f'direction_{horizon}'] = np.where(raw_return > 0, 1, np.where(raw_return < 0, -1, 0))
-        df[f'strong_direction_{horizon}'] = np.where(raw_return > 0.01, 1, np.where(raw_return < -0.01, -1, 0))
-        df[f'is_profitable_{horizon}'] = df[f'direction_{horizon}']  # Simplified
-        features.extend([f'direction_{horizon}', f'strong_direction_{horizon}', f'is_profitable_{horizon}'])
+        raw_return = df[f"return_{horizon}"]
+        df[f"direction_{horizon}"] = np.where(raw_return > 0, 1, np.where(raw_return < 0, -1, 0))
+        df[f"strong_direction_{horizon}"] = np.where(
+            raw_return > 0.01, 1, np.where(raw_return < -0.01, -1, 0)
+        )
+        df[f"is_profitable_{horizon}"] = df[f"direction_{horizon}"]  # Simplified
+        features.extend(
+            [
+                f"direction_{horizon}",
+                f"strong_direction_{horizon}",
+                f"is_profitable_{horizon}",
+            ]
+        )
 
     # 4. Return magnitude
     for horizon in timeframes.keys():
-        raw_return = df[f'return_{horizon}']
-        df[f'return_magnitude_{horizon}'] = np.abs(raw_return)
-        df[f'positive_magnitude_{horizon}'] = np.where(raw_return > 0, np.abs(raw_return), 0)
-        df[f'magnitude_category_{horizon}'] = np.where(np.abs(raw_return) > 0.02, 2, np.where(np.abs(raw_return) > 0.005, 1, 0))
-        features.extend([f'return_magnitude_{horizon}', f'positive_magnitude_{horizon}', f'magnitude_category_{horizon}'])
+        raw_return = df[f"return_{horizon}"]
+        df[f"return_magnitude_{horizon}"] = np.abs(raw_return)
+        df[f"positive_magnitude_{horizon}"] = np.where(raw_return > 0, np.abs(raw_return), 0)
+        df[f"magnitude_category_{horizon}"] = np.where(
+            np.abs(raw_return) > 0.02, 2, np.where(np.abs(raw_return) > 0.005, 1, 0)
+        )
+        features.extend(
+            [
+                f"return_magnitude_{horizon}",
+                f"positive_magnitude_{horizon}",
+                f"magnitude_category_{horizon}",
+            ]
+        )
 
     # 5. Risk-adjusted features
-    returns = df['close'].pct_change()
+    returns = df["close"].pct_change()
     volatility = returns.rolling(window=20, min_periods=1).std()
 
     for horizon in timeframes.keys():
-        raw_return = df[f'return_{horizon}']
-        df[f'risk_adj_return_{horizon}'] = raw_return / (volatility + 1e-6)
-        df[f'info_ratio_{horizon}'] = raw_return / (volatility + 1e-6)  # Simplified
-        df[f'risk_adj_direction_{horizon}'] = np.where(df[f'risk_adj_return_{horizon}'] > 0.5, 1, np.where(df[f'risk_adj_return_{horizon}'] < -0.5, -1, 0))
-        features.extend([f'risk_adj_return_{horizon}', f'info_ratio_{horizon}', f'risk_adj_direction_{horizon}'])
+        raw_return = df[f"return_{horizon}"]
+        df[f"risk_adj_return_{horizon}"] = raw_return / (volatility + 1e-6)
+        df[f"info_ratio_{horizon}"] = raw_return / (volatility + 1e-6)  # Simplified
+        df[f"risk_adj_direction_{horizon}"] = np.where(
+            df[f"risk_adj_return_{horizon}"] > 0.5,
+            1,
+            np.where(df[f"risk_adj_return_{horizon}"] < -0.5, -1, 0),
+        )
+        features.extend(
+            [
+                f"risk_adj_return_{horizon}",
+                f"info_ratio_{horizon}",
+                f"risk_adj_direction_{horizon}",
+            ]
+        )
 
     # 6. Confidence features
     for horizon in timeframes.keys():
-        magnitude = df[f'return_magnitude_{horizon}']
-        df[f'confidence_{horizon}'] = np.tanh(magnitude * 10)
-        df[f'high_confidence_{horizon}'] = (df[f'confidence_{horizon}'] > 0.7).astype(float)
-        features.extend([f'confidence_{horizon}', f'high_confidence_{horizon}'])
+        magnitude = df[f"return_magnitude_{horizon}"]
+        df[f"confidence_{horizon}"] = np.tanh(magnitude * 10)
+        df[f"high_confidence_{horizon}"] = (df[f"confidence_{horizon}"] > 0.7).astype(float)
+        features.extend([f"confidence_{horizon}", f"high_confidence_{horizon}"])
 
     # 7. Market regime features
-    sma_50 = df['close'].rolling(window=50, min_periods=1).mean()
-    sma_200 = df['close'].rolling(window=200, min_periods=1).mean()
+    sma_50 = df["close"].rolling(window=50, min_periods=1).mean()
+    sma_200 = df["close"].rolling(window=200, min_periods=1).mean()
     bull_regime = (sma_50 > sma_200).astype(float)
-    high_vol_regime = (volatility > volatility.rolling(window=100, min_periods=1).median()).astype(float)
+    high_vol_regime = (volatility > volatility.rolling(window=100, min_periods=1).median()).astype(
+        float
+    )
 
     for horizon in timeframes.keys():
-        raw_return = df[f'return_{horizon}']
-        df[f'regime_direction_{horizon}'] = df[f'direction_{horizon}'] * bull_regime
-        df[f'bull_return_{horizon}'] = raw_return * bull_regime
-        df[f'bear_return_{horizon}'] = raw_return * (1 - bull_regime)
-        df[f'high_vol_return_{horizon}'] = raw_return * high_vol_regime
-        df[f'low_vol_return_{horizon}'] = raw_return * (1 - high_vol_regime)
-        features.extend([f'regime_direction_{horizon}', f'bull_return_{horizon}', f'bear_return_{horizon}', f'high_vol_return_{horizon}', f'low_vol_return_{horizon}'])
+        raw_return = df[f"return_{horizon}"]
+        df[f"regime_direction_{horizon}"] = df[f"direction_{horizon}"] * bull_regime
+        df[f"bull_return_{horizon}"] = raw_return * bull_regime
+        df[f"bear_return_{horizon}"] = raw_return * (1 - bull_regime)
+        df[f"high_vol_return_{horizon}"] = raw_return * high_vol_regime
+        df[f"low_vol_return_{horizon}"] = raw_return * (1 - high_vol_regime)
+        features.extend(
+            [
+                f"regime_direction_{horizon}",
+                f"bull_return_{horizon}",
+                f"bear_return_{horizon}",
+                f"high_vol_return_{horizon}",
+                f"low_vol_return_{horizon}",
+            ]
+        )
 
     # 8. Target and close
-    df['target'] = df['cost_adj_return_1h']
-    df['close'] = df['close']
-    features.extend(['target', 'close'])
+    df["target"] = df["cost_adj_return_1h"]
+    df["close"] = df["close"]
+    features.extend(["target", "close"])
 
     # Fill NaN values
-    df = df.fillna(method='ffill').fillna(0)
+    df = df.fillna(method="ffill").fillna(0)
 
     print(f"✅ OLD MODEL features created: {len(features)} features")
     return df, features
@@ -146,55 +185,55 @@ def apply_current_inferior_features(df):
     features = []
 
     # RSI
-    delta = df['close'].diff()
+    delta = df["close"].diff()
     gain = delta.where(delta > 0, 0.0)
     loss = -delta.where(delta < 0, 0.0)
     avg_gain = gain.ewm(com=13, adjust=False, min_periods=14).mean()
     avg_loss = loss.ewm(com=13, adjust=False, min_periods=14).mean()
     rs = avg_gain / (avg_loss + 1e-10)
-    df['rsi_14'] = 100 - (100 / (1 + rs))
-    features.append('rsi_14')
+    df["rsi_14"] = 100 - (100 / (1 + rs))
+    features.append("rsi_14")
 
     # Moving averages
-    df['sma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
-    df['ema_12'] = df['close'].ewm(span=12, adjust=False).mean()
-    features.extend(['sma_20', 'ema_12'])
+    df["sma_20"] = df["close"].rolling(window=20, min_periods=1).mean()
+    df["ema_12"] = df["close"].ewm(span=12, adjust=False).mean()
+    features.extend(["sma_20", "ema_12"])
 
     # MACD
-    ema_12 = df['close'].ewm(span=12, adjust=False).mean()
-    ema_26 = df['close'].ewm(span=26, adjust=False).mean()
-    df['macd'] = ema_12 - ema_26
-    features.append('macd')
+    ema_12 = df["close"].ewm(span=12, adjust=False).mean()
+    ema_26 = df["close"].ewm(span=26, adjust=False).mean()
+    df["macd"] = ema_12 - ema_26
+    features.append("macd")
 
     # Bollinger Bands
-    sma = df['close'].rolling(window=20, min_periods=1).mean()
-    std = df['close'].rolling(window=20, min_periods=1).std()
-    df['bb_upper'] = sma + (2 * std)
-    features.append('bb_upper')
+    sma = df["close"].rolling(window=20, min_periods=1).mean()
+    std = df["close"].rolling(window=20, min_periods=1).std()
+    df["bb_upper"] = sma + (2 * std)
+    features.append("bb_upper")
 
     # Volatility
-    returns = df['close'].pct_change()
-    df['volatility_20'] = returns.rolling(window=20, min_periods=1).std()
-    features.append('volatility_20')
+    returns = df["close"].pct_change()
+    df["volatility_20"] = returns.rolling(window=20, min_periods=1).std()
+    features.append("volatility_20")
 
     # Price changes
-    df['price_change_1'] = df['close'].pct_change()
-    features.append('price_change_1')
+    df["price_change_1"] = df["close"].pct_change()
+    features.append("price_change_1")
 
     # Momentum
-    df['momentum_10'] = df['close'] - df['close'].shift(10)
-    features.append('momentum_10')
+    df["momentum_10"] = df["close"] - df["close"].shift(10)
+    features.append("momentum_10")
 
     # ATR
-    high_low = df['high'] - df['low']
-    high_close = np.abs(df['high'] - df['close'].shift())
-    low_close = np.abs(df['low'] - df['close'].shift())
+    high_low = df["high"] - df["low"]
+    high_close = np.abs(df["high"] - df["close"].shift())
+    low_close = np.abs(df["low"] - df["close"].shift())
     true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-    df['atr_14'] = true_range.rolling(window=14, min_periods=1).mean()
-    features.append('atr_14')
+    df["atr_14"] = true_range.rolling(window=14, min_periods=1).mean()
+    features.append("atr_14")
 
     # Fill NaN values
-    df = df.fillna(method='ffill').fillna(0)
+    df = df.fillna(method="ffill").fillna(0)
 
     print(f"✅ CURRENT MODEL features created: {len(features)} features")
     return df, features
@@ -202,9 +241,9 @@ def apply_current_inferior_features(df):
 
 def compare_approaches():
     """Compare the old superior approach vs current inferior approach."""
-    print("="*80)
+    print("=" * 80)
     print("🔍 COMPREHENSIVE FEATURE ENGINEERING ANALYSIS")
-    print("="*80)
+    print("=" * 80)
 
     # Load old model metadata
     old_metadata = load_old_model_metadata()
@@ -216,10 +255,10 @@ def compare_approaches():
         print(f"   Observation shape: {old_metadata.get('observation_shape', 'Unknown')}")
 
         print(f"\n🎯 OLD MODEL FEATURE SAMPLE:")
-        old_features = old_metadata.get('feature_names', [])[:20]
+        old_features = old_metadata.get("feature_names", [])[:20]
         for i, feature in enumerate(old_features):
             print(f"   {i+1:2d}. {feature}")
-        if len(old_metadata.get('feature_names', [])) > 20:
+        if len(old_metadata.get("feature_names", [])) > 20:
             print(f"   ... and {len(old_metadata.get('feature_names', [])) - 20} more")
 
     # Create sample data
@@ -236,9 +275,9 @@ def compare_approaches():
     df_current, current_features = apply_current_inferior_features(df.copy())
 
     # Analysis
-    print(f"\n" + "="*80)
+    print(f"\n" + "=" * 80)
     print(f"📈 DETAILED COMPARISON ANALYSIS")
-    print(f"="*80)
+    print(f"=" * 80)
 
     print(f"\n🏆 OLD MODEL (SUPERIOR - magweg/):")
     print(f"   📊 Philosophy: PREDICTIVE - 'What will happen?'")

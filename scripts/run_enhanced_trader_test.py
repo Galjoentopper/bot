@@ -5,12 +5,13 @@ This addresses the guideline: "do run scripts/trader.py for max 5 minutes than k
 currently you wait till the scripts ends for itself but it will run continuously."
 """
 
-import subprocess
-import time
-import signal
-import sys
 import os
+import signal
+import subprocess
+import sys
+import time
 from pathlib import Path
+
 
 def run_enhanced_trader_with_timeout(timeout_minutes=5):
     """Run enhanced_trader.py with a timeout and kill it after the specified time."""
@@ -38,7 +39,7 @@ def run_enhanced_trader_with_timeout(timeout_minutes=5):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            cwd=str(script_dir)
+            cwd=str(script_dir),
         )
 
         print(f"✅ Enhanced trader process started with PID: {process.pid}")
@@ -65,7 +66,9 @@ def run_enhanced_trader_with_timeout(timeout_minutes=5):
 
         # Check if process is still running
         if process.poll() is None:
-            print(f"⏰ Timeout reached ({timeout_minutes} minutes). Killing enhanced trader process...")
+            print(
+                f"⏰ Timeout reached ({timeout_minutes} minutes). Killing enhanced trader process..."
+            )
             try:
                 # Try graceful termination first
                 process.terminate()
@@ -111,6 +114,7 @@ def run_enhanced_trader_with_timeout(timeout_minutes=5):
         print(f"❌ Error running enhanced trader: {e}")
         return False
 
+
 def main():
     """Main function."""
     print("🧪 Enhanced Trader Test Script")
@@ -127,6 +131,7 @@ def main():
     else:
         print("\n❌ Test failed")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

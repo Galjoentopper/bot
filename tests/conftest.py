@@ -46,8 +46,16 @@ def sample_config() -> Dict[str, Any]:
             "volatility_adjustment": True,
         },
         "per_symbol": {
-            "BTCEUR": {"buy_threshold": 0.6, "sell_threshold": -0.6, "max_position_size": 1000.0},
-            "ETHEUR": {"buy_threshold": 0.65, "sell_threshold": -0.65, "max_position_size": 500.0},
+            "BTCEUR": {
+                "buy_threshold": 0.6,
+                "sell_threshold": -0.6,
+                "max_position_size": 1000.0,
+            },
+            "ETHEUR": {
+                "buy_threshold": 0.65,
+                "sell_threshold": -0.65,
+                "max_position_size": 500.0,
+            },
         },
         "risk_management": {
             "max_drawdown_pct": 20.0,

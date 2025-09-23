@@ -80,7 +80,8 @@ class TestCredentialManager:
         # Invalid chat ID
         with pytest.raises(ValueError, match="Invalid Telegram chat ID"):
             TelegramCredentials(
-                bot_token="123456789:ABCdefGHIjklMNOpqrsTUVwxyz", chat_id="invalid_chat_id"
+                bot_token="123456789:ABCdefGHIjklMNOpqrsTUVwxyz",
+                chat_id="invalid_chat_id",
             )
 
         # Placeholder values
@@ -203,7 +204,9 @@ class TestMessageQueue:
     async def test_message_queue_priority_ordering(self):
         """Test that messages are dequeued in priority order."""
         queue = MessageQueue(
-            queue_file=str(self.queue_file), max_queue_size=10, persistence_enabled=False
+            queue_file=str(self.queue_file),
+            max_queue_size=10,
+            persistence_enabled=False,
         )
 
         # Enqueue messages with different priorities
@@ -250,7 +253,9 @@ class TestMessageQueue:
     async def test_message_queue_retry_logic(self):
         """Test message retry functionality."""
         queue = MessageQueue(
-            queue_file=str(self.queue_file), max_queue_size=10, persistence_enabled=False
+            queue_file=str(self.queue_file),
+            max_queue_size=10,
+            persistence_enabled=False,
         )
 
         await queue.enqueue("Test retry", MessagePriority.NORMAL, max_retries=2)
@@ -517,7 +522,10 @@ class TestTelegramClient:
 
                 # Test retry after network error
                 mock_bot.send_message = AsyncMock(
-                    side_effect=[NetworkError("Connection failed"), None]  # Success on retry
+                    side_effect=[
+                        NetworkError("Connection failed"),
+                        None,
+                    ]  # Success on retry
                 )
                 mock_bot_class.return_value = mock_bot
 
@@ -765,7 +773,8 @@ class TestSystemIntegration:
 
         # Test initialization with invalid credentials
         with patch.dict(
-            os.environ, {"TELEGRAM_BOT_TOKEN": "invalid_token", "TELEGRAM_CHAT_ID": "123"}
+            os.environ,
+            {"TELEGRAM_BOT_TOKEN": "invalid_token", "TELEGRAM_CHAT_ID": "123"},
         ):
             success = await client.initialize()
             assert not success

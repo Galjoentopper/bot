@@ -349,10 +349,14 @@ def main():
     """Main function."""
     parser = argparse.ArgumentParser(description="Regenerate clean normalization statistics")
     parser.add_argument(
-        "--dry-run", action="store_true", help="Show what would be done without making changes"
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without making changes",
     )
     parser.add_argument(
-        "--models", type=str, help="Comma-separated list of symbols to process (default: all)"
+        "--models",
+        type=str,
+        help="Comma-separated list of symbols to process (default: all)",
     )
 
     args = parser.parse_args()

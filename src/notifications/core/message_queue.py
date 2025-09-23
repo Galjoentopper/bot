@@ -278,7 +278,7 @@ class MessageQueue:
                 "priority_distribution": priority_counts,
                 "statistics": self._stats.copy(),
                 "persistence_enabled": self.persistence_enabled,
-                "queue_file": str(self.queue_file) if self.persistence_enabled else None,
+                "queue_file": (str(self.queue_file) if self.persistence_enabled else None),
                 "oldest_message_age": (
                     asyncio.get_event_loop().time() - min(msg.timestamp for msg in self._heap)
                     if self._heap
