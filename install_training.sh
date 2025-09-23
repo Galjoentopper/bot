@@ -73,6 +73,14 @@ except ImportError:
     missing.append('gymnasium')
     print('❌ gymnasium - MISSING')
 
+try:
+    import scipy
+    from scipy.signal import find_peaks
+    print('✅ scipy.signal - OK')
+except ImportError:
+    missing.append('scipy.signal')
+    print('❌ scipy.signal - MISSING')
+
 if missing:
     print(f'\\n⚠️ Missing packages: {missing}')
     print('Try running the installation again.')
