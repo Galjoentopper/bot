@@ -10,6 +10,9 @@ pip install -r requirements-training.txt
 # Install missing packages that might not be in requirements
 pip install torch>=2.0.0 stable-baselines3>=2.7.0
 
+# Fix SciPy compatibility issue
+pip install --upgrade scipy>=1.11.0
+
 # Handle blinker conflict if it exists (ignore errors)
 pip install --force-reinstall --no-deps blinker 2>/dev/null || echo "⚠️ Blinker conflict handled (expected)"
 
