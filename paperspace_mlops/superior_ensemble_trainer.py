@@ -163,22 +163,31 @@ class SuperiorFeatureEngine:
 
         if model_type == "ppo":
             # Use superior PPO feature expansion (103 features)
+            logger.debug(f"Input data columns before PPO expansion: {list(df.columns)}")
             features_df = self.ppo_expander.expand_features(df, symbol=symbol)
-            logger.info(f"✅ Generated {len(self._get_feature_columns(features_df))} PPO features")
+            logger.debug(f"Output data columns after PPO expansion: {len(features_df.columns)} total columns")
+
+            # Debug feature counting
+            ppo_features = self._get_feature_columns(features_df, 'ppo')
+            logger.debug(f"PPO feature columns: {ppo_features[:5]}...{ppo_features[-5:]} (showing first 5 and last 5)")
+            logger.debug(f"Excluded from PPO: ['open', 'high', 'low', 'close', 'volume', 'target']")
+            logger.debug(f"Identifier columns present: {[c for c in ['timestamp', 'datetime', 'id'] if c in features_df.columns]}")
+
+            logger.info(f"✅ Generated {len(ppo_features)} PPO features")
 
         else:
             # Use enhanced trading features for GRU/LightGBM (100 features)
             features_df = self.trading_engine.generate_trading_features(df)
 
             # Select optimal 100 features using intelligent selection
-            feature_cols = self._get_feature_columns(features_df)
+            feature_cols = self._get_feature_columns(features_df, model_type)
             if len(feature_cols) > 100:
                 # Use variance-based feature selection
                 selected_features = self._select_top_features(features_df, feature_cols, 100)
                 non_feature_cols = [c for c in features_df.columns if c not in feature_cols]
                 features_df = features_df[non_feature_cols + selected_features]
 
-            feature_count = len(self._get_feature_columns(features_df))
+            feature_count = len(self._get_feature_columns(features_df, model_type))
             logger.info("✅ Generated %s %s features", feature_count, model_type.upper())
 
         # Add superior targets without losing the engineered feature matrix
@@ -202,10 +211,27 @@ class SuperiorFeatureEngine:
 
         return features_df
 
-    def _get_feature_columns(self, df: pd.DataFrame) -> List[str]:
-        """Get feature column names excluding OHLCV and targets."""
-        excluded = {"open", "high", "low", "close", "volume", "timestamp", "target"}
-        return [c for c in df.columns if c not in excluded and not c.startswith("target_")]
+    def _get_feature_columns(self, df: pd.DataFrame, model_type: str = None) -> List[str]:
+        """Get feature column names excluding OHLCV, timestamps, and targets based on model type."""
+        if model_type == "ppo":
+            # For PPO: exclude only OHLCV and target, keep timestamp/id/datetime as features to reach 103
+            excluded = {"open", "high", "low", "close", "volume", "target"}
+            # For PPO, include datetime columns even if they're string/object type
+            return [
+                c for c in df.columns
+                if c not in excluded
+                and not c.startswith("target_")
+                and (df[c].dtype in ['float64', 'float32', 'int64', 'int32'] or c in ['timestamp', 'datetime', 'id'])
+            ]
+        else:
+            # For GRU/LightGBM: exclude all non-feature columns including identifiers
+            excluded = {"open", "high", "low", "close", "volume", "timestamp", "datetime", "id", "target"}
+            return [
+                c for c in df.columns
+                if c not in excluded
+                and not c.startswith("target_")
+                and df[c].dtype in ['float64', 'float32', 'int64', 'int32']  # Only numeric
+            ]
 
     def _select_top_features(
         self, df: pd.DataFrame, feature_cols: List[str], n_features: int
@@ -265,6 +291,28 @@ class SuperiorModelTrainer:
             raise
 
         logger.info("🏋️ Superior Model Trainer initialized")
+
+    def _get_feature_columns(self, df: pd.DataFrame, model_type: str = None) -> List[str]:
+        """Get feature column names excluding OHLCV, timestamps, and targets based on model type."""
+        if model_type == "ppo":
+            # For PPO: exclude only OHLCV and target, keep timestamp/id/datetime as features to reach 103
+            excluded = {"open", "high", "low", "close", "volume", "target"}
+            # For PPO, include datetime columns even if they're string/object type
+            return [
+                c for c in df.columns
+                if c not in excluded
+                and not c.startswith("target_")
+                and (df[c].dtype in ['float64', 'float32', 'int64', 'int32'] or c in ['timestamp', 'datetime', 'id'])
+            ]
+        else:
+            # For GRU/LightGBM: exclude all non-feature columns including identifiers
+            excluded = {"open", "high", "low", "close", "volume", "timestamp", "datetime", "id", "target"}
+            return [
+                c for c in df.columns
+                if c not in excluded
+                and not c.startswith("target_")
+                and df[c].dtype in ['float64', 'float32', 'int64', 'int32']  # Only numeric
+            ]
 
     def _compute_regression_metrics(
         self, preds: np.ndarray, actuals: np.ndarray
@@ -371,11 +419,9 @@ class SuperiorModelTrainer:
         self, features_df: pd.DataFrame, model_type: str
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Prepare training data for specific model type."""
-        # Get feature columns
-        disallowed = {"open", "high", "low", "close", "volume", "timestamp", "target"}
-        feature_cols = [
-            c for c in features_df.columns if c not in disallowed and not c.startswith("target_")
-        ]
+        # Use consistent feature selection logic
+        feature_cols = self._get_feature_columns(features_df, model_type)
+        logger.debug(f"Training data prep: {model_type} using {len(feature_cols)} features")
 
         # Get target
         if "target" in features_df.columns:

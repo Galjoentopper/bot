@@ -38,7 +38,7 @@ training:
 
   # Resource allocation
   memory_limit: '5GB'  # Adjusted to use available RAM+swap (3.7GB + 2GB)
-  gpu_enabled: false   # No GPU on production server
+  gpu_enabled: true    # RTX A4000 GPU detected on this training server
   gpu_memory_fraction: 0.8
 
 # Model management & deployment overrides
@@ -359,8 +359,8 @@ logging:
 notifications:
   telegram:
     enabled: true
-    bot_token: '7733436451:AAH6Sls8uL4fEgd6Ty7VEKSBIMauhaVkN4c'
-    chat_id: '7988790407'
+    bot_token: ${TELEGRAM_BOT_TOKEN}
+    chat_id: ${TELEGRAM_CHAT_ID}
     # Granular notification controls
     notification_types:
       trades: false              # Individual buy/sell notifications

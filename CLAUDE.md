@@ -11,18 +11,27 @@ This is a **model training environment** for a cryptocurrency trading bot system
 ## Key Commands
 
 ### Environment Setup
+
+**CRITICAL: Install dependencies in correct order to avoid training failures**
+
 ```bash
-# Install dependencies
+# Navigate to bot directory first
 cd bot
+
+# For training environment (Paperspace/Jupyter) - RECOMMENDED
+pip install -r requirements-training.txt
+
+# OR for full development environment (includes all features)
 pip install -r requirements.txt
-pip install -e .
 
-# Install development dependencies
-pip install -e ".[dev]"
-
-# Jupyter notebook setup
-pip install -e ".[jupyter]"
+# Verify critical training dependencies
+python -c "import ta, lightgbm, torch, stable_baselines3; print('✅ Training dependencies OK')"
 ```
+
+**Common Dependency Issues:**
+- `ModuleNotFoundError: No module named 'ta'` → Run `pip install -r requirements-training.txt`
+- `ModuleNotFoundError: No module named 'lightgbm'` → Ensure LightGBM is installed
+- Training notebook failures → Use `requirements-training.txt` for training-only environments
 
 ### Model Training Pipeline
 ```bash
@@ -67,13 +76,35 @@ python test_config_scenarios.py  # Configuration testing
 ```
 
 ### Jupyter Notebook Training
+
+**MAIN TRAINING METHOD - Use this for ensemble training**
+
 ```bash
+# Install training dependencies first (CRITICAL)
+cd bot
+pip install -r requirements-training.txt
+
 # Start Jupyter for interactive training
 jupyter notebook
 
-# Main training notebook (opens in browser)
-# Navigate to: Train.ipynb
+# Open Train.ipynb in browser and run all cells
+# This executes the complete ensemble training pipeline:
+# - PPO (Reinforcement Learning) models
+# - GRU (Recurrent Neural Network) models
+# - LightGBM (Gradient Boosting) models
+# - All 5 symbols: BTCEUR, ETHEUR, ADAEUR, DOTEUR, LINKEUR
 ```
+
+**Train.ipynb Workflow:**
+1. **Cell 1**: Environment validation - checks dependencies, GPU, AWS credentials
+2. **Cell 2**: Full ensemble training execution - trains all 15 models (3 types × 5 symbols)
+3. **Cell 3**: Results analysis - validates trained models and export status
+
+**Common Training Issues:**
+- `No module named 'ta'` → Install `pip install -r requirements-training.txt`
+- `No module named 'lightgbm'` → Missing in current environment, install dependencies
+- AWS export disabled → Set environment variables for S3 export (optional)
+- GPU not detected → Training will use CPU (slower but functional)
 
 ## Architecture Overview
 
@@ -130,13 +161,18 @@ jupyter notebook
 - `gpu_enabled`: GPU utilization (typically true on training server)
 
 ### Environment Variables (`.env`)
-```
+
+**Required for S3 Export (optional - training works without AWS):**
+```bash
+# Create .env file in bot/ directory
 AWS_ACCESS_KEY_ID=your_access_key
 AWS_SECRET_ACCESS_KEY=your_secret_key
 AWS_DEFAULT_REGION=us-east-1
 AWS_MODELS_BUCKET=your_models_bucket
 TELEGRAM_BOT_TOKEN=your_bot_token (for notifications)
 ```
+
+**Note:** Models can be trained and saved locally without AWS credentials. S3 export is only needed for production deployment.
 
 ## Training Workflow
 
