@@ -27,7 +27,7 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -165,13 +165,19 @@ class SuperiorFeatureEngine:
             # Use superior PPO feature expansion (103 features)
             logger.debug(f"Input data columns before PPO expansion: {list(df.columns)}")
             features_df = self.ppo_expander.expand_features(df, symbol=symbol)
-            logger.debug(f"Output data columns after PPO expansion: {len(features_df.columns)} total columns")
+            logger.debug(
+                f"Output data columns after PPO expansion: {len(features_df.columns)} total columns"
+            )
 
             # Debug feature counting
-            ppo_features = self._get_feature_columns(features_df, 'ppo')
-            logger.debug(f"PPO feature columns: {ppo_features[:5]}...{ppo_features[-5:]} (showing first 5 and last 5)")
-            logger.debug(f"Excluded from PPO: ['open', 'high', 'low', 'close', 'volume', 'target']")
-            logger.debug(f"Identifier columns present: {[c for c in ['timestamp', 'datetime', 'id'] if c in features_df.columns]}")
+            ppo_features = self._get_feature_columns(features_df, "ppo")
+            logger.debug(
+                f"PPO feature columns: {ppo_features[:5]}...{ppo_features[-5:]} (showing first 5 and last 5)"
+            )
+            logger.debug("Excluded from PPO: ['open', 'high', 'low', 'close', 'volume', 'target']")
+            logger.debug(
+                f"Identifier columns present: {[c for c in ['timestamp', 'datetime', 'id'] if c in features_df.columns]}"
+            )
 
             logger.info(f"✅ Generated {len(ppo_features)} PPO features")
 
@@ -218,19 +224,34 @@ class SuperiorFeatureEngine:
             excluded = {"open", "high", "low", "close", "volume", "target"}
             # For PPO, include datetime columns even if they're string/object type
             return [
-                c for c in df.columns
+                c
+                for c in df.columns
                 if c not in excluded
                 and not c.startswith("target_")
-                and (df[c].dtype in ['float64', 'float32', 'int64', 'int32'] or c in ['timestamp', 'datetime', 'id'])
+                and (
+                    df[c].dtype in ["float64", "float32", "int64", "int32"]
+                    or c in ["timestamp", "datetime", "id"]
+                )
             ]
         else:
             # For GRU/LightGBM: exclude all non-feature columns including identifiers
-            excluded = {"open", "high", "low", "close", "volume", "timestamp", "datetime", "id", "target"}
+            excluded = {
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "timestamp",
+                "datetime",
+                "id",
+                "target",
+            }
             return [
-                c for c in df.columns
+                c
+                for c in df.columns
                 if c not in excluded
                 and not c.startswith("target_")
-                and df[c].dtype in ['float64', 'float32', 'int64', 'int32']  # Only numeric
+                and df[c].dtype in ["float64", "float32", "int64", "int32"]  # Only numeric
             ]
 
     def _select_top_features(
@@ -277,14 +298,12 @@ class SuperiorModelTrainer:
             import torch
             import torch.nn as nn
             from stable_baselines3 import PPO
-            from stable_baselines3.common.vec_env import DummyVecEnv
 
             self.optuna = optuna
             self.lgb = lgb
             self.torch = torch
             self.nn = nn
             self.PPO = PPO
-            self.DummyVecEnv = DummyVecEnv
 
         except ImportError as e:
             logger.error(f"❌ Missing required dependencies: {e}")
@@ -299,19 +318,34 @@ class SuperiorModelTrainer:
             excluded = {"open", "high", "low", "close", "volume", "target"}
             # For PPO, include datetime columns even if they're string/object type
             return [
-                c for c in df.columns
+                c
+                for c in df.columns
                 if c not in excluded
                 and not c.startswith("target_")
-                and (df[c].dtype in ['float64', 'float32', 'int64', 'int32'] or c in ['timestamp', 'datetime', 'id'])
+                and (
+                    df[c].dtype in ["float64", "float32", "int64", "int32"]
+                    or c in ["timestamp", "datetime", "id"]
+                )
             ]
         else:
             # For GRU/LightGBM: exclude all non-feature columns including identifiers
-            excluded = {"open", "high", "low", "close", "volume", "timestamp", "datetime", "id", "target"}
+            excluded = {
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "timestamp",
+                "datetime",
+                "id",
+                "target",
+            }
             return [
-                c for c in df.columns
+                c
+                for c in df.columns
                 if c not in excluded
                 and not c.startswith("target_")
-                and df[c].dtype in ['float64', 'float32', 'int64', 'int32']  # Only numeric
+                and df[c].dtype in ["float64", "float32", "int64", "int32"]  # Only numeric
             ]
 
     def _compute_regression_metrics(
@@ -436,8 +470,18 @@ class SuperiorModelTrainer:
                 features_df["target"] = features_df["close"].pct_change().shift(-1)
                 target_col = "target"
 
-        # Extract data
-        X = features_df[feature_cols].fillna(0).values
+        # Extract data and coerce to numeric for PPO environments
+        feature_frame = features_df[feature_cols].copy()
+
+        datetime_cols = feature_frame.select_dtypes(
+            include=["datetime64[ns]", "datetime64[ns, UTC]"]
+        ).columns
+        for col in datetime_cols:
+            # Convert timestamps to epoch seconds to keep ordering information while remaining numeric
+            feature_frame[col] = feature_frame[col].astype("int64") / 1e9
+
+        feature_frame = feature_frame.apply(pd.to_numeric, errors="coerce").fillna(0.0)
+        X = feature_frame.to_numpy(dtype=np.float32)
         y = features_df[target_col].fillna(0).values
 
         # Remove rows with NaN targets
@@ -538,7 +582,7 @@ class SuperiorModelTrainer:
 
     def _get_default_params(self, model_type: str) -> Dict[str, Any]:
         """Get default parameters for model type."""
-        defaults = {
+        defaults: Dict[str, Dict[str, Any]] = {
             "lightgbm": {
                 "objective": "regression",
                 "metric": "rmse",
@@ -568,7 +612,11 @@ class SuperiorModelTrainer:
             },
         }
 
-        return defaults.get(model_type, {})
+        default_params = defaults.get(model_type)
+        if default_params is None:
+            return {}
+
+        return cast(Dict[str, Any], dict(default_params))
 
     def _train_final_model(
         self,
@@ -622,20 +670,20 @@ class SuperiorModelTrainer:
 
     def _create_gru_model(self, input_size: int, hidden_size: int, num_layers: int, dropout: float):
         """Create GRU model architecture."""
-        nn = self.nn
+        nn_module = cast(Any, self.nn)
 
-        class GRUModel(nn.Module):
+        class GRUModel(nn_module.Module):  # type: ignore[name-defined]
             def __init__(self, input_size, hidden_size, num_layers, dropout):
                 super().__init__()
-                self.gru = nn.GRU(
+                self.gru = nn_module.GRU(
                     input_size,
                     hidden_size,
                     num_layers,
                     batch_first=True,
                     dropout=dropout if num_layers > 1 else 0,
                 )
-                self.fc = nn.Linear(hidden_size, 1)
-                self.dropout = nn.Dropout(dropout)
+                self.fc = nn_module.Linear(hidden_size, 1)
+                self.dropout = nn_module.Dropout(dropout)
 
             def forward(self, x):
                 if len(x.shape) == 2:
@@ -733,8 +781,6 @@ class SuperiorModelTrainer:
     def _train_ppo_quick(self, train_X, train_y, val_X, lr, n_steps, batch_size):
         """Quick PPO training for hyperparameter optimization."""
         try:
-            from stable_baselines3.common.vec_env import DummyVecEnv
-
             from src.rl_env.ppo_trading_env import create_ppo_environment
 
             # Create minimal environment for quick training
@@ -1385,14 +1431,14 @@ class SuperiorEnsembleTrainer:
         avg_training_time = np.mean([r.training_time for r in self.results])
 
         # Group by model type
-        model_stats = {}
+        model_stats: Dict[str, List[ModelResult]] = {}
         for result in self.results:
             if result.model_type not in model_stats:
                 model_stats[result.model_type] = []
             model_stats[result.model_type].append(result)
 
         # Create report
-        report = {
+        report: Dict[str, Any] = {
             "training_summary": {
                 "total_models_trained": len(self.results),
                 "total_training_time": total_time,
@@ -1404,9 +1450,11 @@ class SuperiorEnsembleTrainer:
             "detailed_results": [asdict(r) for r in self.results],
         }
 
+        model_performance = cast(Dict[str, Any], report["model_performance"])
+
         for model_type, results in model_stats.items():
             scores = [r.validation_score for r in results]
-            report["model_performance"][model_type] = {
+            model_performance[model_type] = {
                 "count": len(results),
                 "avg_validation_score": np.mean(scores),
                 "best_validation_score": np.max(scores),
