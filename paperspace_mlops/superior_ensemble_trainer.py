@@ -101,6 +101,7 @@ class TrainingConfig:
     max_workers: int = None
     memory_limit: str = "8GB"
     gpu_enabled: bool = True
+    fast_mode: bool = False
 
     # Export configuration
     export_to_s3: bool = True
@@ -290,6 +291,7 @@ class SuperiorModelTrainer:
     def __init__(self, config: TrainingConfig):
         """Initialise trainer state and load heavy dependencies lazily."""
         self.config = config
+        self.fast_mode = getattr(config, "fast_mode", False)
 
         # Import model trainers
         try:
@@ -555,16 +557,36 @@ class SuperiorModelTrainer:
 
             elif model_type == "ppo":
                 # PPO hyperparameter optimization
-                learning_rate = trial.suggest_float("learning_rate", 0.0001, 0.01)
-                n_steps = trial.suggest_int("n_steps", 512, 4096)
-                batch_size = trial.suggest_int("batch_size", 32, 256)
+                ppo_params = {
+                    "learning_rate": trial.suggest_float("learning_rate", 0.0001, 0.01),
+                    "n_steps": trial.suggest_int("n_steps", 512, 4096),
+                    "batch_size": trial.suggest_int("batch_size", 32, 256),
+                }
 
-                # Create PPO environment and train briefly
-                preds = self._train_ppo_quick(
-                    train_X, train_y, val_X, learning_rate, n_steps, batch_size
+                if self.fast_mode:
+                    preds = self._train_ppo_quick(
+                        train_X,
+                        train_y,
+                        val_X,
+                        ppo_params["learning_rate"],
+                        ppo_params["n_steps"],
+                        ppo_params["batch_size"],
+                    )
+                    return -np.mean((preds - val_y) ** 2)
+
+                # Evaluate PPO params using full training environment for rich feedback
+                _, eval_metrics = self._train_ppo_full(
+                    train_X,
+                    train_y,
+                    val_X,
+                    val_y,
+                    ppo_params,
+                    evaluation_only=True,
                 )
 
-            # Calculate validation score
+                return float(eval_metrics.get("validation_score", 0.0))
+
+            # Calculate validation score for non-PPO models
             return -np.mean((preds - val_y) ** 2)  # Negative MSE for maximization
 
         # Create study
@@ -839,12 +861,23 @@ class SuperiorModelTrainer:
             logger.warning(f"PPO quick training failed: {e}, using random predictions")
             return np.random.normal(0, 0.1, len(val_X))
 
-    def _train_ppo_full(self, train_X, train_y, val_X, val_y, params):
+    def _train_ppo_full(
+        self,
+        train_X,
+        train_y,
+        val_X,
+        val_y,
+        params,
+        evaluation_only: bool = False,
+    ):
         """Full PPO training with proper trading environment."""
         try:
             from src.rl_env.ppo_trading_env import create_ppo_environment
 
-            logger.info("🤖 Starting full PPO training")
+            phase = "evaluation" if evaluation_only else "full run"
+            logger.info(f"🤖 Starting full PPO training ({phase})")
+
+            params = dict(params)  # Work on a copy so callers keep original values
 
             # Create realistic market data for training
             # Use actual price movements derived from targets
@@ -881,25 +914,39 @@ class SuperiorModelTrainer:
                 },
             )
 
+            # Adjust parameters for evaluation-only runs to keep Optuna fast but informative
+            n_steps = params.get("n_steps", 2048)
+            batch_size = params.get("batch_size", 64)
+            n_epochs = params.get("n_epochs", 10)
+
+            if evaluation_only:
+                n_steps = max(128, min(n_steps, max(128, len(train_X))))
+                derived_batch = len(train_X) // 4
+                max_batch = max(32, derived_batch)
+                batch_size = max(32, min(batch_size, max_batch))
+                n_epochs = min(n_epochs, 5)
+
             # Create PPO model with optimized parameters
             model = self.PPO(
                 "MlpPolicy",
                 env,
                 learning_rate=params.get("learning_rate", 0.0003),
-                n_steps=params.get("n_steps", 2048),
-                batch_size=params.get("batch_size", 64),
-                n_epochs=params.get("n_epochs", 10),
+                n_steps=n_steps,
+                batch_size=batch_size,
+                n_epochs=n_epochs,
                 gamma=params.get("gamma", 0.99),
                 gae_lambda=params.get("gae_lambda", 0.95),
                 clip_range=params.get("clip_range", 0.2),
                 ent_coef=params.get("ent_coef", 0.01),
                 vf_coef=params.get("vf_coef", 0.5),
                 max_grad_norm=params.get("max_grad_norm", 0.5),
-                verbose=1,
+                verbose=0 if evaluation_only else 1,
             )
 
             # Train the model
             total_timesteps = params.get("total_timesteps", 100000)
+            if evaluation_only:
+                total_timesteps = min(total_timesteps, max(20000, len(train_X) * 5))
             logger.info(f"Training PPO for {total_timesteps} timesteps")
 
             model.learn(total_timesteps=total_timesteps)
@@ -949,12 +996,22 @@ class SuperiorModelTrainer:
                 f"PPO validation complete: Sharpe={val_score:.3f}, Score={normalized_score:.3f}"
             )
 
-            return model, {
+            try:
+                val_env.close()
+                if evaluation_only:
+                    env.close()
+            except Exception:
+                pass
+
+            model_to_return = None if evaluation_only else model
+
+            return model_to_return, {
                 "validation_score": normalized_score,
                 "validation_metrics": performance_metrics,
                 "total_timesteps": total_timesteps,
                 "val_rewards": val_rewards,
                 "env_performance": performance_metrics,
+                "evaluation_only": evaluation_only,
             }
 
         except Exception as e:

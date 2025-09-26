@@ -182,6 +182,9 @@ class PaperspaceTrainingRunner:
                 self.trainer.config.min_samples = 200
                 self.trainer.config.export_to_s3 = False
 
+            # Flag fast mode so downstream components can adjust behaviour
+            self.trainer.config.fast_mode = bool(quick_test)
+
             if symbols:
                 self.trainer.config.symbols = symbols
                 self.logger.info(f"Training symbols: {symbols}")
