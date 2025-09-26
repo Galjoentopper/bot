@@ -23,7 +23,7 @@ import logging
 import sys
 import time
 import warnings
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from pathlib import Path
@@ -293,6 +293,10 @@ class SuperiorModelTrainer:
         self.config = config
         self.fast_mode = getattr(config, "fast_mode", False)
 
+        # CUDA stability management
+        self._cuda_available = self._check_cuda_health()
+        self._force_cpu = getattr(config, "force_cpu_training", False)
+
         # Import model trainers
         try:
             import lightgbm as lgb
@@ -523,71 +527,123 @@ class SuperiorModelTrainer:
         logger.info(f"🎯 Optimizing {model_type.upper()} hyperparameters")
 
         def objective(trial):
-            if model_type == "lightgbm":
-                params = {
-                    "objective": "regression",
-                    "metric": "rmse",
-                    "boosting_type": "gbdt",
-                    "num_leaves": trial.suggest_int("num_leaves", 10, 200),
-                    "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3),
-                    "feature_fraction": trial.suggest_float("feature_fraction", 0.5, 1.0),
-                    "bagging_fraction": trial.suggest_float("bagging_fraction", 0.5, 1.0),
-                    "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
-                    "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
-                    "verbosity": -1,
-                }
+# Removed debug print
+            preds = None  # Initialize preds to avoid UnboundLocalError
 
-                model = self.lgb.LGBMRegressor(**params)
-                model.set_params(verbosity=-1)
-                model.fit(train_X, train_y, eval_set=[(val_X, val_y)])
-                preds = model.predict(val_X)
+            try:
+                if model_type.lower() == "lightgbm":
+                    # Data validation first
+# Removed debug print
+                    logger.info(f"🔍 LightGBM data validation - train_X: {train_X.shape}, train_y: {train_y.shape}")
+                    logger.info(f"🔍 train_X has NaN: {np.isnan(train_X).any()}, inf: {np.isinf(train_X).any()}")
+                    logger.info(f"🔍 train_y has NaN: {np.isnan(train_y).any()}, inf: {np.isinf(train_y).any()}")
 
-            elif model_type == "gru":
-                # Simplified GRU for hyperparameter optimization
-                hidden_size = trial.suggest_int("hidden_size", 32, 256)
-                num_layers = trial.suggest_int("num_layers", 1, 4)
-                dropout = trial.suggest_float("dropout", 0.0, 0.5)
-                learning_rate = trial.suggest_float("learning_rate", 0.0001, 0.01)
+                    # Clean data if needed (create copies to avoid variable shadowing)
+                    clean_train_X = train_X
+                    clean_train_y = train_y
+                    clean_val_X = val_X
 
-                # Create simple GRU model
-                model = self._create_gru_model(train_X.shape[1], hidden_size, num_layers, dropout)
+                    if np.isnan(train_X).any() or np.isinf(train_X).any():
+                        logger.warning("🧹 Cleaning NaN/inf values from train_X")
+                        clean_train_X = np.nan_to_num(train_X, nan=0.0, posinf=1e6, neginf=-1e6)
 
-                # Train for limited epochs for optimization
-                preds = self._train_gru_quick(model, train_X, train_y, val_X, learning_rate)
+                    if np.isnan(train_y).any() or np.isinf(train_y).any():
+                        logger.warning("🧹 Cleaning NaN/inf values from train_y")
+                        clean_train_y = np.nan_to_num(train_y, nan=0.0, posinf=1e6, neginf=-1e6)
 
-            elif model_type == "ppo":
-                # PPO hyperparameter optimization
-                ppo_params = {
-                    "learning_rate": trial.suggest_float("learning_rate", 0.0001, 0.01),
-                    "n_steps": trial.suggest_int("n_steps", 512, 4096),
-                    "batch_size": trial.suggest_int("batch_size", 32, 256),
-                }
+                    if np.isnan(val_X).any() or np.isinf(val_X).any():
+                        logger.warning("🧹 Cleaning NaN/inf values from val_X")
+                        clean_val_X = np.nan_to_num(val_X, nan=0.0, posinf=1e6, neginf=-1e6)
 
-                if self.fast_mode:
-                    preds = self._train_ppo_quick(
+                    params = {
+                        "objective": "regression",
+                        "metric": "rmse",
+                        "boosting_type": "gbdt",
+                        "num_leaves": trial.suggest_int("num_leaves", 10, 200),
+                        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3),
+                        "feature_fraction": trial.suggest_float("feature_fraction", 0.5, 1.0),
+                        "bagging_fraction": trial.suggest_float("bagging_fraction", 0.5, 1.0),
+                        "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
+                        "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
+                        "verbosity": -1,
+                        "force_col_wise": True,  # Handle memory issues
+                    }
+
+                    logger.info(f"🚀 Creating LightGBM model with params: {params}")
+                    model = self.lgb.LGBMRegressor(**params)
+                    logger.info(f"✅ LightGBM model created: {type(model)}")
+
+                    logger.info("🏋️ Fitting LightGBM model...")
+                    # Simplified fit without callbacks for debugging
+                    model.fit(clean_train_X, clean_train_y, eval_set=[(clean_val_X, val_y)])
+                    logger.info("✅ LightGBM model fitted successfully")
+
+                    logger.info("🔮 Generating LightGBM predictions...")
+                    preds = model.predict(clean_val_X)
+                    logger.info(f"✅ LightGBM predictions generated: {preds.shape}, range: [{preds.min():.4f}, {preds.max():.4f}]")
+
+                elif model_type.lower() == "gru":
+                    # Simplified GRU for hyperparameter optimization
+                    hidden_size = trial.suggest_int("hidden_size", 32, 256)
+                    num_layers = trial.suggest_int("num_layers", 1, 4)
+                    dropout = trial.suggest_float("dropout", 0.0, 0.5)
+                    learning_rate = trial.suggest_float("learning_rate", 0.0001, 0.01)
+
+                    # Create simple GRU model
+                    model = self._create_gru_model(train_X.shape[1], hidden_size, num_layers, dropout)
+
+                    # Train for limited epochs for optimization
+                    preds = self._train_gru_quick(model, train_X, train_y, val_X, learning_rate)
+
+                elif model_type.lower() == "ppo":
+                    # PPO hyperparameter optimization
+                    ppo_params = {
+                        "learning_rate": trial.suggest_float("learning_rate", 0.0001, 0.01),
+                        "n_steps": trial.suggest_int("n_steps", 512, 4096),
+                        "batch_size": trial.suggest_int("batch_size", 32, 256),
+                    }
+
+                    fast_mode = getattr(self.config, "fast_mode", False)
+                    logger.info(f"🔧 PPO fast_mode check: {fast_mode}")
+                    if fast_mode:
+                        try:
+                            preds = self._train_ppo_quick(
+                                train_X,
+                                train_y,
+                                val_X,
+                                ppo_params["learning_rate"],
+                                ppo_params["n_steps"],
+                                ppo_params["batch_size"],
+                            )
+                            return -np.mean((preds - val_y) ** 2)
+                        except Exception as e:
+                            logger.warning(f"PPO quick training failed in fast mode: {e}, using fallback score")
+                            return -1.0  # Return a poor score for failed trials
+
+                    # Evaluate PPO params using full training environment for rich feedback
+                    _, eval_metrics = self._train_ppo_full(
                         train_X,
                         train_y,
                         val_X,
-                        ppo_params["learning_rate"],
-                        ppo_params["n_steps"],
-                        ppo_params["batch_size"],
+                        val_y,
+                        ppo_params,
+                        evaluation_only=True,
                     )
-                    return -np.mean((preds - val_y) ** 2)
 
-                # Evaluate PPO params using full training environment for rich feedback
-                _, eval_metrics = self._train_ppo_full(
-                    train_X,
-                    train_y,
-                    val_X,
-                    val_y,
-                    ppo_params,
-                    evaluation_only=True,
-                )
+                    return float(eval_metrics.get("validation_score", 0.0))
 
-                return float(eval_metrics.get("validation_score", 0.0))
+            except Exception as e:
+                logger.error(f"💥 Model training failed for {model_type}: {type(e).__name__}: {e}")
+                import traceback
+                logger.error(f"📋 Full traceback: {traceback.format_exc()}")
+                return -1.0  # Return poor score for failed trials
 
-            # Calculate validation score for non-PPO models
-            return -np.mean((preds - val_y) ** 2)  # Negative MSE for maximization
+            # Calculate validation score for non-PPO models (lightgbm and gru only)
+            if preds is not None:
+                return -np.mean((preds - val_y) ** 2)  # Negative MSE for maximization
+            else:
+                logger.warning(f"No predictions generated for {model_type}, using fallback score")
+                return -1.0
 
         # Create study
         study = self.optuna.create_study(direction="maximize")
@@ -652,7 +708,7 @@ class SuperiorModelTrainer:
         """Train the final model with optimized parameters."""
         logger.info(f"🎯 Training final {model_type.upper()} model")
 
-        if model_type == "lightgbm":
+        if model_type.lower() == "lightgbm":
             model = self.lgb.LGBMRegressor(**params)
             model.set_params(verbosity=-1)
             model.fit(
@@ -675,7 +731,7 @@ class SuperiorModelTrainer:
                 ),
             }
 
-        elif model_type == "gru":
+        elif model_type.lower() == "gru":
             model = self._create_gru_model(
                 train_X.shape[1],
                 params["hidden_size"],
@@ -685,8 +741,12 @@ class SuperiorModelTrainer:
 
             metrics = self._train_gru_full(model, train_X, train_y, val_X, val_y, params)
 
-        elif model_type == "ppo":
+        elif model_type.lower() == "ppo":
             model, metrics = self._train_ppo_full(train_X, train_y, val_X, val_y, params)
+        else:
+            # Safety fallback for unknown model types
+            logger.error(f"❌ Unknown model type: {model_type}")
+            raise ValueError(f"Unsupported model type: {model_type}")
 
         return model, metrics
 
@@ -717,88 +777,193 @@ class SuperiorModelTrainer:
         return GRUModel(input_size, hidden_size, num_layers, dropout)
 
     def _train_gru_quick(self, model, train_X, train_y, val_X, lr):
-        """Quick GRU training for hyperparameter optimization."""
-        optimizer = self.torch.optim.Adam(model.parameters(), lr=lr)
-        criterion = self.nn.MSELoss()
+        """Quick GRU training for hyperparameter optimization with CUDA stability."""
+        try:
+            # Get optimal device
+            device = self._get_device()
 
-        # Convert to tensors
-        train_X_tensor = self.torch.FloatTensor(train_X)
-        train_y_tensor = self.torch.FloatTensor(train_y)
-        val_X_tensor = self.torch.FloatTensor(val_X)
+            # Move model to device safely
+            model = self._safe_to_device(model, device)
 
-        # Quick training (limited epochs)
-        for epoch in range(10):
-            model.train()
-            optimizer.zero_grad()
-            outputs = model(train_X_tensor)
-            loss = criterion(outputs, train_y_tensor)
-            loss.backward()
-            optimizer.step()
+            optimizer = self.torch.optim.Adam(model.parameters(), lr=lr)
+            criterion = self.nn.MSELoss()
 
-        # Get predictions
-        model.eval()
-        with self.torch.no_grad():
-            preds = model(val_X_tensor).numpy()
+            # Convert to tensors and move to device safely
+            train_X_tensor = self._safe_to_device(self.torch.FloatTensor(train_X), device)
+            train_y_tensor = self._safe_to_device(self.torch.FloatTensor(train_y), device)
+            val_X_tensor = self._safe_to_device(self.torch.FloatTensor(val_X), device)
 
-        return preds
+            # Quick training (limited epochs)
+            for epoch in range(10):
+                model.train()
+                optimizer.zero_grad()
+                outputs = model(train_X_tensor)
+                loss = criterion(outputs, train_y_tensor)
+                loss.backward()
+                optimizer.step()
 
-    def _train_gru_full(self, model, train_X, train_y, val_X, val_y, params):
-        """Full GRU training."""
-        optimizer = self.torch.optim.Adam(model.parameters(), lr=params["learning_rate"])
-        criterion = self.nn.MSELoss()
-
-        # Convert to tensors
-        train_X_tensor = self.torch.FloatTensor(train_X)
-        train_y_tensor = self.torch.FloatTensor(train_y)
-        val_X_tensor = self.torch.FloatTensor(val_X)
-        val_y_tensor = self.torch.FloatTensor(val_y)
-
-        best_val_loss = float("inf")
-        patience = 20
-        patience_counter = 0
-        best_state: Optional[Dict[str, Any]] = None
-
-        for epoch in range(params.get("epochs", 100)):
-            # Training
-            model.train()
-            optimizer.zero_grad()
-            outputs = model(train_X_tensor)
-            loss = criterion(outputs, train_y_tensor)
-            loss.backward()
-            optimizer.step()
-
-            # Validation
+            # Get predictions
             model.eval()
             with self.torch.no_grad():
-                val_outputs = model(val_X_tensor)
-                val_loss = criterion(val_outputs, val_y_tensor).item()
+                preds = model(val_X_tensor).cpu().numpy()  # Always move to CPU for numpy conversion
 
-            # Early stopping
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            return preds
+
+        except Exception as e:
+            logger.warning(f"⚠️ GRU quick training error: {e}, attempting CPU fallback")
+            # Force CPU fallback on any error
+            try:
+                model = model.cpu()
+                optimizer = self.torch.optim.Adam(model.parameters(), lr=lr)
+                criterion = self.nn.MSELoss()
+
+                train_X_tensor = self.torch.FloatTensor(train_X)
+                train_y_tensor = self.torch.FloatTensor(train_y)
+                val_X_tensor = self.torch.FloatTensor(val_X)
+
+                for epoch in range(10):
+                    model.train()
+                    optimizer.zero_grad()
+                    outputs = model(train_X_tensor)
+                    loss = criterion(outputs, train_y_tensor)
+                    loss.backward()
+                    optimizer.step()
+
+                model.eval()
+                with self.torch.no_grad():
+                    preds = model(val_X_tensor).numpy()
+
+                logger.info("✅ GRU quick training completed with CPU fallback")
+                return preds
+            except Exception as fallback_error:
+                logger.error(f"💥 GRU quick training failed even with CPU fallback: {fallback_error}")
+                raise
+
+    def _train_gru_full(self, model, train_X, train_y, val_X, val_y, params):
+        """Full GRU training with CUDA stability and comprehensive error handling."""
+        try:
+            # Get optimal device
+            device = self._get_device()
+
+            # Move model to device safely
+            model = self._safe_to_device(model, device)
+
+            optimizer = self.torch.optim.Adam(model.parameters(), lr=params["learning_rate"])
+            criterion = self.nn.MSELoss()
+
+            # Convert to tensors and move to device safely
+            train_X_tensor = self._safe_to_device(self.torch.FloatTensor(train_X), device)
+            train_y_tensor = self._safe_to_device(self.torch.FloatTensor(train_y), device)
+            val_X_tensor = self._safe_to_device(self.torch.FloatTensor(val_X), device)
+            val_y_tensor = self._safe_to_device(self.torch.FloatTensor(val_y), device)
+
+            best_val_loss = float("inf")
+            patience = 20
+            patience_counter = 0
+            best_state: Optional[Dict[str, Any]] = None
+
+            for epoch in range(params.get("epochs", 100)):
+                # Training
+                model.train()
+                optimizer.zero_grad()
+                outputs = model(train_X_tensor)
+                loss = criterion(outputs, train_y_tensor)
+                loss.backward()
+                optimizer.step()
+
+                # Validation
+                model.eval()
+                with self.torch.no_grad():
+                    val_outputs = model(val_X_tensor)
+                    val_loss = criterion(val_outputs, val_y_tensor).item()
+
+                # Early stopping
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    patience_counter = 0
+                    best_state = copy.deepcopy(model.state_dict())
+                else:
+                    patience_counter += 1
+                    if patience_counter >= patience:
+                        break
+
+            if best_state is not None:
+                model.load_state_dict(best_state)
+
+            model.eval()
+            with self.torch.no_grad():
+                val_outputs = model(val_X_tensor).cpu().numpy()  # Always move to CPU for numpy conversion
+
+            metrics_summary = self._compute_regression_metrics(val_outputs, val_y)
+            val_score = metrics_summary["r2"]
+
+            return {
+                "validation_score": val_score,
+                "validation_metrics": metrics_summary,
+                "best_val_loss": best_val_loss,
+                "epochs_trained": epoch + 1,
+            }
+
+        except Exception as e:
+            logger.warning(f"⚠️ GRU full training error: {e}, attempting CPU fallback")
+            # Force CPU fallback on any error
+            try:
+                model = model.cpu()
+                optimizer = self.torch.optim.Adam(model.parameters(), lr=params["learning_rate"])
+                criterion = self.nn.MSELoss()
+
+                train_X_tensor = self.torch.FloatTensor(train_X)
+                train_y_tensor = self.torch.FloatTensor(train_y)
+                val_X_tensor = self.torch.FloatTensor(val_X)
+                val_y_tensor = self.torch.FloatTensor(val_y)
+
+                best_val_loss = float("inf")
+                patience = 20
                 patience_counter = 0
-                best_state = copy.deepcopy(model.state_dict())
-            else:
-                patience_counter += 1
-                if patience_counter >= patience:
-                    break
+                best_state: Optional[Dict[str, Any]] = None
 
-        if best_state is not None:
-            model.load_state_dict(best_state)
+                for epoch in range(params.get("epochs", 100)):
+                    model.train()
+                    optimizer.zero_grad()
+                    outputs = model(train_X_tensor)
+                    loss = criterion(outputs, train_y_tensor)
+                    loss.backward()
+                    optimizer.step()
 
-        model.eval()
-        with self.torch.no_grad():
-            val_outputs = model(val_X_tensor).numpy()
+                    model.eval()
+                    with self.torch.no_grad():
+                        val_outputs = model(val_X_tensor)
+                        val_loss = criterion(val_outputs, val_y_tensor).item()
 
-        metrics_summary = self._compute_regression_metrics(val_outputs, val_y)
-        val_score = metrics_summary["r2"]
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        patience_counter = 0
+                        best_state = copy.deepcopy(model.state_dict())
+                    else:
+                        patience_counter += 1
+                        if patience_counter >= patience:
+                            break
 
-        return {
-            "validation_score": val_score,
-            "validation_metrics": metrics_summary,
-            "best_val_loss": best_val_loss,
-            "epochs_trained": epoch + 1,
-        }
+                if best_state is not None:
+                    model.load_state_dict(best_state)
+
+                model.eval()
+                with self.torch.no_grad():
+                    val_outputs = model(val_X_tensor).numpy()
+
+                metrics_summary = self._compute_regression_metrics(val_outputs, val_y)
+                val_score = metrics_summary["r2"]
+
+                logger.info("✅ GRU full training completed with CPU fallback")
+                return {
+                    "validation_score": val_score,
+                    "validation_metrics": metrics_summary,
+                    "best_val_loss": best_val_loss,
+                    "epochs_trained": epoch + 1,
+                }
+            except Exception as fallback_error:
+                logger.error(f"💥 GRU full training failed even with CPU fallback: {fallback_error}")
+                raise
 
     def _train_ppo_quick(self, train_X, train_y, val_X, lr, n_steps, batch_size):
         """Quick PPO training for hyperparameter optimization."""
@@ -1030,14 +1195,14 @@ class SuperiorModelTrainer:
 
     def _evaluate_model(self, model, test_X, test_y, model_type):
         """Evaluate model on test set."""
-        if model_type == "lightgbm":
+        if model_type.lower() == "lightgbm":
             preds = model.predict(test_X)
-        elif model_type == "gru":
+        elif model_type.lower() == "gru":
             model.eval()
             test_X_tensor = self.torch.FloatTensor(test_X)
             with self.torch.no_grad():
                 preds = model(test_X_tensor).numpy()
-        elif model_type == "ppo":
+        elif model_type.lower() == "ppo":
             # PPO evaluation using trading environment
             try:
                 from src.rl_env.ppo_trading_env import create_ppo_environment
@@ -1102,15 +1267,15 @@ class SuperiorModelTrainer:
         model_dir.mkdir(parents=True, exist_ok=True)
 
         # Save model
-        if model_type == "lightgbm":
+        if model_type.lower() == "lightgbm":
             model_path = model_dir / "model.pkl"
             import joblib
 
             joblib.dump(model, model_path)
-        elif model_type == "gru":
+        elif model_type.lower() == "gru":
             model_path = model_dir / "model.pt"
             self.torch.save(model.state_dict(), model_path)
-        elif model_type == "ppo":
+        elif model_type.lower() == "ppo":
             model_path = model_dir / "model.zip"
             if model is not None:
                 # Save PPO model using stable-baselines3 format
@@ -1134,6 +1299,62 @@ class SuperiorModelTrainer:
             json.dump(metadata, f, indent=2)
 
         return str(model_path), str(metadata_path)
+
+    def _check_cuda_health(self) -> bool:
+        """Check if CUDA is available and healthy."""
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                logger.info("🖥️ CUDA not available, using CPU training")
+                return False
+
+            # Test basic CUDA operation
+            device = torch.device('cuda')
+            test_tensor = torch.tensor([1.0, 2.0]).to(device)
+            result = test_tensor * 2
+            result.cpu()  # Move back to CPU
+
+            logger.info(f"✅ CUDA healthy: {torch.cuda.get_device_name()}")
+            return True
+        except Exception as e:
+            logger.warning(f"⚠️ CUDA health check failed: {e}, falling back to CPU")
+            return False
+
+    def _get_device(self) -> str:
+        """Get the appropriate device for PyTorch operations."""
+        if self._force_cpu:
+            logger.info("🖥️ Force CPU mode enabled")
+            return "cpu"
+
+        if not self._cuda_available:
+            logger.info("🖥️ Using CPU (CUDA unavailable)")
+            return "cpu"
+
+        return "cuda"
+
+    def _safe_to_device(self, tensor_or_model, device: str = None):
+        """Safely move tensor or model to device with error handling."""
+        if device is None:
+            device = self._get_device()
+
+        try:
+            if hasattr(tensor_or_model, 'to'):
+                return tensor_or_model.to(device)
+            else:
+                return tensor_or_model
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to move to {device}: {e}, using CPU")
+            if hasattr(tensor_or_model, 'to'):
+                return tensor_or_model.to('cpu')
+            else:
+                return tensor_or_model
+
+    def _handle_cuda_error(self, operation_name: str, error: Exception):
+        """Handle CUDA errors by disabling CUDA and providing fallback."""
+        logger.error(f"💥 CUDA error in {operation_name}: {error}")
+        logger.info("🔄 Disabling CUDA for this session")
+        self._cuda_available = False
+        return False
 
 
 class SuperiorEnsembleTrainer:
@@ -1274,7 +1495,7 @@ class SuperiorEnsembleTrainer:
         else:
             logger.info("🖥️ Server environment detected - using parallel training")
             # Execute training in parallel
-            with ProcessPoolExecutor(max_workers=self.config.max_workers) as executor:
+            with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
                 futures = []
 
                 for model_type, symbol, data in tasks:

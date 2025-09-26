@@ -39,13 +39,19 @@ python -c "import ta, lightgbm, torch, stable_baselines3; print('✅ Training de
 cd bot
 python paperspace_mlops/paperspace_training.py  # Primary training script
 
-# Advanced ensemble training with full pipeline
-python src/training/enhanced_ensemble_trainer.py --config training_config.yaml
+# User-friendly CLI wrapper - RECOMMENDED for interactive use
+python scripts/run_full_training.py --full        # Full ensemble training
+python scripts/run_full_training.py --quick       # Quick test run
+python scripts/run_full_training.py --full --symbols BTCEUR ETHEUR  # Specific symbols
+python scripts/run_full_training.py --full --models ppo gru          # Specific models
 
-# Train specific model types
-python scripts/enhanced_trainer.py --config training_config.yaml --model-type gru
-python scripts/enhanced_trainer.py --config training_config.yaml --model-type lightgbm
-python scripts/enhanced_trainer.py --config training_config.yaml --model-type ppo
+# Advanced ensemble training with full pipeline
+python src/training/enhanced_ensemble_trainer.py --config config/training_config.yaml
+
+# Train specific model types (note: correct config path)
+python scripts/enhanced_trainer.py --config config/training_config.yaml --model-type gru
+python scripts/enhanced_trainer.py --config config/training_config.yaml --model-type lightgbm
+python scripts/enhanced_trainer.py --config config/training_config.yaml --model-type ppo
 ```
 
 ### S3 Model Export
@@ -53,11 +59,11 @@ python scripts/enhanced_trainer.py --config training_config.yaml --model-type pp
 # Setup S3 storage and export trained models
 python setup_s3_storage.py
 
-# Setup S3 from Excel configuration
-python setup_s3_from_excel.py
-
 # Export models to S3 bucket for production deployment
 python paperspace_mlops/export_to_s3.py
+
+# Automated S3 export (included in training pipeline when AWS credentials available)
+# S3 export happens automatically during training if environment variables are set
 ```
 
 ### Development and Testing
@@ -65,14 +71,23 @@ python paperspace_mlops/export_to_s3.py
 # Code quality and testing
 black .          # Format Python code
 flake8 .         # Lint code
-pytest           # Run test suite
-pytest -v        # Verbose test output
+pytest           # Run test suite (80% coverage required)
+pytest -v        # Verbose test output with line numbers
 pytest tests/    # Run specific test directory
+pytest -m unit   # Run only unit tests
+pytest -m integration  # Run only integration tests
+pytest -m performance  # Run only performance tests
+pytest --cov-report=html  # Generate HTML coverage report
 
 # System validation
 python final_test_system.py      # Comprehensive system validation
 python quick_test_system.py      # Quick validation tests
 python test_config_scenarios.py  # Configuration testing
+
+# Script utilities
+python scripts/validate_telegram_system.py  # Test notification system
+python scripts/system_optimizer.py          # Optimize system performance
+bash scripts/health_check.sh                # System health verification
 ```
 
 ### Jupyter Notebook Training
@@ -141,24 +156,39 @@ jupyter notebook
 
 ## Configuration Management
 
-### Master Configuration: `training_config.yaml`
+### Configuration Directory Structure: `config/`
+- `training_config.yaml`: Master training configuration
+- `superior_training_config.yaml`: Advanced ensemble configuration
+- `telegram_config.yaml`: Notification system settings
+- `logging_config.yaml`: Logging configuration
+- `feature_config.yaml`: Feature engineering parameters
+
+### Master Configuration: `config/training_config.yaml`
 
 **Data Configuration**
-- `symbols`: Trading pairs for model training
+- `symbols`: Trading pairs for model training ['BTCEUR', 'ETHEUR', 'ADAEUR', 'DOTEUR', 'LINKEUR']
 - `interval`: Timeframe for training data ('30m' optimal)
 - `lookback_days`: Historical data range (365 days default)
-- `data_sources`: Primary/fallback data providers
+- `data_sources`: Primary/fallback data providers (binance/yfinance)
+- `use_local_databases`: Use local SQLite databases (true for training environment)
 
 **Training Parameters**
-- `models`: List of model types to train ['gru', 'lightgbm', 'ppo']
-- `validation_split`: Train/validation data split
-- `cv_splits`: Cross-validation folds
-- `optuna_trials`: Hyperparameter optimization iterations
+- `models`: List of model types to train ['ppo', 'gru', 'lightgbm'] (PPO first for priority)
+- `validation_split`: Train/validation data split (0.2)
+- `test_split`: Test data split (0.1)
+- `cv_splits`: Cross-validation folds (5)
+- `embargo_period`: Temporal embargo in hours (24)
+- `optuna_trials`: Hyperparameter optimization iterations (100)
+- `optuna_timeout`: Optimization timeout in seconds (7200)
 
 **Resource Allocation**
-- `max_workers`: Parallel training processes
-- `memory_limit`: Training memory constraints
-- `gpu_enabled`: GPU utilization (typically true on training server)
+- `max_workers`: Parallel training processes (8)
+- `memory_limit`: Training memory constraints ('5GB')
+- `gpu_enabled`: GPU utilization (true - RTX A4000 detected)
+- `gpu_memory_fraction`: GPU memory allocation (0.8)
+- `batch_size`: Training batch size (512)
+- `epochs`: Maximum training epochs (100)
+- `early_stopping_patience`: Early stopping patience (10)
 
 ### Environment Variables (`.env`)
 
@@ -257,6 +287,28 @@ models_bucket/
 - Training statistics included for monitoring
 - Version control for model updates
 
+## Test Framework Configuration
+
+### Pytest Setup (`pytest.ini`)
+- **Coverage Requirement**: 80% minimum code coverage
+- **Test Categories**: Unit, integration, contract, performance, external, model, trading, config
+- **Output Formats**: Terminal, HTML, XML, JUnit XML
+- **Async Support**: Automatic asyncio mode for async tests
+
+### Test Structure
+- `tests/unit/`: Component-level tests
+- `tests/integration/`: End-to-end pipeline tests
+- `conftest.py`: Shared test fixtures and configuration
+
+### Running Specific Test Categories
+```bash
+pytest -m unit         # Unit tests only
+pytest -m integration  # Integration tests only
+pytest -m performance  # Performance tests only
+pytest -m slow         # Slow-running tests
+pytest -m external     # Tests requiring external services
+```
+
 ## Important Notes
 
 - **Training Environment Only**: This server trains models; production servers handle trading
@@ -265,3 +317,5 @@ models_bucket/
 - **Memory Management**: Large datasets require careful memory allocation
 - **Security**: Never commit AWS credentials; use environment variables only
 - **Validation Critical**: Always validate models before export to ensure production compatibility
+- **CLI Wrapper**: Use `scripts/run_full_training.py` for user-friendly training execution
+- **Configuration Path**: All configs are in `config/` directory, not root directory

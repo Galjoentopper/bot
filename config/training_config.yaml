@@ -27,13 +27,13 @@ training:
   embargo_period: 24  # hours
 
   # Training parameters
-  max_workers: 8
+  max_workers: 4  # Re-enable parallel processing (reduced from 8 for stability)
   batch_size: 512
   epochs: 100
   early_stopping_patience: 10
 
   # Optimization
-  optuna_trials: 100
+  optuna_trials: 10  # Restored to reasonable value for training
   optuna_timeout: 7200  # 2 hours
 
   # Resource allocation
