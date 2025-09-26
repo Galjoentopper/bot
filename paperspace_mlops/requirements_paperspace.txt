@@ -3,20 +3,20 @@
 
 # Core dependencies
 python-dotenv>=1.0.0
-pandas>=1.5.0,<2.0.0  # Stable version for Paperspace
-numpy>=1.21.0,<1.25.0  # Compatible with older systems
+pandas==2.2.3  # Stable version for Paperspace
+numpy==1.26.4  # Compatible with older systems
 PyYAML>=6.0
 pyarrow>=10.0.0
 
 # Machine Learning (Paperspace compatible versions)
-torch>=1.12.0,<2.0.0  # Stable PyTorch
-lightgbm>=3.3.0,<4.0.0  # Stable LightGBM
-scikit-learn>=1.1.0,<1.3.0
-scipy>=1.9.0,<1.11.0
+torch==2.3.1  # Stable PyTorch
+lightgbm==4.4.0  # Stable LightGBM
+scikit-learn==1.5.2
+scipy==1.13.1
 
 # Reinforcement Learning (gymnasium-native stack)
-stable-baselines3>=2.0.0,<3.0.0  # v2+ depends on gymnasium instead of gym
-gymnasium>=0.28.0
+stable-baselines3[extra]==2.7.0  # v2+ depends on gymnasium instead of gym
+gymnasium==1.0.0
 
 # Financial Data & Technical Analysis
 yfinance>=0.2.0
@@ -34,7 +34,7 @@ python-telegram-bot>=20.0
 
 # MLflow & Experiment Tracking
 mlflow>=2.0.0,<2.8.0  # Stable version
-optuna>=3.0.0,<4.0.0
+optuna==3.6.2
 
 # Development & Testing
 pytest>=7.0.0
@@ -56,7 +56,7 @@ tqdm>=4.64.0
 # Flask for webhook server (removed - not used in trading bot)
 
 # Plotting (optional)
-matplotlib>=3.6.0
+matplotlib==3.8.4
 seaborn>=0.12.0
 
 # Jupyter notebook compatibility
